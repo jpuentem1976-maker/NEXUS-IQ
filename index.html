@@ -2167,9 +2167,21 @@ window.onOpMachChange = onOpMachChange;
 
 function addOpRowPF(){
   const newId=uid();
-  const wrapper=document.createElement('div');
-  wrapper.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99,'');
-  document.getElementById('pf-ops-rows').appendChild(wrapper.firstElementChild);
+  const container=document.getElementById('pf-ops-rows');
+  if(!container) return;
+  // Get current product id from a hidden field or the form context
+  const curProdId = document.getElementById('pf-drawing-url')?.closest('.card')?.querySelector('[id^="bom-rows-"]')?.id?.replace('bom-rows-','')||'';
+  const tmp=document.createElement('div');
+  tmp.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99,curProdId);
+  // Append all child nodes to preserve structure
+  while(tmp.firstChild) container.appendChild(tmp.firstChild);
+  // Wire up the new CNC section
+  const cncBtn = document.getElementById('cnc-btn-'+newId);
+  const cncInp = document.getElementById('cnc-file-'+newId);
+  if(cncBtn && cncInp){
+    cncBtn.onclick = function(){ cncInp.click(); };
+    cncInp.addEventListener('change', function(){ uploadCNCFile(this); });
+  }
 }
 function removePFOpRow(id){
   // Remove the wrapper div that contains both the row and extras
