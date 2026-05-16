@@ -2056,7 +2056,7 @@ function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
-  return `<div class='op-row-wrap'>
+  return `<div class="op-row-wrap">
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
     <input value="${op.op_number||''}" placeholder="10" id="pfop-num-${op.id}" style="text-align:center;font-weight:700;font-family:'DM Mono',monospace">
     <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')">
