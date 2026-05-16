@@ -402,6 +402,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setConsultaTab('c-maquinas',this)">⚙ Carga de Máquinas</button>
     <button class="ptab" onclick="setConsultaTab('c-productos',this)">🗂 Productos</button>
     <button class="ptab" onclick="setConsultaTab('c-herramental',this)">🔧 Herramental</button>
+    <button class="ptab" onclick="setConsultaTab('c-drawings',this)">📐 Dibujos</button>
   </div>
   <div id="c-dashboard" class="subpage active fade">
     <div id="c-dashboard-list"></div>
@@ -422,6 +423,11 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:var(--muted)">🗂 Productos <span style="font-size:11px">(Solo lectura)</span></div>
     <div id="c-prod-list"></div>
   </div>
+  <div id="c-drawings" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--muted)">📐 Dibujos <span style="font-size:11px">(Solo lectura)</span></div>
+    <div id="c-drawings-body"></div>
+  </div>
+
   <div id="c-herramental" class="subpage">
     <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:var(--muted)">🔧 Herramental por Máquina <span style="font-size:11px">(Solo lectura)</span></div>
     <div id="c-tool-list"></div>
@@ -493,6 +499,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setEngTab('e-operators',this)">👷 Operadores</button>
     <button class="ptab" onclick="setEngTab('e-tooling',this)">🔧 Herramental</button>
     <button class="ptab" onclick="setEngTab('e-machine-times',this)">⏱ Tiempos Máquina</button>
+    <button class="ptab" onclick="setEngTab('e-drawings',this)">📐 Dibujos</button>
+    <button class="ptab" onclick="setEngTab('e-cnc',this)">💾 Programas CNC</button>
   </div>
 
   <!-- PRODUCTS -->
@@ -519,6 +527,20 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <div id="e-tooling" class="subpage">
     <div style="font-size:15px;font-weight:700;margin-bottom:14px">Herramental por Máquina</div>
     <div id="tooling-body"></div>
+  </div>
+
+  <!-- DRAWINGS -->
+  <div id="e-drawings" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">Dibujos de Productos</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Doble click para abrir en nueva ventana.</div>
+    <div id="drawings-body"></div>
+  </div>
+
+  <!-- CNC PROGRAMS -->
+  <div id="e-cnc" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">Programas CNC</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Programas por producto y operacion. Los puedes subir directamente desde cada operacion en Productos.</div>
+    <div id="cnc-body"></div>
   </div>
 
   <!-- MACHINE TIMES -->
@@ -1168,6 +1190,8 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-operators') renderOperators();
     if(id==='e-tooling') renderTooling();
     if(id==='e-machine-times') renderMachineTimes();
+    if(id==='e-drawings') renderDrawings();
+    if(id==='e-cnc') renderCNCPrograms();
   });
 }
 
@@ -1928,6 +1952,17 @@ function showProductForm(id){
         </div>
       </div>
 
+      <!-- Dibujo PDF -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📐 Dibujo (PDF)</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="file" id="pf-drawing-file" accept=".pdf" style="display:none" onchange="uploadDrawingFile(this)">
+          <button type="button" onclick="document.getElementById('pf-drawing-file').click()" class="btn btn-ghost btn-sm">📁 Subir PDF</button>
+          <span id="pf-drawing-status" style="font-size:11px;color:var(--muted)">${p.drawing_url?"Ver dibujo actual":"Sin dibujo cargado"}</span>
+        </div>
+        <input type="hidden" id="pf-drawing-url" value="${p.drawing_url||''}">
+      </div>
+
       <!-- Materia Prima - BOM dinámica -->
       <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1985,7 +2020,21 @@ function showProductForm(id){
   onMatFormChange();
   onHTChange();
   // Auto-calculate formulas after DOM renders
-  setTimeout(()=>{ calcBarraHabil(); calcPiezaHabil(); onMatShapeChange(); calcKilosForm(); calcStockDays(); }, 150);
+  setTimeout(()=>{
+    calcBarraHabil(); calcPiezaHabil(); onMatShapeChange(); calcKilosForm(); calcStockDays();
+    // Wire up CNC file inputs in op form
+    document.querySelectorAll('[id^="cnc-btn-"]').forEach(function(btn){
+      var opId = btn.id.replace('cnc-btn-','');
+      var inp = document.getElementById('cnc-file-'+opId);
+      if(inp && btn){
+        btn.onclick = function(){ inp.click(); };
+        inp.addEventListener('change', function(){ uploadCNCFile(this); });
+      }
+    });
+    // Wire up drawing file input
+    var drawInp = document.getElementById('pf-drawing-file');
+    if(drawInp) drawInp.addEventListener('change', function(){ uploadDrawingFile(this); });
+  }, 150);
 }
 
 function opRowPF(op,i){
@@ -2060,8 +2109,18 @@ function opRowPF(op,i){
         </div>
       </div>
     </div>
+    <!-- CNC PROGRAM -->
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Programa CNC</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="file" id="cnc-file-${op.id}" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="${p.id}" data-op="${op.id}">
+        <button type="button" class="btn btn-ghost btn-sm" id="cnc-btn-${op.id}">Subir programa CNC</button>
+        <span id="cnc-status-${op.id}" style="font-size:11px;color:var(--muted)">${op.cnc_program_name||"Sin programa"}</span>
+      </div>
     </div>
     </div>
+    </div>
+  </div>
   </div>
   </div>`;
 }
@@ -2463,6 +2522,7 @@ async function saveProduct(id,isNew){
     carb_carbon_pct:ht==='carburizado'?parseFloat(document.getElementById('pf-carbpct')?.value)||null:null,
     stock_min:parseInt(document.getElementById('pf-stock-min')?.value)||0,
     sort_number:parseFloat(document.getElementById('pf-sort-number')?.value)||null,
+    drawing_url:document.getElementById('pf-drawing-url')?.value.trim()||null,
   };
 
   showLoading('GUARDANDO...');
@@ -2756,6 +2816,129 @@ window.toggleMachineTime = function(mid){
   el.style.display = open?'none':'block';
   if(ar) ar.style.transform = open?'':'rotate(90deg)';
 };
+/* ═══════════════════════════════════════════════════════
+   DRAWINGS & CNC PROGRAMS
+═══════════════════════════════════════════════════════ */
+
+async function uploadDrawingFile(input){
+  const file = input.files[0]; if(!file) return;
+  const statusEl = document.getElementById('pf-drawing-status');
+  if(statusEl) statusEl.textContent = 'Subiendo PDF...';
+  try{
+    const filename = 'drawings/' + uid() + '.pdf';
+    const res = await fetch(SB_URL+'/storage/v1/object/drawings/'+filename,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/pdf','x-upsert':'true'},
+      body:file
+    });
+    if(!res.ok){ const t=await res.text(); throw new Error(t); }
+    const url = SB_URL+'/storage/v1/object/public/drawings/'+filename;
+    const inp = document.getElementById('pf-drawing-url');
+    if(inp) inp.value = url;
+    if(statusEl) statusEl.innerHTML = '<a href="'+url+'" target="_blank" style="color:var(--accent2)">Dibujo cargado - Ver PDF</a>';
+  }catch(e){
+    if(statusEl) statusEl.textContent = 'Error: '+e.message;
+  }
+}
+window.uploadDrawingFile = uploadDrawingFile;
+
+function buildDrawingsGrid(prods, containerId){
+  const body = document.getElementById(containerId);
+  if(!body) return;
+  const withDrawing = prods.filter(function(p){ return p.drawing_url; })
+    .sort(function(a,b){ return (a.sort_number??99999)-(b.sort_number??99999); });
+  if(!withDrawing.length){
+    body.innerHTML = '<div class="card" style="color:var(--muted);text-align:center;padding:40px">Ningun producto tiene dibujo cargado.</div>';
+    return;
+  }
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
+  withDrawing.forEach(function(p){
+    html += '<div class="card" style="text-align:center;padding:16px;cursor:pointer" data-url="'+p.drawing_url+'" onclick="window.open(this.dataset.url,String.fromCharCode(95,98,108,97,110,107))">';
+    html += '<div style="font-size:36px;margin-bottom:8px">📄</div>';
+    html += '<div style="font-weight:700;font-size:12px;margin-bottom:4px">'+(p.sort_number!=null?p.sort_number+' - ':'')+p.name+'</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'+p.code+'</div>';
+    html += '<a href="'+p.drawing_url+'" target="_blank" class="btn btn-accent btn-sm" style="display:inline-flex">Ver PDF</a>';
+    html += '</div>';
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+function renderDrawings(){ buildDrawingsGrid(products, 'drawings-body'); }
+window.renderDrawings = renderDrawings;
+
+function renderConsultaDrawings(){ buildDrawingsGrid(products, 'c-drawings-body'); }
+window.renderConsultaDrawings = renderConsultaDrawings;
+
+async function uploadCNCFile(input){
+  const file = input.files[0]; if(!file) return;
+  const prodId = input.dataset.prod;
+  const opId = input.dataset.op;
+  const statusEl = document.getElementById('cnc-status-'+opId);
+  if(statusEl) statusEl.textContent = 'Subiendo...';
+  try{
+    const ext = file.name.split('.').pop().toLowerCase();
+    const filename = 'programs/'+prodId+'_'+opId+'_'+uid()+'.'+ext;
+    const res = await fetch(SB_URL+'/storage/v1/object/cnc-programs/'+filename,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'text/plain','x-upsert':'true'},
+      body:file
+    });
+    if(!res.ok){ const t=await res.text(); throw new Error(t); }
+    const url = SB_URL+'/storage/v1/object/public/cnc-programs/'+filename;
+    const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+    await fetch(SB_URL+'/rest/v1/operations?id=eq.'+encodeURIComponent(opId),{method:'PATCH',headers:H,body:JSON.stringify({cnc_program_url:url,cnc_program_name:file.name})});
+    if(statusEl) statusEl.innerHTML = '<a href="'+url+'" download="'+file.name+'" style="color:var(--accent2)">'+file.name+'</a>';
+    await loadAllData();
+    renderCNCPrograms();
+  }catch(e){
+    if(statusEl) statusEl.textContent = 'Error: '+e.message;
+  }
+}
+window.uploadCNCFile = uploadCNCFile;
+
+function renderCNCPrograms(){
+  var body = document.getElementById('cnc-body');
+  if(!body) return;
+  var rows = [];
+  products.forEach(function(p){
+    var machOps = (p.operations||[]).filter(function(op){ return op.op_type==='machining'; });
+    if(machOps.length) rows.push({p:p,ops:machOps});
+  });
+  if(!rows.length){
+    body.innerHTML = '<div class="card" style="color:var(--muted);text-align:center;padding:40px">No hay operaciones de maquinado registradas.</div>';
+    return;
+  }
+  rows.sort(function(a,b){ return (a.p.sort_number??99999)-(b.p.sort_number??99999); });
+  var html = '';
+  rows.forEach(function(row){
+    var p = row.p;
+    var opsHtml = '';
+    row.ops.forEach(function(op){
+      var hasP = !!op.cnc_program_url;
+      var fid = 'cnc-pg-'+op.id;
+      var sid = 'cnc-st-'+op.id;
+      var progLink = hasP ? '<a href="'+op.cnc_program_url+'" download="'+(op.cnc_program_name||'prog')+'" style="color:var(--accent2)">'+(op.cnc_program_name||'programa')+'</a>' : 'Sin programa';
+      opsHtml += '<div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:8px;background:var(--bg3);border-radius:6px;margin-bottom:6px">';
+      opsHtml += '<span class="tag" style="text-align:center">Op.'+op.op_number+'</span>';
+      opsHtml += '<div><div style="font-size:12px;font-weight:600">'+op.name+(op.machine_name?' &middot; <span style="color:var(--muted);font-weight:400">'+op.machine_name+'</span>':'')+'</div>';
+      opsHtml += '<div id="'+sid+'" style="font-size:11px;color:var(--muted);margin-top:2px">'+progLink+'</div></div>';
+      opsHtml += '<div><input type="file" id="'+fid+'" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="'+p.id+'" data-op="'+op.id+'">';
+      opsHtml += '<button class="btn btn-ghost btn-sm" data-fid="'+fid+'" onclick="document.getElementById(this.dataset.fid).click()">'+(hasP?'Reemplazar':'Subir')+'</button>';
+      opsHtml += '</div></div>';
+    });
+    html += '<div class="card" style="margin-bottom:10px">';
+    html += '<div style="font-size:16px;font-weight:700;color:var(--accent2);margin-bottom:10px">'+(p.sort_number!=null?p.sort_number+' - ':'')+p.name+' <span style="font-size:11px;color:var(--muted);font-weight:400">'+p.code+'</span></div>';
+    html += opsHtml+'</div>';
+  });
+  body.innerHTML = html;
+  body.querySelectorAll('input[type=file]').forEach(function(inp){
+    inp.addEventListener('change', function(){ uploadCNCFile(this); });
+  });
+}
+window.renderCNCPrograms = renderCNCPrograms;
+
+
 
 
 
@@ -3808,6 +3991,7 @@ window.setConsultaTab = function setConsultaTab(id,btn){
   const el=document.getElementById(id);
   if(el){el.classList.add('active');el.classList.add('fade');}
   if(btn) btn.classList.add('active');
+  loadAllData().then(function(){ if(id==='c-drawings') renderConsultaDrawings(); });
 }
 
 function renderConsulta(){
