@@ -2007,7 +2007,7 @@ function showProductForm(id){
         <div style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;padding:0 0 6px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
           <div>No.</div><div>Tipo / Operación</div><div>Máquina</div><div>Nombre</div><div style="text-align:center">Mont(min)</div><div style="text-align:center">Unit(min)</div><div></div>
         </div>
-        <div id="pf-ops-rows">${(p.operations||[]).map((o,i)=>opRowPF(o,i)).join('')}</div>
+        <div id="pf-ops-rows">${(p.operations||[]).map((o,i)=>opRowPF(o,i,p.id)).join('')}</div>
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2037,7 +2037,7 @@ function showProductForm(id){
   }, 150);
 }
 
-function opRowPF(op,i){
+function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
@@ -2113,7 +2113,7 @@ function opRowPF(op,i){
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
       <div style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Programa CNC</div>
       <div style="display:flex;align-items:center;gap:8px">
-        <input type="file" id="cnc-file-${op.id}" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="${p.id}" data-op="${op.id}">
+        <input type="file" id="cnc-file-${op.id}" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="${prodId||''}" data-op="${op.id}">
         <button type="button" class="btn btn-ghost btn-sm" id="cnc-btn-${op.id}">Subir programa CNC</button>
         <span id="cnc-status-${op.id}" style="font-size:11px;color:var(--muted)">${op.cnc_program_name||"Sin programa"}</span>
       </div>
@@ -2145,7 +2145,7 @@ function onOpMachChange(id){
 function addOpRowPF(){
   const newId=uid();
   const wrapper=document.createElement('div');
-  wrapper.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99);
+  wrapper.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99,'');
   document.getElementById('pf-ops-rows').appendChild(wrapper.firstElementChild);
 }
 function removePFOpRow(id){
