@@ -3421,9 +3421,9 @@ function renderRawMaterial(){
   rawMaterial.forEach(r=>{
     const prod = getProduct(r.product_id);
     const matType = prod?.material_type||'acero';
-    const shape = prod?.material_shape||'redondo';
+    const shape = r.material_form==='barra'?(prod?.material_shape||'redondo'):(prod?.material_shape||'redondo');
     const diam = r.bar_diameter||prod?.bar_diameter||0;
-    const steelType = prod?.steel_type||prod?.material_type||matType;
+    const steelType = r.steel_type||prod?.steel_type||prod?.material_type||matType;
     const key = `${steelType}|${diam}|${shape}`;
     if(!grouped[key]) grouped[key]={matType,steelType,shape,diam,items:[],totalKg:0};
     // Calculate kg for this entry
