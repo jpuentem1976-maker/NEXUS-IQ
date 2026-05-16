@@ -2056,7 +2056,7 @@ function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
-  return `
+  return `<div class='op-row-wrap'>
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
     <input value="${op.op_number||''}" placeholder="10" id="pfop-num-${op.id}" style="text-align:center;font-weight:700;font-family:'DM Mono',monospace">
     <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')">
@@ -2139,7 +2139,7 @@ function opRowPF(op,i,prodId){
     </div>
   </div>
   </div>
-  `;
+  </div>`;
 }
 
 function onOpCatChange(id){
@@ -2172,8 +2172,8 @@ function addOpRowPF(){
   const curProdId = document.getElementById('pf-drawing-url')?.closest('.card')?.querySelector('[id^="bom-rows-"]')?.id?.replace('bom-rows-','')||'';
   const tmp=document.createElement('div');
   tmp.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99,curProdId);
-  // Append all child elements (no outer wrapper now)
-  while(tmp.firstChild) container.appendChild(tmp.firstChild);
+  // Append the op-row-wrap div
+  if(tmp.firstElementChild) container.appendChild(tmp.firstElementChild);
   // Wire up CNC
   const cncBtn = document.getElementById('cnc-btn-'+newId);
   const cncInp = document.getElementById('cnc-file-'+newId);
@@ -2502,12 +2502,12 @@ async function saveProduct(id,isNew){
   // Collect operation IDs from main row divs
   // Collect op IDs from wrapper divs (first child divs of pf-ops-rows)
   const opIds=[];
-  // pfop-{uuid} divs are direct or near-direct children of pf-ops-rows
-  document.querySelectorAll('#pf-ops-rows [id^="pfop-"]').forEach(el=>{
-    // Only match the main op div (grid div), not extras/inner/inputs
-    if(!el.id.match(/^pfop-[a-f0-9-]+$/) || el.id.includes('extras') || el.id.includes('inner')) return;
-    const opId=el.id.replace('pfop-','');
-    if(opId&&!opIds.includes(opId)) opIds.push(opId);
+  document.querySelectorAll('#pf-ops-rows .op-row-wrap').forEach(wrap=>{
+    const mainRow = wrap.querySelector('[id^="pfop-"]:not([id*="extras"]):not([id*="inner"])');
+    if(mainRow){
+      const opId = mainRow.id.replace('pfop-','');
+      if(opId && !opIds.includes(opId)) opIds.push(opId);
+    }
   });
 
   const opsData=[]; let valid=true;
