@@ -3156,8 +3156,34 @@ async function releaseOT(id){
       if(!r2.ok){ const t=await r2.text(); console.warn('ML warn:',op.name,t); }
     }
 
-    // 3. Create raw_material entry
-    if(prod.material_form){
+    // 3. Create raw_material entries — uses BOM if available, fallback to legacy fields
+    const rmH2={...H,'Prefer':'resolution=ignore-duplicates,return=minimal'};
+    const bomMats = prod.materials||[];
+    if(bomMats.length){
+      // BOM-based: one raw_material row per BOM material
+      for(const m of bomMats){
+        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+        const qty = parseInt(m.cantidad)||0;
+        const rm={
+          id:uid(),
+          ot_id:wo.id,
+          ot_number:wo.number,
+          product_id:prod.id,
+          product_name:prod.name,
+          product_code:prod.code,
+          steel_type:m.descripcion||m.tipo||'',
+          material_form:isBarra?'barra':'pieza_unitaria',
+          bar_qty:qty,
+          bar_diameter:parseFloat(m.diametro)||null,
+          bar_length:parseFloat(m.longitud)||null,
+          remaining:qty,
+          status:'active'
+        };
+        const r3=await fetch(SB_URL+'/rest/v1/raw_material',{method:'POST',headers:rmH2,body:JSON.stringify(rm)});
+        if(!r3.ok){ console.warn('RM warn:', await r3.text()); }
+      }
+    } else if(prod.material_form){
+      // Legacy: single material from product fields
       const qty=prod.bar_qty||prod.material_qty||wo.qty||0;
       const rm={
         id:uid(),
@@ -3174,11 +3200,9 @@ async function releaseOT(id){
         remaining:qty,
         status:'active'
       };
-      const rmH={...H,'Prefer':'resolution=ignore-duplicates,return=minimal'};
-      const r3=await fetch(`${SB_URL}/rest/v1/raw_material`,{method:'POST',headers:rmH,body:JSON.stringify(rm)});
+      const r3=await fetch(SB_URL+'/rest/v1/raw_material',{method:'POST',headers:rmH2,body:JSON.stringify(rm)});
       if(!r3.ok){ console.warn('RM warn:', await r3.text()); }
     }
-
     // 4. Reload fresh data
     await loadAllData();
 
