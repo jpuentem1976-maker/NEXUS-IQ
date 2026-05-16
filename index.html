@@ -2964,6 +2964,7 @@ function onOTFormProdChange(){
     const batchEl=document.getElementById('otf-batch-show'); if(batchEl) batchEl.value='';
   }
 }
+window.onOTFormProdChange = onOTFormProdChange;
 
 async function saveNewOT(){
   const number=document.getElementById('otf-num').value.trim();
