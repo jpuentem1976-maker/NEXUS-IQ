@@ -501,6 +501,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setEngTab('e-machine-times',this)">⏱ Tiempos Máquina</button>
     <button class="ptab" onclick="setEngTab('e-drawings',this)">📐 Dibujos</button>
     <button class="ptab" onclick="setEngTab('e-cnc',this)">💾 Programas CNC</button>
+    <button class="ptab" onclick="setEngTab('e-toolcat',this)">🔩 Catálogo Herramientas</button>
   </div>
 
   <!-- PRODUCTS -->
@@ -551,6 +552,16 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 
   <!-- OP CATALOG -->
+  <!-- TOOL CATALOG -->
+  <div id="e-toolcat" class="subpage">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:700">Catalogo de Herramientas</div>
+      <div style="margin-left:auto"><button class="btn btn-accent btn-sm" onclick="showToolCatForm(null)">+ Nueva Herramienta</button></div>
+    </div>
+    <div id="toolcat-form-wrap"></div>
+    <div id="toolcat-list"></div>
+  </div>
+
   <div id="e-opcatalog" class="subpage hidden fade">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <div style="font-size:15px;font-weight:700">Catálogo de Operaciones</div>
@@ -745,7 +756,7 @@ const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
 
 let SB_URL = '', SB_KEY = '';
-let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[];
+let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[], toolCatalog=[];
 let reportsAuth=false, engAuth=false, progAuth=false;
 
 function getConfig(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||null; }catch{ return null; } }
@@ -1066,7 +1077,7 @@ async function initApp(){
 }
 
 async function loadAllData(){
-  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats]=await Promise.all([
+  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats,toolCat]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
     sbSelect('operations','select=*&order=sort_order'),
     sbSelect('work_orders','select=*&order=created_at.desc'),
@@ -1080,8 +1091,10 @@ async function loadAllData(){
     sbSelect('ot_deliveries','select=*&order=delivered_at.desc'),
     sbSelect('ot_scrap','select=*&order=recorded_at.desc'),
     sbSelect('product_materials','select=*&order=created_at.asc'),
+    sbSelect('tool_catalog','select=*&order=name.asc'),
   ]);
   products=prods.map(p=>({...p,operations:(ops||[]).filter(o=>o.product_id===p.id).sort((a,b)=>a.sort_order-b.sort_order),materials:(prodMats||[]).filter(m=>m.product_id===p.id)}));
+  toolCatalog=toolCat||[];
   operators=(opsList||[]);
   workOrders=ots||[];
   // Merge recent sessions with all op_complete sessions (no duplicates)
@@ -1192,6 +1205,7 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-machine-times') renderMachineTimes();
     if(id==='e-drawings') renderDrawings();
     if(id==='e-cnc') renderCNCPrograms();
+    if(id==='e-toolcat') renderToolCatalog();
   });
 }
 
@@ -2091,12 +2105,20 @@ function opRowPF(op,i,prodId){
           <button type="button" onclick="(function(b){var d=document.getElementById('tools-rows-${op.id}');var h=d.style.display==='none';d.style.display=h?'':'none';b.textContent=h?'▲ ocultar':'▼ ver '+(d.children.length)+' herr.';})(this)" style="background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:1px 6px;border-radius:5px;font-size:10px;cursor:pointer">${(op.tools||[]).length?'▼ ver '+(op.tools||[]).length+' herr.':'▲ ocultar'}</button>
         </div>
         <div id="tools-rows-${op.id}" style="${(op.tools||[]).length>3?'display:none':''}">
-          ${(op.tools||[]).map(t=>`
-            <div id="tool-${t.id}" style="display:grid;grid-template-columns:1fr 80px 28px;gap:3px;margin-bottom:4px;align-items:center">
-              <input value="${t.name||''}" placeholder="Nombre herramienta" id="tname-${t.id}" style="font-size:11px;padding:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%">
-              <input type="number" value="${t.compensator||''}" placeholder="No." id="tcomp-${t.id}" style="font-size:11px;padding:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;text-align:center;font-family:'DM Mono',monospace">
-              <button type="button" onclick="document.getElementById('tool-${t.id}').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:5px;padding:4px;font-size:10px;cursor:pointer">✕</button>
-            </div>`).join('')}
+          ${(function(){return (op.tools||[]).map(function(t){
+            var catTool=toolCatalog.find(function(c){return c.id===t.catalog_id||(c.name===t.name&&!t.catalog_id);});
+            var photo=catTool&&catTool.photo_url?catTool.photo_url:(t.photo_url||'');
+            var catOpts=toolCatalog.map(function(c){return '<option value="'+c.id+'"'+(( t.catalog_id===c.id||(!t.catalog_id&&t.name===c.name))?' selected':'')+'>'+c.name+'</option>';}).join('');
+            var selId='tname-'+t.id; var compId='tcomp-'+t.id; var catId='tcatid-'+t.id; var prevId='tphoto-prev-'+t.id; var rowId='tool-'+t.id;
+            return '<div id="'+rowId+'" style="display:grid;grid-template-columns:30px 1fr 55px 22px;gap:3px;margin-bottom:4px;align-items:center">'
+              +'<div id="'+prevId+'" style="width:28px;height:28px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px">'+(photo?'<img src="'+photo+'" style="width:100%;height:100%;object-fit:cover">':'🔧')+'</div>'
+              +'<select id="'+selId+'" data-tid="'+t.id+'" style="font-size:11px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%" onchange="window.onToolCatSelect(this,this.dataset.tid)">'
+              +'<option value="">-- Herramienta --</option>'+catOpts+'</select>'
+              +'<input type="number" value="'+(catTool&&catTool.compensator?catTool.compensator:(t.compensator||''))+'" placeholder="Comp." id="'+compId+'" style="font-size:11px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;text-align:center">'
+              +'<input type="hidden" id="'+catId+'" value="'+(t.catalog_id||catTool&&catTool.id||'')+'">'
+              +'<button type="button" data-row="'+rowId+'" onclick="document.getElementById(this.dataset.row).remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:5px;padding:3px;font-size:10px;cursor:pointer">✕</button>'
+              +'</div>';
+          }).join('');})()}
         </div>
       </div>
       <!-- GAGES -->
@@ -2198,21 +2220,130 @@ function removePFOpRow(id){
   if(extras) extras.remove();
 }
 function addToolRow(opId){
-  const id=uid();
-  const wrap=document.getElementById('tools-rows-'+opId); if(!wrap) return;
-  const d=document.createElement('div'); d.id='tool-'+id;
-  d.style.cssText='display:grid;grid-template-columns:1fr 70px auto 32px;gap:4px;margin-bottom:4px;align-items:center';
-  d.innerHTML=`
-    <input placeholder="Nombre herramienta" id="tname-${id}" style="font-size:11px;padding:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%">
-    <input type="number" placeholder="Compensador" id="tcomp-${id}" style="font-size:11px;padding:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;text-align:center;font-family:'DM Mono',monospace">
-    <div style="display:flex;align-items:center;gap:3px">
-      <div id="tphoto-prev-${id}" style="width:30px;height:30px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0" onclick="document.getElementById('tfile-${id}').click()">📷</div>
-      <input type="file" id="tfile-${id}" accept="image/*" style="display:none" onchange="uploadItemPhoto(this,'tphoto-${id}','tphoto-prev-${id}')">
-      <input type="hidden" id="tphoto-${id}" value="">
-    </div>
-    <button onclick="document.getElementById('tool-${id}').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:5px;padding:5px;font-size:11px;cursor:pointer">✕</button>`;
+  var id=uid();
+  var wrap=document.getElementById('tools-rows-'+opId); if(!wrap) return;
+  var catOpts=toolCatalog.map(function(c){ return '<option value="'+c.id+'">'+c.name+'</option>'; }).join('');
+  var d=document.createElement('div'); d.id='tool-'+id;
+  d.style.cssText='display:grid;grid-template-columns:30px 1fr 55px 22px;gap:3px;margin-bottom:4px;align-items:center';
+  d.innerHTML='<div id="tphoto-prev-'+id+'" style="width:28px;height:28px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px">🔧</div>'
+    +'<select id="tname-'+id+'" data-tid="'+id+'" style="font-size:11px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%" onchange="window.onToolCatSelect(this,this.dataset.tid)">'
+    +'<option value="">-- Herramienta --</option>'+catOpts+'</select>'
+    +'<input type="number" placeholder="Comp." id="tcomp-'+id+'" style="font-size:11px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;text-align:center">'
+    +'<input type="hidden" id="tcatid-'+id+'" value="">'
+    +'<button data-row="tool-'+id+'" onclick="document.getElementById(this.dataset.row).remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:5px;padding:3px;font-size:10px;cursor:pointer">✕</button>';
   wrap.appendChild(d);
 }
+
+
+window.onToolCatSelect = function(sel, tid){
+  var opt = sel.options[sel.selectedIndex];
+  if(!opt||!opt.value) return;
+  var catTool = toolCatalog.find(function(c){ return c.id===opt.value; });
+  if(!catTool) return;
+  var compEl=document.getElementById('tcomp-'+tid);
+  var prevEl=document.getElementById('tphoto-prev-'+tid);
+  var catEl=document.getElementById('tcatid-'+tid);
+  if(compEl&&catTool.compensator) compEl.value=catTool.compensator;
+  if(catEl) catEl.value=catTool.id;
+  if(prevEl) prevEl.innerHTML=catTool.photo_url
+    ?'<img src="'+catTool.photo_url+'" style="width:100%;height:100%;object-fit:cover">'
+    :'🔧';
+};
+
+/* ═══════════════════════════════════════════════════════
+   TOOL CATALOG
+═══════════════════════════════════════════════════════ */
+function renderToolCatalog(){
+  var list=document.getElementById('toolcat-list'); if(!list) return;
+  if(!toolCatalog.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Catalogo vacio - agrega la primera herramienta.</div>';
+    return;
+  }
+  var html='<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr><th style="width:50px">Foto</th><th>Nombre</th><th style="width:80px;text-align:center">Comp.</th><th style="width:100px">Acciones</th></tr></thead><tbody>';
+  toolCatalog.forEach(function(t){
+    var photo=t.photo_url
+      ?'<img src="'+t.photo_url+'" style="width:36px;height:36px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">'
+      :'<div style="width:36px;height:36px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px">🔧</div>';
+    html+='<tr>'
+      +'<td>'+photo+'</td>'
+      +'<td style="font-weight:600">'+t.name+'</td>'
+      +'<td style="text-align:center;font-family:monospace;color:var(--warn)">'+(t.compensator||'--')+'</td>'
+      +'<td><div style="display:flex;gap:4px">'
+      +'<button class="btn btn-ghost btn-sm" data-id="'+t.id+'" onclick="window.showToolCatForm(this.dataset.id)">✏</button>'
+      +'<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)" data-id="'+t.id+'" onclick="window.deleteToolCat(this.dataset.id)">🗑</button>'
+      +'</div></td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  list.innerHTML=html;
+}
+window.renderToolCatalog=renderToolCatalog;
+
+function showToolCatForm(id){
+  var t=id?toolCatalog.find(function(x){return x.id===id;}):{id:uid(),name:'',compensator:'',photo_url:''};
+  if(!t) return;
+  var isNew=!id;
+  var wrap=document.getElementById('toolcat-form-wrap'); if(!wrap) return;
+  wrap.innerHTML='<div class="card card-accent fade" style="margin-bottom:14px">'
+    +'<div style="font-weight:700;font-size:16px;color:var(--accent);margin-bottom:12px">'
+    +(isNew?'NUEVA HERRAMIENTA':'EDITAR HERRAMIENTA')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:80px 1fr 100px;gap:12px;align-items:start">'
+    +'<div><div id="tc-photo-prev" style="width:70px;height:70px;border-radius:8px;background:var(--bg3);border:2px dashed var(--border);overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:28px">'
+    +'<input type="file" id="tc-photo-file" accept="image/*" style="display:none">'
+    +'<input type="hidden" id="tc-photo-url" value="'+(t.photo_url||'')+'">'
+    +'</div>'
+    +'<div class="field" style="margin:0"><label>Nombre</label><input id="tc-name" value="'+(t.name||'')+'" placeholder="ej. PORTAINSERTO TRIGON" style="text-transform:uppercase"></div>'
+    +'<div class="field" style="margin:0"><label>Compensador</label><input type="number" id="tc-comp" value="'+(t.compensator||'')+'" placeholder="1" style="text-align:center"></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">'
+    +'<button class="btn btn-ghost" data-w="toolcat-form-wrap" onclick="document.getElementById(this.dataset.w).innerHTML=String()">Cancelar</button>'
+    +'<button class="btn btn-accent" data-id="'+t.id+'" data-new="'+String(isNew)+'" onclick="window.saveToolCat(this.dataset.id,this.dataset.new===String(true))">Guardar</button>'
+    +'</div></div>';
+  var fileInp=document.getElementById('tc-photo-file');
+  if(fileInp) fileInp.addEventListener('change',function(){ window.uploadToolCatPhoto(this); });
+}
+window.showToolCatForm=showToolCatForm;
+
+async function uploadToolCatPhoto(input){
+  var file=input.files[0]; if(!file) return;
+  try{
+    var filename='tools/'+uid()+'.'+file.name.split('.').pop().toLowerCase();
+    var res=await fetch(SB_URL+'/storage/v1/object/nexusiq-images/'+filename,{method:'POST',headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type,'x-upsert':'true'},body:file});
+    if(!res.ok) throw new Error(await res.text());
+    var url=SB_URL+'/storage/v1/object/public/nexusiq-images/'+filename;
+    document.getElementById('tc-photo-url').value=url;
+    document.getElementById('tc-photo-prev').innerHTML='<img src="'+url+'" style="width:100%;height:100%;object-fit:cover">';
+  }catch(e){ alert('Error al subir foto: '+e.message); }
+}
+window.uploadToolCatPhoto=uploadToolCatPhoto;
+
+async function saveToolCat(id,isNew){
+  var name=document.getElementById('tc-name')&&document.getElementById('tc-name').value.trim().toUpperCase();
+  if(!name){ alert('El nombre es requerido'); return; }
+  var data={id:id,name:name,compensator:document.getElementById('tc-comp')&&document.getElementById('tc-comp').value.trim()||null,photo_url:document.getElementById('tc-photo-url')&&document.getElementById('tc-photo-url').value.trim()||null};
+  showLoading('GUARDANDO...');
+  try{
+    if(isNew) await sbInsert('tool_catalog',[data]);
+    else await sbUpdate('tool_catalog',{id:id},{name:data.name,compensator:data.compensator,photo_url:data.photo_url});
+    await loadAllData(); renderToolCatalog();
+    document.getElementById('toolcat-form-wrap').innerHTML='';
+  }catch(e){ alert('Error: '+e.message); }
+  hideLoading();
+}
+window.saveToolCat=saveToolCat;
+
+async function deleteToolCat(id){
+  if(!confirm('Eliminar esta herramienta del catalogo?')) return;
+  var H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'};
+  showLoading('ELIMINANDO...');
+  try{
+    await fetch(SB_URL+'/rest/v1/tool_catalog?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:H});
+    await loadAllData(); renderToolCatalog();
+  }catch(e){ alert('Error: '+e.message); }
+  hideLoading();
+}
+window.deleteToolCat=deleteToolCat;
 
 function addGageRow(opId){
   const id=uid();
@@ -2535,7 +2666,12 @@ async function saveProduct(id,isNew){
     // Collect tools
     const tools=[...document.querySelectorAll('#tools-rows-'+opId+' > div')].map(el=>{
       const tid=el.id.replace('tool-','');
-      return {id:tid,name:document.getElementById('tname-'+tid)?.value.trim()||'',compensator:document.getElementById('tcomp-'+tid)?.value.trim()||''};
+      const sel=document.getElementById('tname-'+tid);
+      const selectedOpt=sel&&sel.selectedIndex>=0?sel.options[sel.selectedIndex]:null;
+      const name=selectedOpt&&selectedOpt.value?selectedOpt.textContent.trim():'';
+      const catalogId=sel&&sel.value||'';
+      const catTool=toolCatalog.find(c=>c.id===catalogId);
+      return {id:tid,name,compensator:document.getElementById('tcomp-'+tid)?.value.trim()||'',catalog_id:catalogId,photo_url:catTool&&catTool.photo_url||''};
     }).filter(t=>t.name);
     // Collect gages
     const gages=[...document.querySelectorAll('#gages-rows-'+opId+' > div')].map(el=>{
