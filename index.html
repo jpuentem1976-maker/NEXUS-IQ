@@ -2093,7 +2093,7 @@ function opRowPF(op,i,prodId){
         <div id="tools-rows-${op.id}" style="${(op.tools||[]).length>3?'display:none':''}">
           ${(op.tools||[]).map(t=>`
             <div id="tool-${t.id}" style="display:grid;grid-template-columns:auto 1fr 70px auto 28px;gap:3px;margin-bottom:4px;align-items:center">
-              <div id="tphoto-prev-${t.id}" style="width:28px;height:28px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0" onclick="document.getElementById('tfile-${t.id}').click()">${t.photo_url?`<img src="${t.photo_url}" style="width:100%;height:100%;object-fit:cover">`:'📷'}</div>
+              <div id="tphoto-prev-${t.id}" style="width:28px;height:28px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0" onclick="${t.photo_url?`window.open('${t.photo_url}','_blank')`:`document.getElementById('tfile-${t.id}').click()`}">${t.photo_url?`<img src="${t.photo_url}" style="width:100%;height:100%;object-fit:cover">`:'📷'}</div>
               <input type="file" id="tfile-${t.id}" accept="image/*" style="display:none" onchange="uploadItemPhoto(this,'tphoto-${t.id}','tphoto-prev-${t.id}')">
               <input type="hidden" id="tphoto-${t.id}" value="${t.photo_url||''}">
               <input value="${t.name||''}" placeholder="Nombre herramienta" id="tname-${t.id}" style="font-size:11px;padding:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%">
@@ -2720,7 +2720,7 @@ function renderTooling(){
       ?'<table class="tbl"><thead><tr><th>Foto</th><th>Herramienta</th><th>Compensador</th><th>Productos</th></tr></thead><tbody>'
         +tools.map(function(t){
           var photo=t.photo_url
-            ?'<img src="'+t.photo_url+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">'
+            ?'<img src="'+t.photo_url+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer" data-url="'+t.photo_url+'" onclick="window.open(this.dataset.url,String.fromCharCode(95,98,108,97,110,107))">'
             :'<div style="width:40px;height:40px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;color:var(--muted)">📷</div>';
           return '<tr>'
             +'<td style="width:44px">'+photo+'</td>'
