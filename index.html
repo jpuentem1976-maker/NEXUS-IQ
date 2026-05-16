@@ -492,6 +492,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab active" onclick="setEngTab('e-products',this)">🗂 Productos</button>
     <button class="ptab" onclick="setEngTab('e-operators',this)">👷 Operadores</button>
     <button class="ptab" onclick="setEngTab('e-tooling',this)">🔧 Herramental</button>
+    <button class="ptab" onclick="setEngTab('e-machine-times',this)">⏱ Tiempos Máquina</button>
   </div>
 
   <!-- PRODUCTS -->
@@ -518,6 +519,13 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <div id="e-tooling" class="subpage">
     <div style="font-size:15px;font-weight:700;margin-bottom:14px">Herramental por Máquina</div>
     <div id="tooling-body"></div>
+  </div>
+
+  <!-- MACHINE TIMES -->
+  <div id="e-machine-times" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">Tiempos por Máquina</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tiempo de montaje (una vez) + tiempo unitario × lote de fabricación, por producto y máquina.</div>
+    <div id="machine-times-body"></div>
   </div>
 
   <!-- OP CATALOG -->
@@ -1159,6 +1167,7 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-products') renderProducts();
     if(id==='e-operators') renderOperators();
     if(id==='e-tooling') renderTooling();
+    if(id==='e-machine-times') renderMachineTimes();
   });
 }
 
@@ -2625,6 +2634,130 @@ window.toggleTooling = function toggleTooling(mid){
   el.style.display=open?'none':'block';
   if(ar) ar.style.transform=open?'':'rotate(90deg)';
 }
+/* ═══════════════════════════════════════════════════════
+   ENGINEERING — TIEMPOS MÁQUINA
+═══════════════════════════════════════════════════════ */
+function fmtHM(totalMinutes){
+  const m = Math.round(totalMinutes);
+  const h = Math.floor(m/60);
+  const min = m%60;
+  if(h===0) return min+'min';
+  return h+'h '+(min>0?min+'min':'');
+}
+
+function renderMachineTimes(){
+  const MAQUINAS = [
+    'Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa',
+    'Centro de Maquinado Viwa','Centro de Maquinado V3016',
+    'Rectificadora BU-28','Rectificadora Bryant'
+  ];
+  const body = document.getElementById('machine-times-body');
+  if(!body) return;
+
+  let html = '';
+
+  MAQUINAS.forEach(function(machineName){
+    // Collect products with ops on this machine
+    const rows = [];
+    products.forEach(function(p){
+      const ops = (p.operations||[]).filter(function(op){
+        return op.machine_name === machineName;
+      });
+      if(!ops.length) return;
+
+      const lote = parseFloat(p.batch)||0;
+      ops.forEach(function(op){
+        const setup   = parseFloat(op.setup_time)||0;   // minutos, una sola vez
+        const unit    = parseFloat(op.unit_time)||0;    // minutos por pieza
+        const prodMin = unit * lote;
+        const totalMin = setup + prodMin;
+        rows.push({
+          prodName: p.name,
+          prodCode: p.code,
+          opNum:    op.op_number||'',
+          opName:   op.name||'',
+          lote,
+          setup,
+          prodMin,
+          totalMin
+        });
+      });
+    });
+
+    const grandTotal = rows.reduce(function(s,r){ return s+r.totalMin; },0);
+    const mid = machineName.replace(/\s+/g,'_');
+
+    html += '<div class="card" style="margin-bottom:10px">';
+    // Header clickable
+    html += '<div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleMachineTime(\''+mid+'\')">'; 
+    html += '<span style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;color:var(--accent2)">'+machineName+'</span>';
+    html += '<span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)">'+rows.length+' operaciones</span>';
+    html += '<span style="margin-left:auto;font-family:\'DM Mono\',monospace;font-size:14px;font-weight:700;color:var(--green)">Total: '+fmtHM(grandTotal)+'</span>';
+    html += '<span id="mt-arrow-'+mid+'" style="margin-left:10px;color:var(--muted);font-size:14px;transition:transform .2s">▶</span>';
+    html += '</div>';
+
+    // Table body (hidden by default)
+    html += '<div id="mt-body-'+mid+'" style="display:none;margin-top:12px">';
+    if(rows.length){
+      html += '<table class="tbl"><thead><tr>';
+      html += '<th>Producto</th><th>Código</th><th>Op.</th><th>Lote</th>';
+      html += '<th style="text-align:right">Montaje</th>';
+      html += '<th style="text-align:right">Producción</th>';
+      html += '<th style="text-align:right">Total</th>';
+      html += '</tr></thead><tbody>';
+      rows.forEach(function(r){
+        html += '<tr>';
+        html += '<td style="font-weight:600">'+r.prodName+'</td>';
+        html += '<td style="font-family:\'DM Mono\',monospace;color:var(--muted);font-size:11px">'+r.prodCode+'</td>';
+        html += '<td style="text-align:center"><span class="tag">Op.'+r.opNum+'</span></td>';
+        html += '<td style="text-align:center;font-family:\'DM Mono\',monospace">'+r.lote+' pzas</td>';
+        html += '<td style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--warn)">'+fmtHM(r.setup)+'</td>';
+        html += '<td style="text-align:right;font-family:\'DM Mono\',monospace;color:var(--accent)">'+fmtHM(r.prodMin)+'</td>';
+        html += '<td style="text-align:right;font-family:\'DM Mono\',monospace;font-weight:700;color:var(--green)">'+fmtHM(r.totalMin)+'</td>';
+        html += '</tr>';
+      });
+      // Grand total row
+      html += '<tr style="border-top:2px solid var(--accent2)">';
+      html += '<td colspan="6" style="font-weight:700;color:var(--accent2);text-align:right">TOTAL '+machineName.toUpperCase()+'</td>';
+      html += '<td style="text-align:right;font-family:\'Bebas Neue\',sans-serif;font-size:18px;color:var(--green)">'+fmtHM(grandTotal)+'</td>';
+      html += '</tr>';
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="color:var(--muted);font-size:12px;padding:8px 0">Sin productos asignados a esta máquina</div>';
+    }
+    html += '</div></div>';
+  });
+
+  // Grand total of all machines
+  const allTotal = products.reduce(function(sum,p){
+    return sum + (p.operations||[]).filter(function(op){
+      return MAQUINAS.includes(op.machine_name);
+    }).reduce(function(s,op){
+      const lote = parseFloat(p.batch)||0;
+      return s + (parseFloat(op.setup_time)||0) + (parseFloat(op.unit_time)||0)*lote;
+    },0);
+  },0);
+
+  html += '<div class="card card-accent" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px">';
+  html += '<span style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:var(--accent)">TIEMPO TOTAL TODAS LAS MÁQUINAS</span>';
+  html += '<span style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;color:var(--green)">'+fmtHM(allTotal)+'</span>';
+  html += '</div>';
+
+  body.innerHTML = html;
+}
+
+window.renderMachineTimes = renderMachineTimes;
+
+window.toggleMachineTime = function(mid){
+  var el = document.getElementById('mt-body-'+mid);
+  var ar = document.getElementById('mt-arrow-'+mid);
+  if(!el) return;
+  var open = el.style.display==='block';
+  el.style.display = open?'none':'block';
+  if(ar) ar.style.transform = open?'':'rotate(90deg)';
+};
+
+
 
 /* ═══════════════════════════════════════════════════════
    ENGINEERING — OP CATALOG & MACHINES
