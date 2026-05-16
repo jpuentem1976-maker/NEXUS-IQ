@@ -1923,6 +1923,7 @@ function showProductForm(id){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}" ${(p.operations||[]).some(o=>o.machine_id===m.id)?'':''} >${m.name}</option>`).join('');
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}">${o.name} (${o.type==='machining'?'Maquinado':'Secundaria'})</option>`).join('');
 
+  const _opsHTML = (p.operations||[]).map((o,i)=>opRowPF(o,i,p.id)).join('');
   document.getElementById('product-form-wrap').innerHTML=`
     <div class="card card-accent fade" style="margin-bottom:14px">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:14px">${isNew?'NUEVO PRODUCTO':'EDITAR PRODUCTO'}</div>
@@ -1963,7 +1964,7 @@ function showProductForm(id){
         <div style="display:flex;align-items:center;gap:10px">
           <input type="file" id="pf-drawing-file" accept=".pdf" style="display:none" onchange="uploadDrawingFile(this)">
           <button type="button" onclick="document.getElementById('pf-drawing-file').click()" class="btn btn-ghost btn-sm">📁 Subir PDF</button>
-          <span id="pf-drawing-status" style="font-size:11px;color:var(--muted)">${p.drawing_url?"Ver dibujo actual":"Sin dibujo cargado"}</span>
+          <span id="pf-drawing-status" style="font-size:11px">${p.drawing_url?'<a href="'+p.drawing_url+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual</a>':"Sin dibujo cargado"}</span>
         </div>
         <input type="hidden" id="pf-drawing-url" value="${p.drawing_url||''}">
       </div>
@@ -2012,7 +2013,7 @@ function showProductForm(id){
         <div style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;padding:0 0 6px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
           <div>No.</div><div>Tipo / Operación</div><div>Máquina</div><div>Nombre</div><div style="text-align:center">Mont(min)</div><div style="text-align:center">Unit(min)</div><div></div>
         </div>
-        <div id="pf-ops-rows">${(p.operations||[]).map((o,i)=>opRowPF(o,i,p.id)).join('')}</div>
+        <div id="pf-ops-rows">${_opsHTML}</div>
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2502,12 +2503,19 @@ async function saveProduct(id,isNew){
   // Collect operation IDs from main row divs
   // Collect op IDs from wrapper divs (first child divs of pf-ops-rows)
   const opIds=[];
+  // Try by op-row-wrap first
   document.querySelectorAll('#pf-ops-rows .op-row-wrap').forEach(wrap=>{
-    const mainRow = wrap.querySelector('[id^="pfop-"]:not([id*="extras"]):not([id*="inner"])');
-    if(mainRow){
+    const mainRow = wrap.querySelector('[id^="pfop-"]');
+    if(mainRow && !mainRow.id.includes('extras') && !mainRow.id.includes('inner')){
       const opId = mainRow.id.replace('pfop-','');
       if(opId && !opIds.includes(opId)) opIds.push(opId);
     }
+  });
+  // Fallback: also pick up any pfop- divs not inside a wrap (handles rendering edge cases)
+  document.querySelectorAll('#pf-ops-rows > [id^="pfop-"]').forEach(el=>{
+    if(el.id.includes('extras') || el.id.includes('inner')) return;
+    const opId = el.id.replace('pfop-','');
+    if(opId && !opIds.includes(opId)) opIds.push(opId);
   });
 
   const opsData=[]; let valid=true;
