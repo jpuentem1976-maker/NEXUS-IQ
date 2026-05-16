@@ -2818,7 +2818,7 @@ function onOTFormProdChange(){
   if(p){
     if(loteEl) loteEl.textContent='';
     const existEl=document.getElementById('otf-exist');
-    if(existEl){ existEl.value=p.stock_current||0; }
+    if(existEl){ existEl.value=''; existEl.placeholder='Ref: '+(p.stock_current||0); }
     const minEl=document.getElementById('otf-stock-min');
     if(minEl){ minEl.value=p.stock_min||''; }
     const batchEl=document.getElementById('otf-batch-show');
