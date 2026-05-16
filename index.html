@@ -2760,7 +2760,7 @@ function renderProgrammingList(){
           <td style="color:var(--muted);font-size:11px">${o.qty} pzas</td>
           <td style="font-family:'DM Mono',monospace">${o.qty} pzas</td>
           <td>${(()=>{
-            const sc=o.stock_current||p?.stock_current||0;
+            const sc=(o.stock_current??p?.stock_current??0);
             const sm=p?.stock_min||0;
             if(!sm) return '<span style="color:var(--muted);font-size:11px">'+sc+' pzas</span>';
             const days=Math.round((sc*45)/sm);
@@ -3105,7 +3105,7 @@ function renderReleasedOTs(){
             <div style="font-weight:700;font-size:14px">${p?.name||'Sin producto'}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">Lote: <strong style="color:var(--text)">${o.qty} pzas</strong></div>
             ${(()=>{
-              const sc=o.stock_current||p?.stock_current||0;
+              const sc=(o.stock_current??p?.stock_current??0);
               const sm=p?.stock_min||0;
               if(!sm) return '';
               const days=Math.round((sc*45)/sm);
@@ -3664,7 +3664,7 @@ function renderConsulta(){
         <thead><tr><th>O.T.</th><th>Producto</th><th>Lote</th><th>Cantidad</th><th>Existencia</th><th>Mat. Prima</th></tr></thead>
         <tbody>${pending.map(o=>{
           const p=getProduct(o.product_id);
-          const sc=o.stock_current||p?.stock_current||0;
+          const sc=(o.stock_current??p?.stock_current??0);
           const sm=p?.stock_min||0;
           const days=sm?Math.round((sc*45)/sm):null;
           const dc=days===null?'var(--muted)':days>=22?'var(--green)':days>=11?'var(--warn)':'var(--danger)';
@@ -3691,7 +3691,7 @@ function renderConsulta(){
         const p=getProduct(o.product_id);
         const dels=(otDeliveries||[]).filter(d=>d.ot_id===o.id).reduce((a,d)=>a+(parseInt(d.qty)||0),0);
         const scraps=(otScrap||[]).filter(s=>s.ot_id===o.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0);
-        const sc=o.stock_current||p?.stock_current||0;
+        const sc=(o.stock_current??p?.stock_current??0);
         const sm=p?.stock_min||0;
         const days=sm?Math.round((sc*45)/sm):null;
         const dc=days===null?'var(--muted)':days>=22?'var(--green)':days>=11?'var(--warn)':'var(--danger)';
