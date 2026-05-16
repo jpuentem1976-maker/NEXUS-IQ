@@ -2113,6 +2113,8 @@ function opRowPF(op,i,prodId){
     ${['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'].includes(op.machine_name)?`
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
       <div style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Programa CNC</div>
+      <input type="hidden" id="cnc-url-${op.id}" value="${op.cnc_program_url||''}">
+      <input type="hidden" id="cnc-name-${op.id}" value="${op.cnc_program_name||''}">
       <div style="display:flex;align-items:center;gap:8px">
         <input type="file" id="cnc-file-${op.id}" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="${prodId||''}" data-op="${op.id}">
         <button type="button" class="btn btn-ghost btn-sm" id="cnc-btn-${op.id}">Subir programa CNC</button>
@@ -2499,13 +2501,14 @@ async function saveProduct(id,isNew){
       const did=el.id.replace('device-','');
       return {id:did,name:document.getElementById('dname-'+did)?.value.trim()||''};
     }).filter(d=>d.name);
-    // Preserve existing cnc program data
-    const existingOp = products.flatMap(p=>p.operations||[]).find(o=>o.id===opId);
+    // Read cnc program from hidden inputs in form
+    const cncUrl = document.getElementById('cnc-url-'+opId)?.value||null;
+    const cncName = document.getElementById('cnc-name-'+opId)?.value||null;
     opsData.push({id:opId,product_id:id,op_number:num,name:nameV,op_type:opType,
       machine_id:machId,machine_name:machName,setup_time:s,unit_time:u,
       sort_order:idx+1,tools,gages,devices,
-      cnc_program_url:existingOp?.cnc_program_url||null,
-      cnc_program_name:existingOp?.cnc_program_name||null});
+      cnc_program_url:cncUrl||null,
+      cnc_program_name:cncName||null});
   });
 
   if(!opsData.length){ alert('Agrega al menos una operación al producto'); return; }
@@ -2894,6 +2897,11 @@ async function uploadCNCFile(input){
     const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
     await fetch(SB_URL+'/rest/v1/operations?id=eq.'+encodeURIComponent(opId),{method:'PATCH',headers:H,body:JSON.stringify({cnc_program_url:url,cnc_program_name:file.name})});
     if(statusEl) statusEl.innerHTML = '<a href="'+url+'" download="'+file.name+'" style="color:var(--accent2)">'+file.name+'</a>';
+    // Update hidden inputs so save preserves the new values
+    var urlInp = document.getElementById('cnc-url-'+opId);
+    var nameInp = document.getElementById('cnc-name-'+opId);
+    if(urlInp) urlInp.value = url;
+    if(nameInp) nameInp.value = file.name;
     await loadAllData();
     renderCNCPrograms();
   }catch(e){
