@@ -2109,7 +2109,8 @@ function opRowPF(op,i,prodId){
         </div>
       </div>
     </div>
-    <!-- CNC PROGRAM -->
+    <!-- CNC PROGRAM - solo para maquinas CNC -->
+    ${['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'].includes(op.machine_name)?`
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
       <div style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Programa CNC</div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -2117,7 +2118,7 @@ function opRowPF(op,i,prodId){
         <button type="button" class="btn btn-ghost btn-sm" id="cnc-btn-${op.id}">Subir programa CNC</button>
         <span id="cnc-status-${op.id}" style="font-size:11px;color:var(--muted)">${op.cnc_program_name||"Sin programa"}</span>
       </div>
-    </div>
+    </div>`:''}
     </div>
     </div>
   </div>
@@ -2480,7 +2481,7 @@ async function saveProduct(id,isNew){
     const nameV=document.getElementById('pfop-name-'+opId)?.value.trim();
     const s=parseFloat(document.getElementById('pfop-setup-'+opId)?.value)||0;
     const u=parseFloat(document.getElementById('pfop-unit-'+opId)?.value)||0;
-    if(!num||!nameV){ valid=false; return; }
+    if(!num||!nameV){ console.warn('Op skipped - missing num or name:',opId,num,nameV); return; }
     const parts=catVal.split('|'); const opType=parts[1]||'machining';
     const mparts=(machVal||'').split('|'); const machId=mparts[0]||null; const machName=mparts[1]||'';
     // Collect tools
@@ -2498,9 +2499,13 @@ async function saveProduct(id,isNew){
       const did=el.id.replace('device-','');
       return {id:did,name:document.getElementById('dname-'+did)?.value.trim()||''};
     }).filter(d=>d.name);
+    // Preserve existing cnc program data
+    const existingOp = products.flatMap(p=>p.operations||[]).find(o=>o.id===opId);
     opsData.push({id:opId,product_id:id,op_number:num,name:nameV,op_type:opType,
       machine_id:machId,machine_name:machName,setup_time:s,unit_time:u,
-      sort_order:idx+1,tools,gages,devices});
+      sort_order:idx+1,tools,gages,devices,
+      cnc_program_url:existingOp?.cnc_program_url||null,
+      cnc_program_name:existingOp?.cnc_program_name||null});
   });
 
   if(!opsData.length){ alert('Agrega al menos una operación al producto'); return; }
