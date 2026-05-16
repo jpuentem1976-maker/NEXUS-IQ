@@ -2533,9 +2533,13 @@ async function saveProduct(id,isNew){
       const did=el.id.replace('device-','');
       return {id:did,name:document.getElementById('dname-'+did)?.value.trim()||''};
     }).filter(d=>d.name);
+    const cncUrl = document.getElementById('cnc-url-'+opId)?.value||null;
+    const cncName = document.getElementById('cnc-name-'+opId)?.value||null;
     opsData.push({id:opId,product_id:id,op_number:num,name:nameV,op_type:opType,
       machine_id:machId,machine_name:machName,setup_time:s,unit_time:u,
-      sort_order:idx+1,tools,gages,devices});
+      sort_order:idx+1,tools,gages,devices,
+      cnc_program_url:cncUrl||null,
+      cnc_program_name:cncName||null});
   });
 
   if(!opsData.length){ alert('Agrega al menos una operación al producto'); return; }
@@ -2871,6 +2875,8 @@ async function uploadDrawingFile(input){
     const inp = document.getElementById('pf-drawing-url');
     if(inp) inp.value = url;
     if(statusEl) statusEl.innerHTML = '<a href="'+url+'" target="_blank" style="color:var(--accent2)">Dibujo cargado - Ver PDF</a>';
+    var drawHidden = document.getElementById('pf-drawing-url');
+    if(drawHidden) drawHidden.value = url;
   }catch(e){
     if(statusEl) statusEl.textContent = 'Error: '+e.message;
   }
@@ -2924,6 +2930,10 @@ async function uploadCNCFile(input){
     const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
     await fetch(SB_URL+'/rest/v1/operations?id=eq.'+encodeURIComponent(opId),{method:'PATCH',headers:H,body:JSON.stringify({cnc_program_url:url,cnc_program_name:file.name})});
     if(statusEl) statusEl.innerHTML = '<a href="'+url+'" download="'+file.name+'" style="color:var(--accent2)">'+file.name+'</a>';
+    var urlInp = document.getElementById('cnc-url-'+opId);
+    var nameInp = document.getElementById('cnc-name-'+opId);
+    if(urlInp) urlInp.value = url;
+    if(nameInp) nameInp.value = file.name;
     await loadAllData();
     renderCNCPrograms();
   }catch(e){
