@@ -1834,7 +1834,7 @@ function bomRowHTML(m, prodId, idx){
     <div id="bom-pieza-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'display:none':''}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="field" style="margin:0"><label style="font-size:9px">CANTIDAD</label>
-          <input type="number" id="bom-cant-${mid}" value="${m.cantidad||''}" placeholder="ej. 50" style="font-size:11px">
+          <input type="number" id="bom-cant2-${mid}" value="${m.cantidad||''}" placeholder="ej. 50" style="font-size:11px">
         </div>
         <div class="field" style="margin:0"><label style="font-size:9px">UNIDAD</label>
           <select id="bom-unidad-${mid}" style="font-size:11px">
@@ -1861,7 +1861,8 @@ function calcBomRowKg(mid){
   const forma=document.getElementById('bom-forma-'+mid)?.value||'redondo';
   const diam=parseFloat(document.getElementById('bom-diam-'+mid)?.value)||0;
   const long=parseFloat(document.getElementById('bom-long-'+mid)?.value)||0;
-  const cant=parseInt(document.getElementById('bom-cant-'+mid)?.value)||0;
+  const cantEl=document.getElementById('bom-cant-'+mid)||document.getElementById('bom-cant2-'+mid);
+  const cant=parseInt(cantEl?.value)||0;
   const mat={tipo,forma,diametro:diam,longitud:long};
   const kgBar=calcBomKg(mat);
   const total=parseFloat((kgBar*cant).toFixed(2));
@@ -1903,7 +1904,11 @@ function readBomRows(prodId){
       forma:isBarra?(document.getElementById('bom-forma-'+mid)?.value||'redondo'):'pieza',
       diametro:isBarra?parseFloat(document.getElementById('bom-diam-'+mid)?.value)||null:null,
       longitud:isBarra?parseFloat(document.getElementById('bom-long-'+mid)?.value)||null:null,
-      cantidad:parseInt(document.getElementById('bom-cant-'+mid)?.value)||0,
+      cantidad:(function(){
+        const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
+        const el = isBarra ? document.getElementById('bom-cant-'+mid) : document.getElementById('bom-cant2-'+mid);
+        return parseInt(el?.value)||0;
+      })(),
       unidad:isBarra?'kg':(document.getElementById('bom-unidad-'+mid)?.value||'piezas'),
     });
   });
@@ -2022,13 +2027,23 @@ function showProductForm(id){
   // Auto-calculate formulas after DOM renders
   setTimeout(()=>{
     calcBarraHabil(); calcPiezaHabil(); onMatShapeChange(); calcKilosForm(); calcStockDays();
-    // Wire up CNC file inputs in op form
+    // Wire up CNC file inputs and initialize visibility
+    var CNC_MAQUINAS = ['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'];
     document.querySelectorAll('[id^="cnc-btn-"]').forEach(function(btn){
       var opId = btn.id.replace('cnc-btn-','');
       var inp = document.getElementById('cnc-file-'+opId);
       if(inp && btn){
         btn.onclick = function(){ inp.click(); };
         inp.addEventListener('change', function(){ uploadCNCFile(this); });
+      }
+    });
+    // Initialize CNC section visibility based on current machine selection
+    document.querySelectorAll('[id^="cnc-section-"]').forEach(function(sec){
+      var opId = sec.id.replace('cnc-section-','');
+      var sel = document.getElementById('pfop-mach-'+opId);
+      if(sel){
+        var machName = (sel.options[sel.selectedIndex]?.text||'').trim();
+        sec.style.display = CNC_MAQUINAS.includes(machName) ? '' : 'none';
       }
     });
     // Wire up drawing file input
@@ -2109,9 +2124,8 @@ function opRowPF(op,i,prodId){
         </div>
       </div>
     </div>
-    <!-- CNC PROGRAM - solo para maquinas CNC -->
-    ${['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'].includes(op.machine_name)?`
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <!-- CNC PROGRAM -->
+    <div id="cnc-section-${op.id}" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)" data-cnc="1">
       <div style="font-size:10px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Programa CNC</div>
       <input type="hidden" id="cnc-url-${op.id}" value="${op.cnc_program_url||''}">
       <input type="hidden" id="cnc-name-${op.id}" value="${op.cnc_program_name||''}">
@@ -2120,7 +2134,7 @@ function opRowPF(op,i,prodId){
         <button type="button" class="btn btn-ghost btn-sm" id="cnc-btn-${op.id}">Subir programa CNC</button>
         <span id="cnc-status-${op.id}" style="font-size:11px;color:var(--muted)">${op.cnc_program_name||"Sin programa"}</span>
       </div>
-    </div>`:''}
+    </div>
     </div>
     </div>
   </div>
@@ -2142,8 +2156,14 @@ function onOpCatChange(id){
 }
 
 function onOpMachChange(id){
-  // Machine selected from dropdown
+  var CNC_MAQUINAS = ['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'];
+  var sel = document.getElementById('pfop-mach-'+id);
+  if(!sel) return;
+  var machName = (sel.options[sel.selectedIndex]?.text||'').trim();
+  var cncDiv = document.getElementById('cnc-section-'+id);
+  if(cncDiv) cncDiv.style.display = CNC_MAQUINAS.includes(machName) ? '' : 'none';
 }
+window.onOpMachChange = onOpMachChange;
 
 function addOpRowPF(){
   const newId=uid();
@@ -2483,7 +2503,7 @@ async function saveProduct(id,isNew){
     const nameV=document.getElementById('pfop-name-'+opId)?.value.trim();
     const s=parseFloat(document.getElementById('pfop-setup-'+opId)?.value)||0;
     const u=parseFloat(document.getElementById('pfop-unit-'+opId)?.value)||0;
-    if(!num||!nameV){ console.warn('Op skipped - missing num or name:',opId,num,nameV); return; }
+    if(!num||!nameV){ valid=false; return; }
     const parts=catVal.split('|'); const opType=parts[1]||'machining';
     const mparts=(machVal||'').split('|'); const machId=mparts[0]||null; const machName=mparts[1]||'';
     // Collect tools
@@ -2501,14 +2521,9 @@ async function saveProduct(id,isNew){
       const did=el.id.replace('device-','');
       return {id:did,name:document.getElementById('dname-'+did)?.value.trim()||''};
     }).filter(d=>d.name);
-    // Read cnc program from hidden inputs in form
-    const cncUrl = document.getElementById('cnc-url-'+opId)?.value||null;
-    const cncName = document.getElementById('cnc-name-'+opId)?.value||null;
     opsData.push({id:opId,product_id:id,op_number:num,name:nameV,op_type:opType,
       machine_id:machId,machine_name:machName,setup_time:s,unit_time:u,
-      sort_order:idx+1,tools,gages,devices,
-      cnc_program_url:cncUrl||null,
-      cnc_program_name:cncName||null});
+      sort_order:idx+1,tools,gages,devices});
   });
 
   if(!opsData.length){ alert('Agrega al menos una operación al producto'); return; }
@@ -2897,11 +2912,6 @@ async function uploadCNCFile(input){
     const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
     await fetch(SB_URL+'/rest/v1/operations?id=eq.'+encodeURIComponent(opId),{method:'PATCH',headers:H,body:JSON.stringify({cnc_program_url:url,cnc_program_name:file.name})});
     if(statusEl) statusEl.innerHTML = '<a href="'+url+'" download="'+file.name+'" style="color:var(--accent2)">'+file.name+'</a>';
-    // Update hidden inputs so save preserves the new values
-    var urlInp = document.getElementById('cnc-url-'+opId);
-    var nameInp = document.getElementById('cnc-name-'+opId);
-    if(urlInp) urlInp.value = url;
-    if(nameInp) nameInp.value = file.name;
     await loadAllData();
     renderCNCPrograms();
   }catch(e){
