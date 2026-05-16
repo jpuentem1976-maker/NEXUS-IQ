@@ -2701,10 +2701,10 @@ function renderTooling(){
         const key=tool.name?.toLowerCase().trim();
         if(!key) return;
         if(!byMachine[op.machine_name].has(key)){
-          byMachine[op.machine_name].set(key,{...tool,products:[p.name]});
+          byMachine[op.machine_name].set(key,{...tool,products:[p.code]});
         } else {
           const existing=byMachine[op.machine_name].get(key);
-          if(!existing.products.includes(p.name)) existing.products.push(p.name);
+          if(!existing.products.includes(p.code)) existing.products.push(p.code);
         }
       });
     });
