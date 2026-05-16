@@ -2056,7 +2056,7 @@ function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
-  return `<div>
+  return `
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
     <input value="${op.op_number||''}" placeholder="10" id="pfop-num-${op.id}" style="text-align:center;font-weight:700;font-family:'DM Mono',monospace">
     <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')">
@@ -2139,7 +2139,7 @@ function opRowPF(op,i,prodId){
     </div>
   </div>
   </div>
-  </div>`;
+  `;
 }
 
 function onOpCatChange(id){
@@ -2169,19 +2169,22 @@ function addOpRowPF(){
   const newId=uid();
   const container=document.getElementById('pf-ops-rows');
   if(!container) return;
-  // Get current product id from a hidden field or the form context
   const curProdId = document.getElementById('pf-drawing-url')?.closest('.card')?.querySelector('[id^="bom-rows-"]')?.id?.replace('bom-rows-','')||'';
   const tmp=document.createElement('div');
   tmp.innerHTML=opRowPF({id:newId,op_number:'',name:'',op_type:'machining',machine_id:'',machine_name:'',setup_time:'',unit_time:'',tools:[],gages:[],devices:[]},99,curProdId);
-  // Append all child nodes to preserve structure
+  // Append all child elements (no outer wrapper now)
   while(tmp.firstChild) container.appendChild(tmp.firstChild);
-  // Wire up the new CNC section
+  // Wire up CNC
   const cncBtn = document.getElementById('cnc-btn-'+newId);
   const cncInp = document.getElementById('cnc-file-'+newId);
   if(cncBtn && cncInp){
     cncBtn.onclick = function(){ cncInp.click(); };
     cncInp.addEventListener('change', function(){ uploadCNCFile(this); });
   }
+  // Initialize CNC visibility
+  var CNC_MAQUINAS = ['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'];
+  var cncSec = document.getElementById('cnc-section-'+newId);
+  if(cncSec) cncSec.style.display = 'none'; // hidden until machine selected
 }
 function removePFOpRow(id){
   // Remove the wrapper div that contains both the row and extras
@@ -2499,12 +2502,12 @@ async function saveProduct(id,isNew){
   // Collect operation IDs from main row divs
   // Collect op IDs from wrapper divs (first child divs of pf-ops-rows)
   const opIds=[];
-  document.querySelectorAll('#pf-ops-rows > div').forEach(wrapper=>{
-    const mainRow=wrapper.querySelector('[id^="pfop-"]:not([id*="extras"])');
-    if(mainRow){
-      const opId=mainRow.id.replace('pfop-','');
-      if(opId&&!opIds.includes(opId)) opIds.push(opId);
-    }
+  // pfop-{uuid} divs are direct or near-direct children of pf-ops-rows
+  document.querySelectorAll('#pf-ops-rows [id^="pfop-"]').forEach(el=>{
+    // Only match the main op div (grid div), not extras/inner/inputs
+    if(!el.id.match(/^pfop-[a-f0-9-]+$/) || el.id.includes('extras') || el.id.includes('inner')) return;
+    const opId=el.id.replace('pfop-','');
+    if(opId&&!opIds.includes(opId)) opIds.push(opId);
   });
 
   const opsData=[]; let valid=true;
