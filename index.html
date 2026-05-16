@@ -2900,13 +2900,14 @@ window.uploadCNCFile = uploadCNCFile;
 function renderCNCPrograms(){
   var body = document.getElementById('cnc-body');
   if(!body) return;
+  var CNC_MAQUINAS = ['Torno CNC Viwa','Torno CNC Crown','Torno CNC Cadet','Centro de Maquinado V3016','Centro de Maquinado Viwa'];
   var rows = [];
   products.forEach(function(p){
-    var machOps = (p.operations||[]).filter(function(op){ return op.op_type==='machining'; });
-    if(machOps.length) rows.push({p:p,ops:machOps});
+    var cncOps = (p.operations||[]).filter(function(op){ return CNC_MAQUINAS.includes(op.machine_name); });
+    if(cncOps.length) rows.push({p:p,ops:cncOps});
   });
   if(!rows.length){
-    body.innerHTML = '<div class="card" style="color:var(--muted);text-align:center;padding:40px">No hay operaciones de maquinado registradas.</div>';
+    body.innerHTML = '<div class="card" style="color:var(--muted);text-align:center;padding:40px">No hay operaciones en maquinas CNC registradas.</div>';
     return;
   }
   rows.sort(function(a,b){ return (a.p.sort_number??99999)-(b.p.sort_number??99999); });
@@ -2916,27 +2917,40 @@ function renderCNCPrograms(){
     var opsHtml = '';
     row.ops.forEach(function(op){
       var hasP = !!op.cnc_program_url;
-      var fid = 'cnc-pg-'+op.id;
-      var sid = 'cnc-st-'+op.id;
-      var progLink = hasP ? '<a href="'+op.cnc_program_url+'" download="'+(op.cnc_program_name||'prog')+'" style="color:var(--accent2)">'+(op.cnc_program_name||'programa')+'</a>' : 'Sin programa';
-      opsHtml += '<div style="display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;padding:8px;background:var(--bg3);border-radius:6px;margin-bottom:6px">';
+      var progContent = hasP
+        ? '<a href="'+op.cnc_program_url+'" download="'+(op.cnc_program_name||'prog')+'" class="btn btn-accent btn-sm" style="display:inline-flex;gap:6px">&#x2B07; '+(op.cnc_program_name||'Descargar programa')+'</a>'
+        : '<span style="color:var(--muted);font-size:11px">Sin programa cargado</span>';
+      opsHtml += '<div style="display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;padding:10px;background:var(--bg3);border-radius:6px;margin-bottom:6px">';
       opsHtml += '<span class="tag" style="text-align:center">Op.'+op.op_number+'</span>';
-      opsHtml += '<div><div style="font-size:12px;font-weight:600">'+op.name+(op.machine_name?' &middot; <span style="color:var(--muted);font-weight:400">'+op.machine_name+'</span>':'')+'</div>';
-      opsHtml += '<div id="'+sid+'" style="font-size:11px;color:var(--muted);margin-top:2px">'+progLink+'</div></div>';
-      opsHtml += '<div><input type="file" id="'+fid+'" accept=".txt,.nc,.cnc,.iso" style="display:none" data-prod="'+p.id+'" data-op="'+op.id+'">';
-      opsHtml += '<button class="btn btn-ghost btn-sm" data-fid="'+fid+'" onclick="document.getElementById(this.dataset.fid).click()">'+(hasP?'Reemplazar':'Subir')+'</button>';
-      opsHtml += '</div></div>';
+      opsHtml += '<div><div style="font-size:12px;font-weight:600;margin-bottom:4px">'+op.name+' &middot; <span style="color:var(--muted);font-weight:400">'+op.machine_name+'</span></div>';
+      opsHtml += progContent+'</div>';
+      opsHtml += '</div>';
     });
+    var pid = 'cnc-prod-'+p.id;
+    var hasAny = row.ops.some(function(op){ return !!op.cnc_program_url; });
+    var countLabel = row.ops.length+' op'+(row.ops.length!==1?'s':'');
     html += '<div class="card" style="margin-bottom:10px">';
-    html += '<div style="font-size:16px;font-weight:700;color:var(--accent2);margin-bottom:10px">'+(p.sort_number!=null?p.sort_number+' - ':'')+p.name+' <span style="font-size:11px;color:var(--muted);font-weight:400">'+p.code+'</span></div>';
-    html += opsHtml+'</div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;cursor:pointer" data-pid="'+pid+'" onclick="window.toggleCNCProd(this.dataset.pid)">';
+    html += '<div style="font-size:16px;font-weight:700;color:var(--accent2)">'+(p.sort_number!=null?p.sort_number+' - ':'')+p.name+'</div>';
+    html += '<span style="font-size:11px;color:var(--muted)">'+p.code+'</span>';
+    html += '<span class="tag" style="margin-left:4px">'+countLabel+'</span>';
+    if(hasAny) html += '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border-color:rgba(16,185,129,.3)">Con programa</span>';
+    html += '<span id="arr-'+pid+'" style="margin-left:auto;color:var(--muted)">&#9658;</span>';
+    html += '</div>';
+    html += '<div id="'+pid+'" style="display:none;margin-top:10px">'+opsHtml+'</div>';
+    html += '</div>';
   });
   body.innerHTML = html;
-  body.querySelectorAll('input[type=file]').forEach(function(inp){
-    inp.addEventListener('change', function(){ uploadCNCFile(this); });
-  });
 }
 window.renderCNCPrograms = renderCNCPrograms;
+window.toggleCNCProd = function(pid){
+  var d = document.getElementById(pid);
+  var a = document.getElementById('arr-'+pid);
+  if(!d) return;
+  var open = d.style.display !== 'none';
+  d.style.display = open ? 'none' : '';
+  if(a) a.innerHTML = open ? '&#9658;' : '&#9660;';
+};
 
 
 
