@@ -3341,6 +3341,17 @@ async function confirmRawMaterial(){
       if(newLote !== wo.qty) patch.qty = newLote;
       await fetch(SB_URL+'/rest/v1/work_orders?id=eq.'+encodeURIComponent(_rmOTId),
         {method:'PATCH',headers:H,body:JSON.stringify(patch)});
+      // Save confirmed kg per raw_material record (matched by diameter)
+      for(const m of mats){
+        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+        if(!isBarra) continue;
+        const confirmedKg = parseFloat(document.getElementById('rm-confirm-'+m.id)?.value)||0;
+        const diam = parseFloat(m.diametro)||0;
+        if(diam>0){
+          await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(_rmOTId)+'&bar_diameter=eq.'+diam,
+            {method:'PATCH',headers:H,body:JSON.stringify({confirmed_kg:confirmedKg})});
+        }
+      }
       await loadAllData();
       renderProgrammingList();
       const msg = newLote!==wo.qty ? '\u2705 Materia prima confirmada. Lote actualizado a '+newLote+' piezas.' : '\u2705 Materia prima confirmada.';
@@ -3695,7 +3706,10 @@ function renderRawMaterial(){
     const barLen=parseFloat(r.bar_length)||0;
     const kgBar=barLen>0?calcKgPerBar(matType,shape,dims,barLen):0;
     const qty=r.remaining||r.bar_qty||0;
-    const totalKgItem=parseFloat((kgBar*qty).toFixed(2));
+    // Use confirmed_kg if available (set during confirmation)
+    const totalKgItem=r.confirmed_kg>0
+      ? parseFloat(r.confirmed_kg.toFixed(2))
+      : parseFloat((kgBar*qty).toFixed(2));
     grouped[key].items.push({...r,kgBar,totalKgItem,prod});
     grouped[key].totalKg+=totalKgItem;
   });
