@@ -3341,12 +3341,6 @@ async function confirmRawMaterial(){
       if(newLote !== wo.qty) patch.qty = newLote;
       await fetch(SB_URL+'/rest/v1/work_orders?id=eq.'+encodeURIComponent(_rmOTId),
         {method:'PATCH',headers:H,body:JSON.stringify(patch)});
-      // Update each raw_material record with confirmed quantity
-      for(const m of mats){
-        const confirmedVal = parseFloat(document.getElementById('rm-confirm-'+m.id)?.value)||0;
-        await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(_rmOTId)+'&steel_type=eq.'+encodeURIComponent(m.descripcion||m.tipo||''),
-          {method:'PATCH',headers:H,body:JSON.stringify({bar_qty:confirmedVal,remaining:confirmedVal})});
-      }
       await loadAllData();
       renderProgrammingList();
       const msg = newLote!==wo.qty ? '\u2705 Materia prima confirmada. Lote actualizado a '+newLote+' piezas.' : '\u2705 Materia prima confirmada.';
@@ -3691,22 +3685,17 @@ function renderRawMaterial(){
     const steelType = r.steel_type||prod?.steel_type||prod?.material_type||matType;
     const key = `${steelType}|${diam}|${shape}`;
     if(!grouped[key]) grouped[key]={matType,steelType,shape,diam,items:[],totalKg:0};
-    // Use confirmed bar_qty from raw_material record
-    const confirmedQty = r.remaining||r.bar_qty||0;
+    // Calculate kg for this entry
     const dims={diam:parseFloat(diam)||0,caras:parseFloat(prod?.material_caras)||0,
       dext:parseFloat(prod?.material_dext)||0,dint:parseFloat(prod?.material_dint)||0,
       ladoA:parseFloat(prod?.material_ladoa)||0,ladoB:parseFloat(prod?.material_ladob)||0};
-    const fl2=parseFloat(prod?.bar_final_length)||0,
-          fm2=parseFloat(prod?.bar_facing)||0,
-          tr2=parseFloat(prod?.bar_cutoff)||0,
-          gr2=parseFloat(prod?.bar_grip)||0,
-          pc2=parseFloat(prod?.bar_pcs_per_bar)||0;
-    const rawHabil=pc2>0?((fl2+fm2+tr2)*pc2)+gr2:0;
-    const barLen=rawHabil>0?Math.ceil(rawHabil*8)/8:parseFloat(r.bar_length)||0;
-    const kgBar=calcKgPerBar(matType,shape,dims,barLen);
-    // Use confirmed kg from OT if available, otherwise calculate from qty
-    const wo_kg = workOrders.find(o=>o.id===r.ot_id)?.raw_material_kg;
-    const totalKgItem = (wo_kg && wo_kg>0) ? parseFloat(wo_kg.toFixed(2)) : parseFloat((kgBar*confirmedQty).toFixed(2));
+    // Calculate HABIL length from product formula
+    // Use bar_length from raw_material record directly (confirmed length)
+    // For BOM materials bar_length comes from BOM, not product formula
+    const barLen=parseFloat(r.bar_length)||0;
+    const kgBar=barLen>0?calcKgPerBar(matType,shape,dims,barLen):0;
+    const qty=r.remaining||r.bar_qty||0;
+    const totalKgItem=parseFloat((kgBar*qty).toFixed(2));
     grouped[key].items.push({...r,kgBar,totalKgItem,prod});
     grouped[key].totalKg+=totalKgItem;
   });
