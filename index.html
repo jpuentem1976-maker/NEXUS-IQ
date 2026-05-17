@@ -3342,15 +3342,10 @@ async function confirmRawMaterial(){
     showLoading('CONFIRMANDO MATERIA PRIMA...');
     closeModal('rawmat-modal');
     try{
-      const patch = {raw_material_ok:true, raw_material_kg:parseFloat(totalKg.toFixed(2))};
+      const patch = {raw_material_ok:true, raw_material_kg:parseFloat(totalKg.toFixed(2)), confirmed_materials_kg:confirmedByDiam};
       if(newLote !== wo.qty) patch.qty = newLote;
       await fetch(SB_URL+'/rest/v1/work_orders?id=eq.'+encodeURIComponent(_rmOTId),
         {method:'PATCH',headers:H,body:JSON.stringify(patch)});
-      // Save confirmed kg per raw_material record using pre-read values
-      for(const [diam, confirmedKg] of Object.entries(confirmedByDiam)){
-        await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(_rmOTId)+'&bar_diameter=eq.'+diam,
-          {method:'PATCH',headers:H,body:JSON.stringify({confirmed_kg:confirmedKg})});
-      }
       await loadAllData();
       renderProgrammingList();
       const msg = newLote!==wo.qty ? '\u2705 Materia prima confirmada. Lote actualizado a '+newLote+' piezas.' : '\u2705 Materia prima confirmada.';
@@ -3443,14 +3438,15 @@ async function releaseOT(id){
         const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
         return s+(isBarra?calcBomKgLocal(m)*(parseInt(m.cantidad)||0):0);
       },0);
-      const woConfirmedKg = wo.raw_material_kg||0;
+      const confirmedMatsKg = wo.confirmed_materials_kg||{};
       for(const m of bomMats){
         const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
         const qty = parseInt(m.cantidad)||0;
         const matExpKg = isBarra?calcBomKgLocal(m)*qty:0;
-        // Distribute confirmed_kg proportionally based on expected kg ratio
-        const matConfirmedKg = (woConfirmedKg>0&&totalExpectedKg>0&&isBarra)
-          ? parseFloat((woConfirmedKg*(matExpKg/totalExpectedKg)).toFixed(2))
+        const diam = parseFloat(m.diametro)||0;
+        // Use exact confirmed kg stored during confirmation, fallback to expected
+        const matConfirmedKg = (isBarra&&diam>0&&confirmedMatsKg[String(diam)])
+          ? parseFloat(confirmedMatsKg[String(diam)].toFixed(2))
           : matExpKg;
         const rm={
           id:uid(),
