@@ -3326,12 +3326,17 @@ async function confirmRawMaterial(){
       warnEl.textContent = '\u26a0 Materiales cr\u00edticos sin confirmar: '+missing.map(function(m){return m.descripcion||m.tipo;}).join(', ');
       return;
     }
-    // Collect confirmed values, compute total kg from kg materials
+    // Read ALL confirmed values BEFORE closing modal
     let totalKg = 0;
+    const confirmedByDiam = {};
     mats.forEach(function(m){
       const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
       const val = parseFloat(document.getElementById('rm-confirm-'+m.id)?.value)||0;
-      if(isBarra) totalKg += val;
+      if(isBarra){
+        totalKg += val;
+        const diam = parseFloat(m.diametro)||0;
+        if(diam>0) confirmedByDiam[diam] = val;
+      }
     });
 
     showLoading('CONFIRMANDO MATERIA PRIMA...');
@@ -3341,16 +3346,10 @@ async function confirmRawMaterial(){
       if(newLote !== wo.qty) patch.qty = newLote;
       await fetch(SB_URL+'/rest/v1/work_orders?id=eq.'+encodeURIComponent(_rmOTId),
         {method:'PATCH',headers:H,body:JSON.stringify(patch)});
-      // Save confirmed kg per raw_material record (matched by diameter)
-      for(const m of mats){
-        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
-        if(!isBarra) continue;
-        const confirmedKg = parseFloat(document.getElementById('rm-confirm-'+m.id)?.value)||0;
-        const diam = parseFloat(m.diametro)||0;
-        if(diam>0){
-          await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(_rmOTId)+'&bar_diameter=eq.'+diam,
-            {method:'PATCH',headers:H,body:JSON.stringify({confirmed_kg:confirmedKg})});
-        }
+      // Save confirmed kg per raw_material record using pre-read values
+      for(const [diam, confirmedKg] of Object.entries(confirmedByDiam)){
+        await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(_rmOTId)+'&bar_diameter=eq.'+diam,
+          {method:'PATCH',headers:H,body:JSON.stringify({confirmed_kg:confirmedKg})});
       }
       await loadAllData();
       renderProgrammingList();
