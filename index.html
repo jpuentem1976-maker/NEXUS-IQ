@@ -3429,11 +3429,29 @@ async function releaseOT(id){
     // 3. Create raw_material entries — uses BOM if available, fallback to legacy fields
     const rmH2={...H,'Prefer':'resolution=ignore-duplicates,return=minimal'};
     const bomMats = prod.materials||[];
+    // Calculate expected kg per BOM material to distribute confirmed_kg proportionally
+    const calcBomKgLocal=(m)=>{
+      if(!m.longitud||!m.diametro) return 0;
+      const d=({acero:0.2836,laton:0.3071,aluminio:0.0975,bronce:0.295})[m.tipo]||0.2836;
+      const vol=(Math.pow(parseFloat(m.diametro),2)*Math.PI/4)*parseFloat(m.longitud);
+      return parseFloat((vol*d*0.4536).toFixed(3));
+    };
     if(bomMats.length){
       // BOM-based: one raw_material row per BOM material
+      // Calculate total expected kg to distribute confirmed_kg proportionally
+      const totalExpectedKg = bomMats.reduce((s,m)=>{
+        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+        return s+(isBarra?calcBomKgLocal(m)*(parseInt(m.cantidad)||0):0);
+      },0);
+      const woConfirmedKg = wo.raw_material_kg||0;
       for(const m of bomMats){
         const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
         const qty = parseInt(m.cantidad)||0;
+        const matExpKg = isBarra?calcBomKgLocal(m)*qty:0;
+        // Distribute confirmed_kg proportionally based on expected kg ratio
+        const matConfirmedKg = (woConfirmedKg>0&&totalExpectedKg>0&&isBarra)
+          ? parseFloat((woConfirmedKg*(matExpKg/totalExpectedKg)).toFixed(2))
+          : matExpKg;
         const rm={
           id:uid(),
           ot_id:wo.id,
@@ -3447,7 +3465,8 @@ async function releaseOT(id){
           bar_diameter:parseFloat(m.diametro)||null,
           bar_length:parseFloat(m.longitud)||null,
           remaining:qty,
-          status:'active'
+          status:'active',
+          confirmed_kg:matConfirmedKg
         };
         const r3=await fetch(SB_URL+'/rest/v1/raw_material',{method:'POST',headers:rmH2,body:JSON.stringify(rm)});
         if(!r3.ok){ console.warn('RM warn:', await r3.text()); }
