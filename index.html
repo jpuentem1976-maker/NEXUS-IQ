@@ -4225,6 +4225,7 @@ function renderConsulta(){
       machineLoad.forEach(m=>{if(!byMachine2[m.machine_name])byMachine2[m.machine_name]=[];byMachine2[m.machine_name].push(m);});
       let html3='';
       Object.entries(byMachine2).forEach(([machine,ops])=>{
+        const isTT2 = machine === 'Tratamientos Térmicos';
         let rows3='';
         ops.sort((a,b)=>a.priority-b.priority).forEach((m,i)=>{
           const pr=i+1;
@@ -4234,39 +4235,65 @@ function renderConsulta(){
           const sm2=prod2?.stock_min||0;
           const d2=sm2?Math.round((sc2*45)/sm2):null;
           const dc2=d2===null?'var(--muted)':d2>=22?'var(--green)':d2>=11?'var(--warn)':'var(--danger)';
-          const em2=d2===null?'--':d2>=22?'🟢':d2>=11?'🟡':'🔴';
-          const _sess2=getMachineLoadSessionData(m.ot_id,m.operation_id,m.machine_name);
-          const realSt2=_sess2.status;
-          const stC=realSt2==='completed'?'var(--green)':realSt2==='in_progress'?'var(--accent)':realSt2==='setup'?'var(--warn)':'var(--muted)';
-          const sl=realSt2==='completed'?'✓ LISTO':realSt2==='in_progress'?'▶ PRODUCCIÓN':realSt2==='setup'?'⏱ MONTAJE':'⏳ PENDIENTE';
-          const sEff2=_sess2.setupEff!==null?_sess2.setupEff+'%':'--';
-          const pEff2=_sess2.prodEff!==null?_sess2.prodEff+'%':'--';
-          const sEc2=_sess2.setupEff!==null?effColor(_sess2.setupEff):'var(--muted)';
-          const pEc2=_sess2.prodEff!==null?effColor(_sess2.prodEff):'var(--muted)';
-          rows3+='<tr style="'+(realSt2==='completed'?'opacity:.6':'')+'">'+
-            '<td><span class="pri-badge" style="background:'+(pr===1?'rgba(245,158,11,.2)':pr===2?'rgba(16,185,129,.1)':'var(--bg3)')+';border:1px solid var(--border);color:'+(pr<=3?'var(--accent)':'var(--muted)')+'">'+pr+'</span></td>'+
-            '<td style="color:var(--accent);font-size:11px">'+m.ot_number+'</td>'+
-            '<td><div style="font-weight:600;font-size:12px">'+m.product_name+'</div><div style="font-size:10px;color:var(--muted)">'+m.product_code+'</div></td>'+
-            '<td style="color:var(--muted);font-size:11px">'+(m.qty||m.ot_qty||'--')+' pzas</td>'+
-            '<td><span class="badge-op">Op.'+m.op_number+'</span> <span style="font-size:11px">'+m.operation_name+'</span></td>'+
-            '<td style="color:var(--warn);font-size:11px">'+(m.setup_time||0)+'min</td>'+
-            '<td style="color:var(--green);font-size:11px">'+(m.unit_time||0)+'min</td>'+
-            '<td style="font-size:11px;font-weight:700;color:'+dc2+'">'+em2+' '+sc2+(d2!==null?'<br><small>'+d2+'d</small>':'')+'</td>'+
-            '<td style="font-weight:700;color:'+sEc2+';font-size:11px">'+sEff2+'</td>'+
-            '<td style="font-weight:700;color:'+pEc2+';font-size:11px">'+pEff2+'</td>'+
-            '<td><span class="tag" style="font-size:10px;font-weight:700;color:'+stC+'">'+sl+'</span></td>'+
-            '</tr>';
+          const priBadge='<span class="pri-badge" style="background:'+(pr===1?'rgba(245,158,11,.2)':pr===2?'rgba(16,185,129,.1)':'var(--bg3)')+';border:1px solid var(--border);color:'+(pr<=3?'var(--accent)':'var(--muted)')+'">'+pr+'</span>';
+          if(isTT2){
+            const sentDisp = m.sent_at      ? new Date(m.sent_at).toLocaleDateString('es-MX')      : '--';
+            const collDisp = m.collected_at ? new Date(m.collected_at).toLocaleDateString('es-MX') : '--';
+            const provDisp = m.provider_name || '--';
+            const sentColor = m.sent_at      ? 'var(--accent)' : 'var(--muted)';
+            const collColor = m.collected_at ? 'var(--green)'  : 'var(--muted)';
+            const provColor = m.provider_name ? 'var(--text)'  : 'var(--muted)';
+            rows3+='<tr>'+
+              '<td>'+priBadge+'</td>'+
+              '<td style="color:var(--accent);font-size:11px">'+m.ot_number+'</td>'+
+              '<td><div style="font-weight:600;font-size:12px">'+m.product_name+'</div><div style="font-size:10px;color:var(--muted)">'+m.product_code+'</div></td>'+
+              '<td style="color:var(--muted);font-size:11px">'+(m.qty||'--')+' pzas</td>'+
+              '<td><span class="badge-op">Op.'+m.op_number+'</span> <span style="font-size:11px">'+m.operation_name+'</span></td>'+
+              '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:'+dc2+'">'+sc2+'</td>'+
+              '<td style="font-size:11px;font-weight:700;color:'+dc2+'">'+(d2!==null?d2+'d':'--')+'</td>'+
+              '<td style="font-size:11px;color:'+sentColor+'">'+sentDisp+'</td>'+
+              '<td style="font-size:11px;color:'+collColor+'">'+collDisp+'</td>'+
+              '<td style="font-size:11px;font-weight:700;color:'+provColor+'">'+provDisp+'</td>'+
+              '</tr>';
+          } else {
+            const _sess2=getMachineLoadSessionData(m.ot_id,m.operation_id,m.machine_name);
+            const realSt2=_sess2.status;
+            const stC=realSt2==='completed'?'var(--green)':realSt2==='in_progress'?'var(--accent)':realSt2==='setup'?'var(--warn)':'var(--muted)';
+            const sl=realSt2==='completed'?'✓ LISTO':realSt2==='in_progress'?'▶ PRODUCCIÓN':realSt2==='setup'?'⏱ MONTAJE':'⏳ PENDIENTE';
+            const sEff2=_sess2.setupEff!==null?_sess2.setupEff+'%':'--';
+            const pEff2=_sess2.prodEff!==null?_sess2.prodEff+'%':'--';
+            const sEc2=_sess2.setupEff!==null?effColor(_sess2.setupEff):'var(--muted)';
+            const pEc2=_sess2.prodEff!==null?effColor(_sess2.prodEff):'var(--muted)';
+            rows3+='<tr style="'+(realSt2==='completed'?'opacity:.6':'')+'">'+
+              '<td>'+priBadge+'</td>'+
+              '<td style="color:var(--accent);font-size:11px">'+m.ot_number+'</td>'+
+              '<td><div style="font-weight:600;font-size:12px">'+m.product_name+'</div><div style="font-size:10px;color:var(--muted)">'+m.product_code+'</div></td>'+
+              '<td style="color:var(--muted);font-size:11px">'+(m.qty||m.ot_qty||'--')+' pzas</td>'+
+              '<td><span class="badge-op">Op.'+m.op_number+'</span> <span style="font-size:11px">'+m.operation_name+'</span></td>'+
+              '<td style="color:var(--warn);font-size:11px">'+(m.setup_time||0)+'min</td>'+
+              '<td style="color:var(--green);font-size:11px">'+(m.unit_time||0)+'min</td>'+
+              '<td style="font-size:11px">'+(m.total_time_min?Math.round(m.total_time_min)+'min':'--')+'</td>'+
+              '<td style="font-size:11px;font-family:\'DM Mono\',monospace;color:'+dc2+'">'+(sc2??'--')+'</td>'+
+              '<td style="font-size:11px;font-weight:700;color:'+dc2+'">'+(d2!==null?d2+'d':'--')+'</td>'+
+              '<td style="font-size:10px;color:var(--muted)">'+(m.started_at?new Date(m.started_at).toLocaleDateString('es-MX'):'--')+'</td>'+
+              '<td style="font-size:10px;color:var(--warn)">'+(m.estimated_end?new Date(m.estimated_end).toLocaleDateString('es-MX'):'--')+'</td>'+
+              '<td style="font-weight:700;color:'+sEc2+';font-size:11px">'+sEff2+'</td>'+
+              '<td style="font-weight:700;color:'+pEc2+';font-size:11px">'+pEff2+'</td>'+
+              '<td><span class="tag" style="font-size:10px;font-weight:700;background:'+(realSt2==='completed'?'rgba(16,185,129,.12)':realSt2==='in_progress'?'rgba(0,212,255,.1)':realSt2==='setup'?'rgba(245,158,11,.12)':'var(--bg3)')+';color:'+stC+';border:1px solid '+(realSt2==='completed'?'rgba(16,185,129,.25)':realSt2==='in_progress'?'rgba(0,212,255,.2)':realSt2==='setup'?'rgba(245,158,11,.25)':'var(--border)')+'">'+sl+'</span></td>'+
+              '</tr>';
+          }
         });
+        const thead3 = isTT2
+          ? '<tr><th>Pri.</th><th>O.T.</th><th>Producto</th><th>Lote</th><th>Operación</th><th>Exist.</th><th>Días</th><th>Envío</th><th>Recolección</th><th>Proveedor</th></tr>'
+          : '<tr><th>Pri.</th><th>O.T.</th><th>Producto</th><th>Lote</th><th>Operación</th><th>Mont.</th><th>Unit.</th><th>Total</th><th>Exist.</th><th>Días</th><th>Inicio</th><th>Est.Fin</th><th>Ef.Mont.</th><th>Ef.Prod.</th><th>Estado</th></tr>';
         html3+='<div class="card" style="margin-bottom:14px">'
-          +'<div style="sans-serif;font-size:20px;color:var(--accent2);margin-bottom:10px">'+machine+'</div>'
-          +'<table class="tbl"><thead><tr>'
-          +'<th>Pri.</th><th>O.T.</th><th>Producto</th><th>Lote</th><th>Operación</th>'
-          +'<th>Mont.</th><th>Unit.</th><th>Exist.</th><th>Ef.Mont.</th><th>Ef.Prod.</th><th>Estado</th>'
-          +'</tr></thead><tbody>'+rows3+'</tbody></table></div>';
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:var(--accent2);margin-bottom:10px">'+machine+'</div>'
+          +'<table class="tbl"><thead>'+thead3+'</thead><tbody>'+rows3+'</tbody></table></div>';
       });
       machList.innerHTML=html3;
     }
   }
+
 
     // Productos - igual que ingenieria pero sin editar/eliminar
   const prodList=document.getElementById('c-prod-list');
