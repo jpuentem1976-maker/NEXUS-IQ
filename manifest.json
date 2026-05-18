@@ -1,12 +1,13 @@
 {
-  "name": "NEXUS IQ — Control de Eficiencia",
+  "name": "NEXUS IQ — Sistema de Manufactura",
   "short_name": "NEXUS IQ",
-  "description": "Sistema de control de eficiencia en producción",
-  "start_url": "/",
+  "description": "Sistema Integral de Manufactura v6.0",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "landscape",
   "background_color": "#080b12",
   "theme_color": "#00d4ff",
-  "orientation": "any",
   "icons": [
     {
       "src": "icon-192.png",
