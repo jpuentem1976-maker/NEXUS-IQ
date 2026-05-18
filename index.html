@@ -3855,9 +3855,12 @@ function renderMachineLoad(){
               onchange="saveTTField('${m.id}','collected_at',this.value)">
           </td>
           <td>
-            <input type="text" value="${provVal}" placeholder="Proveedor..." style="${inputStyle}max-width:160px;"
-              onblur="saveTTField('${m.id}','provider_name',this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()">
+            <select style="${inputStyle}max-width:160px;cursor:pointer;"
+              onchange="saveTTField('${m.id}','provider_name',this.value)">
+              <option value="" ${!provVal?'selected':''}>-- Proveedor --</option>
+              <option value="Tecnotrat" ${provVal==='Tecnotrat'?'selected':''}>Tecnotrat</option>
+              <option value="Repemex"   ${provVal==='Repemex'  ?'selected':''}>Repemex</option>
+            </select>
           </td>
           <td><button class="btn btn-sm btn-danger" onclick="removeMachineLoad('${m.id}')">&#128465;</button></td>
         </tr>`;
