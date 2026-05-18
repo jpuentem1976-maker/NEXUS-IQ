@@ -3812,7 +3812,7 @@ function renderMachineLoad(){
   let html2='';
   Object.entries(byMachine).forEach(([machine,ops])=>{
     const mSafe=machine.replace(/['"<>]/g,'');
-    const isTT = machine === 'Tratamientos Termicos';
+    const isTT = machine === 'Tratamientos Térmicos';
     let rows='';
     ops.sort((a,b)=>a.priority-b.priority).forEach((m,i)=>{
       const pri=i+1;
