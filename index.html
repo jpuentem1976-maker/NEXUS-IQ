@@ -4357,7 +4357,37 @@ function renderConsulta(){
     if(!products.length){prodList.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin productos</div>';}
     else{
       const sortedP=[...products].sort((a,b)=>(a.sort_number??99999)-(b.sort_number??99999));
-      prodList.innerHTML=sortedP.map(p=>`
+      prodList.innerHTML=sortedP.map(p=>{
+        // ── Lee del BOM — misma lógica que Ingeniería ──
+        const mats=p.materials||[];
+        const mat=mats[0]||null;
+        const TIPO_LABEL={acero:'Acero',laton:'Latón',aluminio:'Aluminio',bronce:'Bronce',
+          nylamid:'Nylamid/Plástico',fundicion:'Fundición',forja:'Forja',
+          pieza_unitaria:'Pieza Unitaria',pieza_comprada:'Pieza Comprada',corte_externo:'Corte Externo'};
+        const FORMA_LABEL={redondo:'Redondo',hexagonal:'Hexagonal',barra_hueca:'Barra Hueca',cuadrado:'Cuadrado/Solera'};
+        const GRUPO_A=['acero','laton','aluminio','bronce'];
+        let matInfo='';
+        if(mat){
+          const tipoLabel=TIPO_LABEL[mat.tipo]||mat.tipo||'';
+          const formaLabel=FORMA_LABEL[mat.forma]||mat.forma||'';
+          const esGrupoA=GRUPO_A.includes(mat.tipo);
+          if(tipoLabel)  matInfo+=`<span>Tipo: <strong style="color:var(--text)">${tipoLabel}</strong></span>`;
+          if(formaLabel) matInfo+=`<span>Forma: <strong style="color:var(--text)">${formaLabel}</strong></span>`;
+          if(esGrupoA){
+            if(mat.diametro) matInfo+=`<span>Ø Ext: <strong style="color:var(--accent)">${parseFloat(mat.diametro).toFixed(3)}"</strong></span>`;
+            if(mat.forma==='barra_hueca'&&mat.diametro_int) matInfo+=`<span>Ø Int: <strong style="color:var(--accent)">${parseFloat(mat.diametro_int).toFixed(3)}"</strong></span>`;
+            if(mat.longitud) matInfo+=`<span>Long: <strong style="color:var(--accent)">${parseFloat(mat.longitud).toFixed(3)}"</strong></span>`;
+            if(mat.cantidad) matInfo+=`<span>Barras: <strong style="color:var(--warn)">${mat.cantidad}</strong></span>`;
+          }
+          if(mats.length>1) matInfo+=`<span style="color:var(--muted)">(+${mats.length-1} mat.)</span>`;
+        }
+        let tratInfo='';
+        if(p.heat_treatment&&p.heat_treatment!=='none') tratInfo+=`<span>Trat: <strong style="color:var(--warn)">${p.heat_treatment==='carburizado'?'Carburizado':p.heat_treatment==='temple'?'Temple':p.heat_treatment}</strong></span>`;
+        if(p.heat_treatment==='carburizado'&&p.carb_layer)      tratInfo+=`<span>Capa: <strong style="color:var(--warn)">${p.carb_layer}"</strong></span>`;
+        if(p.heat_treatment==='carburizado'&&p.carb_carbon_pct)  tratInfo+=`<span>C%: <strong style="color:var(--warn)">${p.carb_carbon_pct}%</strong></span>`;
+        if(p.final_hardness) tratInfo+=`<span>Dureza: <strong style="color:var(--text)">${p.final_hardness}</strong></span>`;
+        if(p.finish)         tratInfo+=`<span>Acabado: <strong style="color:var(--text)">${p.finish}</strong></span>`;
+        return `
         <div class="card fade" style="margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:12px">
             ${p.photo_url?`<img src="${p.photo_url}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">`:'<div style="width:52px;height:52px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px">📦</div>'}
@@ -4369,19 +4399,8 @@ function renderConsulta(){
                 ${p.stock_min?`<span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.25)">Min: ${p.stock_min} pzas</span>`:''}
               </div>
               <div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
-                ${p.steel_type?`<span>Acero: <strong style="color:var(--text)">${p.steel_type}</strong></span>`:''}
-                ${p.material_form?`<span>Forma: <strong style="color:var(--text)">${p.material_form==='pieza_unitaria'?'Pieza Unitaria':p.material_form==='barra'?'Barra de Material':p.material_form==='forja'?'Forja':'Fundición'}</strong></span>`:''}
-                ${p.material_form==='pieza_unitaria'&&p.material_shape?`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`:''}
-                ${p.material_form==='pieza_unitaria'&&(p.material_diameter||p.bar_diameter)?`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.material_diameter||p.bar_diameter).toFixed(3)}"</strong></span>`:''}
-                ${p.material_form==='barra'&&p.material_shape?`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`:''}
-                ${p.material_form==='barra'&&p.bar_diameter?`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.bar_diameter).toFixed(3)}"</strong></span>`:''}
-                ${p.material_form==='barra'&&p.bar_qty?`<span>Barras: <strong style="color:var(--warn)">${p.bar_qty}</strong></span>`:''}
-                ${p.material_form==='barra'&&p.bar_final_length?(()=>{const fl=parseFloat(p.bar_final_length)||0,fm=parseFloat(p.bar_facing)||0,tr=parseFloat(p.bar_cutoff)||0,gr=parseFloat(p.bar_grip)||0,pc=parseFloat(p.bar_pcs_per_bar)||0;if(!fl||!pc)return'';const raw=((fl+fm+tr)*pc)+gr;const rounded=Math.ceil(raw*8)/8;const whole=Math.floor(rounded),eighths=Math.round((rounded-whole)*8);const fracs={0:'',1:'-1/8',2:'-1/4',3:'-3/8',4:'-1/2',5:'-5/8',6:'-3/4',7:'-7/8'};const dec=(eighths/8).toFixed(3).substring(1);const label=eighths===0?whole+'.000"':whole+dec+'" ('+whole+fracs[eighths]+'")';return`<span>Hab: <strong style="color:var(--accent)">${label}</strong></span>`;})():''}
-                ${p.heat_treatment&&p.heat_treatment!=='none'?`<span>Trat: <strong style="color:var(--warn)">${p.heat_treatment==='carburizado'?'Carburizado':p.heat_treatment==='temple'?'Temple':p.heat_treatment}</strong></span>`:''}
-                ${p.heat_treatment==='carburizado'&&p.carb_layer?`<span>Capa: <strong style="color:var(--warn)">${p.carb_layer}"</strong></span>`:''}
-                ${p.heat_treatment==='carburizado'&&p.carb_carbon_pct?`<span>C%: <strong style="color:var(--warn)">${p.carb_carbon_pct}%</strong></span>`:''}
-                ${p.final_hardness?`<span>Dureza: <strong style="color:var(--text)">${p.final_hardness}</strong></span>`:''}
-                ${p.finish?`<span>Acabado: <strong style="color:var(--text)">${p.finish}</strong></span>`:''}
+                ${matInfo}
+                ${tratInfo}
                 <span>${(p.operations||[]).length} ops</span>
               </div>
             </div>
@@ -4399,7 +4418,8 @@ function renderConsulta(){
                 </div>
               </div>`).join('')}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
   }
 
