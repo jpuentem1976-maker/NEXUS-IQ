@@ -1788,7 +1788,7 @@ function calcBomKg(mat){
 }
 
 function bomRowHTML(m, prodId, idx){
-  const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+  const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
   const isKg=m.unidad==='kg'||isBarra;
   const kgBar=isBarra?calcBomKg(m):0;
   const totalKg=parseFloat((kgBar*(parseInt(m.cantidad)||0)).toFixed(2));
@@ -1811,7 +1811,7 @@ function bomRowHTML(m, prodId, idx){
       </div>
       <button type="button" onclick="removeBomRow('${mid}')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;height:32px">✕</button>
     </div>
-    <div id="bom-barra-${mid}" style="${['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)?'':'display:none'}">
+    <div id="bom-barra-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'':'display:none'}">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div class="field" style="margin:0"><label style="font-size:9px">FORMA</label>
           <select id="bom-forma-${mid}" onchange="calcBomRowKg('${mid}')" style="font-size:11px">
@@ -1833,7 +1833,7 @@ function bomRowHTML(m, prodId, idx){
         </div>
       </div>
     </div>
-    <div id="bom-pieza-${mid}" style="${['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)?'display:none':''}">
+    <div id="bom-pieza-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'display:none':''}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="field" style="margin:0"><label style="font-size:9px">CANTIDAD</label>
           <input type="number" id="bom-cant2-${mid}" value="${m.cantidad||''}" placeholder="ej. 50" style="font-size:11px">
@@ -1851,7 +1851,7 @@ function bomRowHTML(m, prodId, idx){
 
 function onBomTypeChange(mid){
   const tipo=document.getElementById('bom-tipo-'+mid)?.value;
-  const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(tipo);
+  const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
   const barraDiv=document.getElementById('bom-barra-'+mid);
   const piezaDiv=document.getElementById('bom-pieza-'+mid);
   if(barraDiv) barraDiv.style.display=isBarra?'':'none';
@@ -1897,7 +1897,7 @@ function readBomRows(prodId){
   container.querySelectorAll('[id^="bom-row-"]').forEach(row=>{
     const mid=row.id.replace('bom-row-','');
     const tipo=document.getElementById('bom-tipo-'+mid)?.value||'acero';
-    const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(tipo);
+    const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
     rows.push({
       id:mid,
       tipo,
@@ -1907,7 +1907,7 @@ function readBomRows(prodId){
       diametro:isBarra?parseFloat(document.getElementById('bom-diam-'+mid)?.value)||null:null,
       longitud:isBarra?parseFloat(document.getElementById('bom-long-'+mid)?.value)||null:null,
       cantidad:(function(){
-        const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(tipo);
+        const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
         const el = isBarra ? document.getElementById('bom-cant-'+mid) : document.getElementById('bom-cant2-'+mid);
         return parseInt(el?.value)||0;
       })(),
@@ -3272,7 +3272,7 @@ function toggleRawMaterialOK(id, current){
     let html = '<div style="display:grid;grid-template-columns:1fr 90px 90px 60px;gap:8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:0 4px;margin-bottom:6px">';
     html += '<div>Material</div><div style="text-align:center">Esperado</div><div style="text-align:center">Confirmado</div><div style="text-align:center">Cr\u00edtico</div></div>';
     mats.forEach(function(m){
-      const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+      const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
       const kgBar = isBarra ? calcBomKg(m) : 0;
       const totalExpected = isBarra
         ? parseFloat((kgBar*(parseInt(m.cantidad)||0)).toFixed(2))
@@ -3332,7 +3332,7 @@ async function confirmRawMaterial(){
     let totalKg = 0;
     const confirmedByDiam = {};
     mats.forEach(function(m){
-      const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+      const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
       const val = parseFloat(document.getElementById('rm-confirm-'+m.id)?.value)||0;
       if(isBarra){
         totalKg += val;
@@ -3437,12 +3437,12 @@ async function releaseOT(id){
       // BOM-based: one raw_material row per BOM material
       // Calculate total expected kg to distribute confirmed_kg proportionally
       const totalExpectedKg = bomMats.reduce((s,m)=>{
-        const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
         return s+(isBarra?calcBomKgLocal(m)*(parseInt(m.cantidad)||0):0);
       },0);
       const confirmedMatsKg = wo.confirmed_materials_kg||{};
       for(const m of bomMats){
-        const isBarra=['acero','laton','aluminio','bronce','fundicion','forja'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+        const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
         const qty = parseInt(m.cantidad)||0;
         const matExpKg = isBarra?calcBomKgLocal(m)*qty:0;
         const diam = parseFloat(m.diametro)||0;
