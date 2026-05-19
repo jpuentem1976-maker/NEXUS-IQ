@@ -1782,8 +1782,14 @@ function calcBomKg(mat){
   const len=parseFloat(mat.longitud)||0;
   const diam=parseFloat(mat.diametro)||0;
   let vol=0;
-  if(mat.forma==='hexagonal') vol=(Math.pow(diam,2)*1.155*Math.PI/4)*len;
-  else vol=(Math.pow(diam,2)*Math.PI/4)*len;
+  if(mat.forma==='hexagonal'){
+    vol=(Math.pow(diam,2)*1.155*Math.PI/4)*len;
+  } else if(mat.forma==='barra_hueca'){
+    const dint=parseFloat(mat.diametro_int)||0;
+    vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint,2))*len;
+  } else {
+    vol=(Math.pow(diam,2)*Math.PI/4)*len;
+  }
   return parseFloat((vol*d*0.4536).toFixed(3));
 }
 
@@ -1812,14 +1818,17 @@ function bomRowHTML(m, prodId, idx){
       <button type="button" onclick="removeBomRow('${mid}')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;height:32px">✕</button>
     </div>
     <div id="bom-barra-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'':'display:none'}">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div class="field" style="margin:0"><label style="font-size:9px">FORMA</label>
-          <select id="bom-forma-${mid}" onchange="calcBomRowKg('${mid}')" style="font-size:11px">
+          <select id="bom-forma-${mid}" onchange="onBomFormaChange('${mid}')" style="font-size:11px">
             ${MAT_SHAPES.map(s=>`<option value="${s.val}" ${m.forma===s.val?'selected':''}>${s.label}</option>`).join('')}
           </select>
         </div>
-        <div class="field" style="margin:0"><label style="font-size:9px">DIÁMETRO (")</label>
+        <div class="field" style="margin:0"><label style="font-size:9px">DIÁM. EXT. (")</label>
           <input type="number" step="0.001" id="bom-diam-${mid}" value="${m.diametro||''}" placeholder="1.000" oninput="calcBomRowKg('${mid}')" style="font-size:11px">
+        </div>
+        <div class="field" id="bom-dint-wrap-${mid}" style="margin:0;${m.forma==='barra_hueca'?'':'display:none'}"><label style="font-size:9px">DIÁM. INT. (")</label>
+          <input type="number" step="0.001" id="bom-dint-${mid}" value="${m.diametro_int||''}" placeholder="0.500" oninput="calcBomRowKg('${mid}')" style="font-size:11px">
         </div>
         <div class="field" style="margin:0"><label style="font-size:9px">LONGITUD (")</label>
           <input type="number" step="0.001" id="bom-long-${mid}" value="${m.longitud||''}" placeholder="42.000" oninput="calcBomRowKg('${mid}')" style="font-size:11px">
@@ -1856,16 +1865,27 @@ function onBomTypeChange(mid){
   const piezaDiv=document.getElementById('bom-pieza-'+mid);
   if(barraDiv) barraDiv.style.display=isBarra?'':'none';
   if(piezaDiv) piezaDiv.style.display=isBarra?'none':'';
+  // reset dint-wrap si cambia tipo
+  const dintWrap=document.getElementById('bom-dint-wrap-'+mid);
+  if(dintWrap) dintWrap.style.display='none';
+}
+
+function onBomFormaChange(mid){
+  const forma=document.getElementById('bom-forma-'+mid)?.value;
+  const dintWrap=document.getElementById('bom-dint-wrap-'+mid);
+  if(dintWrap) dintWrap.style.display=forma==='barra_hueca'?'':'none';
+  calcBomRowKg(mid);
 }
 
 function calcBomRowKg(mid){
   const tipo=document.getElementById('bom-tipo-'+mid)?.value||'acero';
   const forma=document.getElementById('bom-forma-'+mid)?.value||'redondo';
   const diam=parseFloat(document.getElementById('bom-diam-'+mid)?.value)||0;
+  const dint=parseFloat(document.getElementById('bom-dint-'+mid)?.value)||0;
   const long=parseFloat(document.getElementById('bom-long-'+mid)?.value)||0;
   const cantEl=document.getElementById('bom-cant-'+mid)||document.getElementById('bom-cant2-'+mid);
   const cant=parseInt(cantEl?.value)||0;
-  const mat={tipo,forma,diametro:diam,longitud:long};
+  const mat={tipo,forma,diametro:diam,diametro_int:dint,longitud:long};
   const kgBar=calcBomKg(mat);
   const total=parseFloat((kgBar*cant).toFixed(2));
   const kgEl=document.getElementById('bom-kg-'+mid);
@@ -1905,6 +1925,7 @@ function readBomRows(prodId){
       critico:document.getElementById('bom-critical-'+mid)?.value!=='0',
       forma:isBarra?(document.getElementById('bom-forma-'+mid)?.value||'redondo'):'pieza',
       diametro:isBarra?parseFloat(document.getElementById('bom-diam-'+mid)?.value)||null:null,
+      diametro_int:isBarra?parseFloat(document.getElementById('bom-dint-'+mid)?.value)||null:null,
       longitud:isBarra?parseFloat(document.getElementById('bom-long-'+mid)?.value)||null:null,
       cantidad:(function(){
         const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
