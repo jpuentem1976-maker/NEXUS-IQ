@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexus-iq-v6';
+const CACHE_NAME = 'nexus-iq-v6.1';
 const ASSETS = [
   './',
   './index.html'

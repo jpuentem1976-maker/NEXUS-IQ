@@ -507,6 +507,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <div id="e-products" class="subpage active">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <div style="font-size:15px;font-weight:700">Catálogo de Productos</div>
+      <span id="products-counter" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25);border-radius:20px;padding:2px 10px;font-size:12px;font-family:'DM Mono',monospace;font-weight:700"></span>
       <div style="margin-left:auto"><button class="btn btn-accent btn-sm" onclick="showProductForm(null)">+ Nuevo Producto</button></div>
     </div>
     <div id="product-form-wrap"></div>
@@ -1683,9 +1684,57 @@ function toggleOps(id){
 
 function renderProducts(){
   const list=document.getElementById('products-list');
+  // Actualizar contador
+  const counter=document.getElementById('products-counter');
+  if(counter) counter.textContent=products.length+' producto'+(products.length!==1?'s':'');
   if(!products.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin productos</div>`; return; }
   const sorted=[...products].sort((a,b)=>{const an=a.sort_number??99999,bn=b.sort_number??99999;return an-bn;});
-  list.innerHTML=sorted.map(p=>`
+  list.innerHTML=sorted.map(p=>{
+    // ── Lógica de display de material ──
+    const mf = p.material_form||'';
+    const isBarra      = mf==='barra';
+    const isPiezaUnit  = mf==='pieza_unitaria';
+    const isForja      = mf==='forja';
+    const isFundicion  = mf==='fundicion';
+
+    // Etiqueta de forma principal
+    const matLabel = isBarra?'Barra de Material': isPiezaUnit?'Pieza Unitaria': isForja?'Forja': isFundicion?'Fundición':'';
+
+    // Info de barra (cuando salen varias piezas de una barra o se corta a medida)
+    let barInfo='';
+    if(isBarra){
+      if(p.material_shape) barInfo+=`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`;
+      if(p.bar_diameter)   barInfo+=`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.bar_diameter).toFixed(3)}"</strong></span>`;
+      if(p.bar_qty)        barInfo+=`<span>Barras: <strong style="color:var(--warn)">${p.bar_qty}</strong></span>`;
+      if(p.bar_final_length){
+        const fl=parseFloat(p.bar_final_length)||0,fm=parseFloat(p.bar_facing)||0,
+              tr=parseFloat(p.bar_cutoff)||0,gr=parseFloat(p.bar_grip)||0,pc=parseFloat(p.bar_pcs_per_bar)||0;
+        if(fl&&pc){
+          const raw=((fl+fm+tr)*pc)+gr;
+          const rounded=Math.ceil(raw*8)/8;
+          const whole=Math.floor(rounded),eighths=Math.round((rounded-whole)*8);
+          const fracs={0:'',1:'-1/8',2:'-1/4',3:'-3/8',4:'-1/2',5:'-5/8',6:'-3/4',7:'-7/8'};
+          const dec=(eighths/8).toFixed(3).substring(1);
+          const label=eighths===0?`${whole}.000"` : `${whole}${dec}" (${whole}${fracs[eighths]}")`;
+          barInfo+=`<span>Hab: <strong style="color:var(--accent)">${label}</strong></span>`;
+        }
+      }
+    }
+
+    // Info de pieza unitaria (pieza ya formada, solo dimensiones de referencia)
+    let piezaInfo='';
+    if(isPiezaUnit){
+      if(p.material_shape)                          piezaInfo+=`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`;
+      if(p.material_diameter||p.bar_diameter)       piezaInfo+=`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.material_diameter||p.bar_diameter).toFixed(3)}"</strong></span>`;
+      if(p.final_length){
+        const fl=parseFloat(p.final_length)||0,fm=parseFloat(p.facing_material)||0;
+        piezaInfo+=`<span>Hab: <strong style="color:var(--accent)">${(fl+fm).toFixed(3)}"</strong></span>`;
+      }
+    }
+
+    const matInfo = isBarra ? barInfo : isPiezaUnit ? piezaInfo : '';
+
+    return `
     <div class="card fade" style="margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:12px">
         ${p.photo_url?`<img src="${p.photo_url}" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">`:'<div style="width:52px;height:52px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px">📦</div>'}
@@ -1698,36 +1747,14 @@ function renderProducts(){
           </div>
           <div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
             ${p.steel_type?`<span>Acero: <strong style="color:var(--text)">${p.steel_type}</strong></span>`:''}
-            ${p.material_form?`<span>Forma: <strong style="color:var(--text)">${p.material_form==='pieza_unitaria'?'Pieza Unitaria':p.material_form==='barra'?'Barra de Material':p.material_form==='forja'?'Forja':'Fundición'}</strong></span>`:''}
-            ${p.material_form==='pieza_unitaria'&&p.material_shape?`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`:''}
-            ${p.material_form==='pieza_unitaria'&&(p.material_diameter||p.bar_diameter)?`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.material_diameter||p.bar_diameter).toFixed(3)}"</strong></span>`:''}
-            ${p.material_form==='pieza_unitaria'&&p.final_length?(()=>{
-              const fl=parseFloat(p.final_length)||0,fm=parseFloat(p.facing_material)||0;
-              const h=(fl+fm).toFixed(3);
-              return `<span>Hab: <strong style="color:var(--accent)">${h}"</strong></span>`;
-            })():''}
-            ${p.material_form==='barra'&&p.material_shape?`<span>Forma: <strong style="color:var(--text)">${p.material_shape}</strong></span>`:''}
-            ${p.material_form==='barra'&&p.bar_diameter?`<span>Ø <strong style="color:var(--accent)">${parseFloat(p.bar_diameter).toFixed(3)}"</strong></span>`:''}
-            ${p.material_form==='barra'&&p.bar_qty?`<span>Barras: <strong style="color:var(--warn)">${p.bar_qty}</strong></span>`:''}
-            ${p.material_form==='barra'&&p.bar_final_length?(()=>{
-              const fl=parseFloat(p.bar_final_length)||0,fm=parseFloat(p.bar_facing)||0,
-                    tr=parseFloat(p.bar_cutoff)||0,gr=parseFloat(p.bar_grip)||0,pc=parseFloat(p.bar_pcs_per_bar)||0;
-              if(!fl||!pc) return '';
-              const raw=((fl+fm+tr)*pc)+gr;
-              const rounded=Math.ceil(raw*8)/8;
-              const whole=Math.floor(rounded),eighths=Math.round((rounded-whole)*8);
-              const fracs={0:'',1:'-1/8',2:'-1/4',3:'-3/8',4:'-1/2',5:'-5/8',6:'-3/4',7:'-7/8'};
-              const dec=(eighths/8).toFixed(3).substring(1);
-              const label=eighths===0?`${whole}.000"` : `${whole}${dec}" (${whole}${fracs[eighths]}")`;
-              return `<span>Hab: <strong style="color:var(--accent)">${label}</strong></span>`;
-            })():''}
+            ${matLabel?`<span>Forma: <strong style="color:var(--text)">${matLabel}</strong></span>`:''}
+            ${matInfo}
             ${p.heat_treatment&&p.heat_treatment!=='none'?`<span>Trat: <strong style="color:var(--warn)">${p.heat_treatment==='carburizado'?'Carburizado':p.heat_treatment==='temple'?'Temple':p.heat_treatment}</strong></span>`:''}
             ${p.heat_treatment==='carburizado'&&p.carb_layer?`<span>Capa: <strong style="color:var(--warn)">${p.carb_layer}"</strong></span>`:''}
             ${p.heat_treatment==='carburizado'&&p.carb_carbon_pct?`<span>C%: <strong style="color:var(--warn)">${p.carb_carbon_pct}%</strong></span>`:''}
             ${p.final_hardness?`<span>Dureza: <strong style="color:var(--text)">${p.final_hardness}</strong></span>`:''}
             ${p.finish?`<span>Acabado: <strong style="color:var(--text)">${p.finish}</strong></span>`:''}
             <span>${(p.operations||[]).length} ops</span>
-
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
@@ -1750,7 +1777,8 @@ function renderProducts(){
             </div>
           </div>`).join('')}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 /* ═══════════════════════════════════════════════════════
