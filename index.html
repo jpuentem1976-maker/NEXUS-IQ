@@ -1066,11 +1066,15 @@ async function sbFetch(table,params,method,body){
   const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Accept':'application/json'};
   if(method==='POST') H['Prefer']='return=representation';
   if(method==='PATCH'||method==='DELETE') H['Prefer']='return=minimal';
+  // Timeout generoso de 45 segundos para redes lentas
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),45000);
   const url=SB_URL+'/rest/v1/'+table+(params?'?'+params:'');
-  const opts={method,headers:H};
+  const opts={method,headers:H,signal:controller.signal};
   if(body) opts.body=JSON.stringify(body);
   let res;
   try{ res=await fetch(url,opts); }catch(e){ throw new Error('Error de red: '+e.message); }
+  finally{ clearTimeout(timer); }
   if(method==='DELETE'||method==='PATCH'){
     if(res.status===204||res.status===200||res.status===204) return {ok:true};
     const t=await res.text().catch(()=>'');
@@ -1093,33 +1097,43 @@ async function initApp(){
     document.getElementById('config-screen').style.display='flex';
     return;
   }
-  // Pre-fill config form with saved values
   const urlEl=document.getElementById('cfg-url');
   const keyEl=document.getElementById('cfg-key');
   if(urlEl&&cfg.url) urlEl.value=cfg.url;
   if(keyEl&&cfg.key) keyEl.value=cfg.key;
   SB_URL=cfg.url; SB_KEY=cfg.key;
-  showLoading('CONECTANDO...');
-  try{
-    await sbSelect('products','select=id&limit=1');
-    await loadAllData();
-    const cfgScreen=document.getElementById('config-screen');
-    if(cfgScreen) cfgScreen.remove();
-    document.getElementById('main-nav').style.display='flex';
-    populateSelects();
-    hideLoading();
-  }catch(e){
-    hideLoading();
-    // NO borrar credenciales — puede ser error temporal de red
-    // Solo mostrar error y permitir reintentar
-    document.getElementById('config-screen').style.display='flex';
-    const errEl=document.getElementById('cfg-error');
-    errEl.textContent='❌ Error de conexión: '+e.message+' — Verifica tu red e intenta de nuevo.';
-    errEl.style.color='var(--danger)';
-    errEl.classList.remove('hidden');
-    console.error('Connection error:', e);
-    // Mantener SB_URL y SB_KEY para que el usuario pueda reintentar
-    // sin tener que volver a escribir las credenciales
+
+  // Reintentos automáticos: hasta 3 intentos con 3 segundos de espera entre cada uno
+  const MAX_RETRIES=3;
+  for(let attempt=1; attempt<=MAX_RETRIES; attempt++){
+    try{
+      showLoading(attempt===1?'CONECTANDO...':'REINTENTANDO ('+attempt+'/'+MAX_RETRIES+')...');
+      await sbSelect('products','select=id&limit=1');
+      await loadAllData();
+      const cfgScreen=document.getElementById('config-screen');
+      if(cfgScreen) cfgScreen.remove();
+      document.getElementById('main-nav').style.display='flex';
+      populateSelects();
+      hideLoading();
+      return; // Conexión exitosa — salir del loop
+    }catch(e){
+      console.warn('Intento '+attempt+' fallido:',e.message);
+      if(attempt<MAX_RETRIES){
+        // Esperar 3 segundos antes del siguiente intento
+        showLoading('Sin conexión — reintentando en 3 segundos... ('+attempt+'/'+MAX_RETRIES+')');
+        await new Promise(r=>setTimeout(r,3000));
+      } else {
+        // Agotados todos los intentos — mostrar error sin borrar credenciales
+        hideLoading();
+        document.getElementById('config-screen').style.display='flex';
+        const errEl=document.getElementById('cfg-error');
+        errEl.textContent='❌ No se pudo conectar después de '+MAX_RETRIES+' intentos. Verifica tu red e intenta de nuevo.';
+        errEl.style.color='var(--danger)';
+        errEl.classList.remove('hidden');
+        console.error('Connection failed after '+MAX_RETRIES+' attempts:', e);
+        // Credenciales se mantienen guardadas para el próximo intento
+      }
+    }
   }
 }
 
