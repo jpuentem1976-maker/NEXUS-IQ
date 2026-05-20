@@ -280,11 +280,13 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
         <div id="setup-downtime-box" class="card hidden fade" style="border-color:rgba(239,68,68,.3);text-align:left;padding:12px">
           <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase">Categoría del paro</div>
           <select id="setup-dt-cat" style="width:100%;margin-bottom:10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:13px">
-            <option value="Falla de máquina">Falla de máquina</option>
-            <option value="Falta de material">Falta de material</option>
-            <option value="Ajuste">Ajuste</option>
-            <option value="Espera de calidad">Espera de calidad</option>
-            <option value="Otro">Otro</option>
+            <option>Espera de material</option>
+            <option>Falla de máquina</option>
+            <option>Falta de herramienta</option>
+            <option>Ajuste de calidad</option>
+            <option>Instrucciones / Ingeniería</option>
+            <option>Mantenimiento</option>
+            <option>Otro</option>
           </select>
           <div class="g2"><button class="btn btn-danger" onclick="confirmSetupParo()">Iniciar paro</button><button class="btn btn-ghost" onclick="cancelSetupParo()">Cancelar</button></div>
         </div>
@@ -4735,6 +4737,435 @@ if(typeof previewPhoto!=='undefined') window.previewPhoto=previewPhoto;
 if(typeof progLogout!=='undefined') window.progLogout=progLogout;
 if(typeof programmingClick!=='undefined') window.programmingClick=programmingClick;
 if(typeof recalcRMBars!=='undefined') window.recalcRMBars=recalcRMBars;
+
+// ═══════════════════════════════════════════════════
+//  MÓDULO REPORTES — funciones completas
+// ═══════════════════════════════════════════════════
+
+function refreshReportSelects(){
+  // Operador select
+  const opSel=document.getElementById('rf-operator');
+  if(opSel){
+    const cur=opSel.value;
+    opSel.innerHTML='<option value="">Todos</option>'+
+      [...new Set(sessions.filter(s=>s.operator_name).map(s=>s.operator_name))].sort()
+      .map(n=>`<option value="${n}" ${cur===n?'selected':''}>${n}</option>`).join('');
+  }
+  // OT select
+  const otSel=document.getElementById('rf-ot');
+  if(otSel){
+    const cur=otSel.value;
+    otSel.innerHTML='<option value="">Todas</option>'+
+      [...new Set(sessions.filter(s=>s.ot_number).map(s=>s.ot_number))].sort()
+      .map(n=>`<option value="${n}" ${cur===n?'selected':''}>${n}</option>`).join('');
+  }
+  // Producto select
+  const prSel=document.getElementById('rf-prod');
+  if(prSel){
+    const cur=prSel.value;
+    prSel.innerHTML='<option value="">Todos</option>'+
+      [...new Set(sessions.filter(s=>s.product_name).map(s=>s.product_name))].sort()
+      .map(n=>`<option value="${n}" ${cur===n?'selected':''}>${n}</option>`).join('');
+  }
+  // Learning selects
+  const opLearn=document.getElementById('rf-op-learn');
+  if(opLearn){
+    opLearn.innerHTML='<option value="">Todas</option>'+
+      [...new Set(sessions.filter(s=>s.operation_name).map(s=>s.operation_name))].sort()
+      .map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+  const opOper=document.getElementById('rf-op-oper');
+  if(opOper){
+    opOper.innerHTML='<option value="">Todos</option>'+
+      [...new Set(sessions.filter(s=>s.operator_name).map(s=>s.operator_name))].sort()
+      .map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+  // Compare selects
+  const cmpProd=document.getElementById('rf-cmp-prod');
+  if(cmpProd){
+    cmpProd.innerHTML='<option value="">Todos</option>'+
+      [...new Set(sessions.filter(s=>s.product_name).map(s=>s.product_name))].sort()
+      .map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+  const cmpOp=document.getElementById('rf-cmp-op');
+  if(cmpOp){
+    cmpOp.innerHTML='<option value="">Todas</option>'+
+      [...new Set(sessions.filter(s=>s.operation_name).map(s=>s.operation_name))].sort()
+      .map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+  // Fechas por defecto: últimos 30 días
+  const fromEl=document.getElementById('rf-from');
+  const toEl=document.getElementById('rf-to');
+  if(fromEl&&!fromEl.value){
+    const d=new Date(); d.setDate(d.getDate()-30);
+    fromEl.value=d.toISOString().substring(0,10);
+  }
+  if(toEl&&!toEl.value) toEl.value=new Date().toISOString().substring(0,10);
+  renderOpReport();
+}
+
+// ── Helpers comunes ──
+function parseDate(str){ return str?new Date(str):null; }
+function inRange(dateLabel, from, to){
+  if(!dateLabel) return true;
+  // dateLabel es dd/mm/yyyy
+  const parts=dateLabel.split('/');
+  if(parts.length!==3) return true;
+  const d=new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+  if(from && d < new Date(from)) return false;
+  if(to   && d > new Date(to+'T23:59:59')) return false;
+  return true;
+}
+function effBadge(e){
+  const c=effColor(e);
+  return `<span style="font-weight:700;color:${c}">${e}%</span>`;
+}
+function noData(body){
+  body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin datos para los filtros seleccionados</div>';
+}
+function tbl(headers, rows){
+  return `<table class="tbl"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ══════════════════════════════════
+//  REPORTE POR OPERADOR
+// ══════════════════════════════════
+function renderOpReport(){
+  const body=document.getElementById('r-operator-body');
+  if(!body) return;
+  const opFilter=document.getElementById('rf-operator')?.value||'';
+  const from=document.getElementById('rf-from')?.value||'';
+  const to=document.getElementById('rf-to')?.value||'';
+
+  // Piezas filtradas
+  const pieces=sessions.filter(s=>
+    s.type==='piece' &&
+    (!opFilter||s.operator_name===opFilter) &&
+    inRange(s.date_label, from, to)
+  );
+  const setups=sessions.filter(s=>
+    s.type==='setup' &&
+    (!opFilter||s.operator_name===opFilter) &&
+    inRange(s.date_label, from, to)
+  );
+
+  if(!pieces.length && !setups.length){ noData(body); return; }
+
+  // Agrupar por operador
+  const byOp={};
+  pieces.forEach(s=>{
+    const k=s.operator_name||'Desconocido';
+    if(!byOp[k]) byOp[k]={name:k,pieces:[],setups:[],ops:new Set()};
+    byOp[k].pieces.push(s);
+    byOp[k].ops.add(s.operation_name||'');
+  });
+  setups.forEach(s=>{
+    const k=s.operator_name||'Desconocido';
+    if(!byOp[k]) byOp[k]={name:k,pieces:[],setups:[],ops:new Set()};
+    byOp[k].setups.push(s);
+  });
+
+  let html='';
+  Object.values(byOp).sort((a,b)=>a.name.localeCompare(b.name)).forEach(op=>{
+    const totalPcs=op.pieces.length;
+    const totalNetSec=op.pieces.reduce((a,s)=>a+(parseInt(s.actual_sec)||0),0);
+    const avgEff=totalPcs>0?Math.round(op.pieces.reduce((a,s)=>a+(s.efficiency||0),0)/totalPcs):0;
+    const setupEffs=op.setups.filter(s=>s.efficiency>0);
+    const avgSetupEff=setupEffs.length>0?Math.round(setupEffs.reduce((a,s)=>a+(s.efficiency||0),0)/setupEffs.length):null;
+
+    // Detalle por operación
+    const byOpName={};
+    op.pieces.forEach(s=>{
+      const k=s.operation_name||'--';
+      if(!byOpName[k]) byOpName[k]={pieces:0,netSec:0,effSum:0};
+      byOpName[k].pieces++;
+      byOpName[k].netSec+=parseInt(s.actual_sec)||0;
+      byOpName[k].effSum+=s.efficiency||0;
+    });
+
+    html+=`<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent2)">${op.name}</span>
+        <span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)">${totalPcs} piezas</span>
+        <span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)">Ef.Prod: ${effBadge(avgEff)}</span>
+        ${avgSetupEff!==null?`<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)">Ef.Mont: ${effBadge(avgSetupEff)}</span>`:''}
+        <span style="color:var(--muted);font-size:11px">Tiempo neto: ${fmtSec(totalNetSec)}</span>
+      </div>
+      ${tbl(['Operación','Piezas','T.Neto Prom.','Ef. Prom.'],
+        Object.entries(byOpName).map(([opn,d])=>`<tr>
+          <td style="font-weight:600">${opn}</td>
+          <td style="font-family:'DM Mono',monospace">${d.pieces}</td>
+          <td style="font-family:'DM Mono',monospace;color:var(--muted)">${fmtSec(d.pieces>0?Math.round(d.netSec/d.pieces):0)}</td>
+          <td>${effBadge(Math.round(d.effSum/d.pieces))}</td>
+        </tr>`).join('')
+      )}
+    </div>`;
+  });
+  body.innerHTML=html;
+}
+
+// ══════════════════════════════════
+//  REPORTE POR O.T.
+// ══════════════════════════════════
+function renderOTReport(){
+  const body=document.getElementById('r-ot-body');
+  if(!body) return;
+  const otFilter=document.getElementById('rf-ot')?.value||'';
+  const prodFilter=document.getElementById('rf-prod')?.value||'';
+
+  const pieces=sessions.filter(s=>
+    s.type==='piece' &&
+    (!otFilter||s.ot_number===otFilter) &&
+    (!prodFilter||s.product_name===prodFilter)
+  );
+  const setups=sessions.filter(s=>
+    s.type==='setup' &&
+    (!otFilter||s.ot_number===otFilter) &&
+    (!prodFilter||s.product_name===prodFilter)
+  );
+
+  if(!pieces.length && !setups.length){ noData(body); return; }
+
+  // Agrupar por OT
+  const byOT={};
+  pieces.forEach(s=>{
+    const k=s.ot_number||'--';
+    if(!byOT[k]) byOT[k]={ot:k,prod:s.product_name||'--',code:s.product_code||'--',pieces:[],ops:{}};
+    byOT[k].pieces.push(s);
+    const opk=s.operation_name||'--';
+    if(!byOT[k].ops[opk]) byOT[k].ops[opk]={pieces:0,netSec:0,effSum:0,operators:new Set()};
+    byOT[k].ops[opk].pieces++;
+    byOT[k].ops[opk].netSec+=parseInt(s.actual_sec)||0;
+    byOT[k].ops[opk].effSum+=s.efficiency||0;
+    byOT[k].ops[opk].operators.add(s.operator_name||'--');
+  });
+
+  let html='';
+  Object.values(byOT).sort((a,b)=>a.ot.localeCompare(b.ot)).forEach(ot=>{
+    const totalPcs=ot.pieces.length;
+    const avgEff=totalPcs>0?Math.round(ot.pieces.reduce((a,s)=>a+(s.efficiency||0),0)/totalPcs):0;
+    const scraps=otScrap.filter(s=>s.ot_number===ot.ot||sessions.find(ss=>ss.ot_number===ot.ot&&ss.ot_id===s.ot_id));
+    const totalScrap=scraps.reduce((a,s)=>a+(parseInt(s.qty)||0),0);
+
+    html+=`<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-family:'DM Mono',monospace;color:var(--accent);font-weight:700;font-size:15px">${ot.ot}</span>
+        <span style="font-weight:700">${ot.prod}</span>
+        <span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)">${ot.code}</span>
+        <span class="tag" style="background:rgba(16,185,129,.1);color:var(--green)">${totalPcs} pzas</span>
+        <span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent)">Ef: ${effBadge(avgEff)}</span>
+        ${totalScrap>0?`<span class="tag" style="background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.2)">Scrap: ${totalScrap}</span>`:''}
+      </div>
+      ${tbl(['Operación','Piezas','T.Neto Prom.','Ef. Prom.','Operadores'],
+        Object.entries(ot.ops).map(([opn,d])=>`<tr>
+          <td style="font-weight:600">${opn}</td>
+          <td style="font-family:'DM Mono',monospace">${d.pieces}</td>
+          <td style="font-family:'DM Mono',monospace;color:var(--muted)">${fmtSec(d.pieces>0?Math.round(d.netSec/d.pieces):0)}</td>
+          <td>${effBadge(Math.round(d.effSum/d.pieces))}</td>
+          <td style="font-size:11px;color:var(--muted)">${[...d.operators].join(', ')}</td>
+        </tr>`).join('')
+      )}
+    </div>`;
+  });
+  body.innerHTML=html;
+}
+
+// ══════════════════════════════════
+//  REPORTE DE PAROS
+// ══════════════════════════════════
+function renderDowntimeReport(){
+  const body=document.getElementById('r-downtime-body');
+  if(!body) return;
+
+  // Inyectar filtros de fecha si no existen
+  if(!document.getElementById('rdt-from')){
+    const filt=document.createElement('div');
+    filt.className='card'; filt.style.marginBottom='14px';
+    const today=new Date().toISOString().substring(0,10);
+    const d30=new Date(); d30.setDate(d30.getDate()-30);
+    const from30=d30.toISOString().substring(0,10);
+    filt.innerHTML=`<div class="g3">
+      <div class="field"><label>Fecha Desde</label><input type="date" id="rdt-from" value="${from30}" onchange="renderDowntimeReport()"></div>
+      <div class="field"><label>Fecha Hasta</label><input type="date" id="rdt-to" value="${today}" onchange="renderDowntimeReport()"></div>
+      <div class="field"><label>Operador</label><select id="rdt-oper" onchange="renderDowntimeReport()"><option value="">Todos</option>${[...new Set(sessions.filter(s=>s.operator_name).map(s=>s.operator_name))].sort().map(n=>`<option>${n}</option>`).join('')}</select></div>
+    </div>`;
+    body.parentElement.insertBefore(filt, body);
+  }
+
+  const from=document.getElementById('rdt-from')?.value||'';
+  const to=document.getElementById('rdt-to')?.value||'';
+  const operFilter=document.getElementById('rdt-oper')?.value||'';
+
+  // Extraer paros de los summaries guardados en sessions
+  const summaries=sessions.filter(s=>
+    s.type==='summary' &&
+    inRange(s.date_label, from, to) &&
+    (!operFilter||s.operator_name===operFilter)
+  );
+
+  // Recolectar todos los paros de los summaries
+  const allDowntimes=[];
+  summaries.forEach(s=>{
+    const dts=Array.isArray(s.downtimes)?s.downtimes:(typeof s.downtimes==='string'&&s.downtimes?JSON.parse(s.downtimes):[]);
+    dts.forEach(d=>{
+      allDowntimes.push({
+        cat:d.cat||d.category||'Otro',
+        secs:parseInt(d.secs||d.seconds||0),
+        operator:s.operator_name||'--',
+        ot:s.ot_number||'--',
+        product:s.product_name||'--',
+        operation:s.operation_name||'--',
+        date:s.date_label||'--'
+      });
+    });
+  });
+
+  if(!allDowntimes.length){
+    body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin paros registrados en el período seleccionado</div>';
+    return;
+  }
+
+  // Totales por categoría
+  const byCat={};
+  allDowntimes.forEach(d=>{
+    if(!byCat[d.cat]) byCat[d.cat]={cat:d.cat,count:0,totalSec:0};
+    byCat[d.cat].count++;
+    byCat[d.cat].totalSec+=d.secs;
+  });
+  const totalSec=allDowntimes.reduce((a,d)=>a+d.secs,0);
+  const sorted=Object.values(byCat).sort((a,b)=>b.totalSec-a.totalSec);
+
+  let html=`<div class="card" style="margin-bottom:14px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">RESUMEN POR CATEGORÍA</div>
+    <div style="margin-bottom:10px;color:var(--muted);font-size:12px">Total tiempo en paros: <strong style="color:var(--danger)">${fmtSec(totalSec)}</strong> | Total eventos: <strong style="color:var(--text)">${allDowntimes.length}</strong></div>
+    ${tbl(['Categoría','Eventos','Tiempo Total','% del Total'],
+      sorted.map(d=>{
+        const pct=totalSec>0?Math.round((d.totalSec/totalSec)*100):0;
+        const barW=Math.max(pct,2);
+        return `<tr>
+          <td style="font-weight:600;color:var(--danger)">${d.cat}</td>
+          <td style="font-family:'DM Mono',monospace">${d.count}</td>
+          <td style="font-family:'DM Mono',monospace">${fmtSec(d.totalSec)}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:80px;background:var(--bg3);border-radius:4px;height:8px">
+                <div style="width:${barW}%;background:var(--danger);border-radius:4px;height:8px"></div>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:var(--danger)">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')
+    )}
+  </div>
+  <div class="card">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">DETALLE DE PAROS</div>
+    ${tbl(['Fecha','Operador','O.T.','Producto','Operación','Categoría','Duración'],
+      allDowntimes.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<tr>
+        <td style="font-size:11px;color:var(--muted)">${d.date}</td>
+        <td style="font-size:11px">${d.operator}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px">${d.ot}</td>
+        <td style="font-size:11px">${d.product}</td>
+        <td style="font-size:11px">${d.operation}</td>
+        <td style="font-weight:600;color:var(--danger);font-size:11px">${d.cat}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${fmtSec(d.secs)}</td>
+      </tr>`).join('')
+    )}
+  </div>`;
+  body.innerHTML=html;
+}
+
+// ══════════════════════════════════
+//  CURVA DE APRENDIZAJE
+// ══════════════════════════════════
+function renderLearning(){
+  const body=document.getElementById('r-learning-body');
+  if(!body) return;
+  const opFilter=document.getElementById('rf-op-learn')?.value||'';
+  const operFilter=document.getElementById('rf-op-oper')?.value||'';
+
+  const pieces=sessions.filter(s=>
+    s.type==='piece' &&
+    (!opFilter||s.operation_name===opFilter) &&
+    (!operFilter||s.operator_name===operFilter)
+  ).sort((a,b)=>new Date(a.recorded_at)-new Date(b.recorded_at));
+
+  if(!pieces.length){ noData(body); return; }
+
+  // Agrupar por operador+operación
+  const groups={};
+  pieces.forEach(s=>{
+    const k=(s.operator_name||'--')+'||'+(s.operation_name||'--');
+    if(!groups[k]) groups[k]={operator:s.operator_name||'--',operation:s.operation_name||'--',pieces:[]};
+    groups[k].pieces.push(s);
+  });
+
+  let html='';
+  Object.values(groups).forEach(g=>{
+    const std=parseFloat(g.pieces[0]?.std_time||0)*60;
+    html+=`<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2)">${g.operator}</span>
+        <span class="tag" style="color:var(--muted)">${g.operation}</span>
+        <span style="font-size:11px;color:var(--muted)">Std: ${fmtSec(std)} | ${g.pieces.length} piezas</span>
+      </div>
+      ${tbl(['#Pieza','Fecha','T.Real','T.Estándar','Eficiencia'],
+        g.pieces.map((s,i)=>`<tr>
+          <td style="font-family:'DM Mono',monospace;color:var(--muted)">${i+1}</td>
+          <td style="font-size:10px;color:var(--muted)">${s.date_label||'--'}</td>
+          <td style="font-family:'DM Mono',monospace">${fmtSec(parseInt(s.actual_sec)||0)}</td>
+          <td style="font-family:'DM Mono',monospace;color:var(--muted)">${fmtSec(std)}</td>
+          <td>${effBadge(s.efficiency||0)}</td>
+        </tr>`).join('')
+      )}
+    </div>`;
+  });
+  body.innerHTML=html;
+}
+
+// ══════════════════════════════════
+//  COMPARATIVO
+// ══════════════════════════════════
+function renderCompare(){
+  const body=document.getElementById('r-compare-body');
+  if(!body) return;
+  const prodFilter=document.getElementById('rf-cmp-prod')?.value||'';
+  const opFilter=document.getElementById('rf-cmp-op')?.value||'';
+
+  const pieces=sessions.filter(s=>
+    s.type==='piece' &&
+    (!prodFilter||s.product_name===prodFilter) &&
+    (!opFilter||s.operation_name===opFilter)
+  );
+
+  if(!pieces.length){ noData(body); return; }
+
+  // Agrupar por operador
+  const byOp={};
+  pieces.forEach(s=>{
+    const k=s.operator_name||'--';
+    if(!byOp[k]) byOp[k]={name:k,pieces:0,effSum:0,netSec:0};
+    byOp[k].pieces++;
+    byOp[k].effSum+=s.efficiency||0;
+    byOp[k].netSec+=parseInt(s.actual_sec)||0;
+  });
+
+  const rows=Object.values(byOp).sort((a,b)=>(b.effSum/b.pieces)-(a.effSum/a.pieces));
+  const html=`<div class="card">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">COMPARATIVO POR OPERADOR</div>
+    ${tbl(['Operador','Piezas','Ef. Promedio','T.Neto Prom/Pza','Total Neto'],
+      rows.map(r=>`<tr>
+        <td style="font-weight:700">${r.name}</td>
+        <td style="font-family:'DM Mono',monospace">${r.pieces}</td>
+        <td>${effBadge(Math.round(r.effSum/r.pieces))}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--muted)">${fmtSec(r.pieces>0?Math.round(r.netSec/r.pieces):0)}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--muted)">${fmtSec(r.netSec)}</td>
+      </tr>`).join('')
+    )}
+  </div>`;
+  body.innerHTML=html;
+}
+
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
 if(typeof releaseOT!=='undefined') window.releaseOT=releaseOT;
 if(typeof removePFOpRow!=='undefined') window.removePFOpRow=removePFOpRow;
