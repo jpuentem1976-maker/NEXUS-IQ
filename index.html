@@ -272,7 +272,28 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
         <button class="btn btn-green btn-xl" style="margin-top:16px" onclick="goProduction()">INICIAR PRODUCCIÓN →</button>
       </div>
       <div id="setup-btn-start"><button class="btn btn-blue btn-xl" style="margin-top:20px" onclick="startSetup()">▶ INICIAR MONTAJE</button></div>
-      <div id="setup-btn-finish" class="hidden"><button class="btn btn-accent btn-xl" style="margin-top:20px" onclick="finishSetup()">✓ FINALIZAR MONTAJE</button></div>
+      <div id="setup-btn-finish" class="hidden" style="display:flex;flex-direction:column;gap:10px;margin-top:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <button class="btn btn-ghost btn-lg" id="setup-btn-lonche" onclick="toggleSetupLunch()">🍽 LONCHE</button>
+          <button class="btn btn-ghost btn-lg" id="setup-btn-paro" onclick="toggleSetupParo()">⚠ PARO</button>
+        </div>
+        <div id="setup-downtime-box" class="card hidden fade" style="border-color:rgba(239,68,68,.3);text-align:left;padding:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase">Categoría del paro</div>
+          <select id="setup-dt-cat" style="width:100%;margin-bottom:10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px;font-size:13px">
+            <option value="Falla de máquina">Falla de máquina</option>
+            <option value="Falta de material">Falta de material</option>
+            <option value="Ajuste">Ajuste</option>
+            <option value="Espera de calidad">Espera de calidad</option>
+            <option value="Otro">Otro</option>
+          </select>
+          <div class="g2"><button class="btn btn-danger" onclick="confirmSetupParo()">Iniciar paro</button><button class="btn btn-ghost" onclick="cancelSetupParo()">Cancelar</button></div>
+        </div>
+        <div id="setup-end-downtime-box" class="hidden">
+          <button class="btn btn-danger btn-lg" style="width:100%" onclick="endSetupParo()">✓ TERMINAR PARO</button>
+        </div>
+        <div id="setup-dt-list" style="font-size:11px"></div>
+        <button class="btn btn-accent btn-xl" onclick="finishSetup()">✓ FINALIZAR MONTAJE</button>
+      </div>
     </div>
   </div>
 
@@ -1216,7 +1237,7 @@ window.setProgTab = function setProgTab(id,btn){
 /* ═══════════════════════════════════════════════════════
    OPERATOR FLOW
 ═══════════════════════════════════════════════════════ */
-let ctx={wo:null,product:null,operation:null,operator:null,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:null,secStart:null};
+let ctx={wo:null,product:null,operation:null,operator:null,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:null,secStart:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
 let tickInterval=null;
 
 function showStep(s){
@@ -1320,7 +1341,7 @@ function buildCtx(){
   const oper=operators.find(o=>o.id===operId);
   const existing=sessions.filter(s=>s.ot_id===woId&&s.operation_id===opId);
   const sessId=existing.length?existing[0].session_id:uid();
-  ctx={wo,product:prod,operation:op,operator:oper,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:sessId,secStart:null};
+  ctx={wo,product:prod,operation:op,operator:oper,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:sessId,secStart:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
 }
 
 function goSetup(){
@@ -1365,7 +1386,10 @@ async function startSetup(){
   try{ await sbInsert('sessions',startRec); }catch(e2){ console.error(e2); }
   clearInterval(tickInterval);
   tickInterval=setInterval(()=>{
-    const el=Math.floor((Date.now()-ctx.setupStart)/1000);
+    const lunchActive=ctx.setupLunchStart?Math.floor((Date.now()-ctx.setupLunchStart)/1000):0;
+    const dtActive=ctx.setupDtStart?Math.floor((Date.now()-ctx.setupDtStart)/1000):0;
+    const pausedSetup=ctx.setupTotalLunch+lunchActive+ctx.setupDowntimes.reduce((a,d)=>a+(d.secs||0),0)+dtActive;
+    const el=Math.max(0,Math.floor((Date.now()-ctx.setupStart)/1000)-pausedSetup);
     const std=ctx.operation.setup_time*60;
     document.getElementById('setup-timer').textContent=fmtSec(el);
     const pct=Math.min((el/std)*100,100);
@@ -1377,8 +1401,14 @@ async function startSetup(){
 
 async function finishSetup(){
   clearInterval(tickInterval);
+  // Cerrar lonche activo si quedó abierto
+  if(ctx.setupLunchStart){ ctx.setupTotalLunch+=Math.floor((Date.now()-ctx.setupLunchStart)/1000); ctx.setupLunchStart=null; }
+  // Cerrar paro activo si quedó abierto
+  if(ctx.setupDtStart){ const s=Math.floor((Date.now()-ctx.setupDtStart)/1000); ctx.setupDowntimes.push({cat:ctx.setupDtCat,secs:s}); ctx.setupDtStart=null; }
   ctx.setupEnd=Date.now();
-  const actualSec=Math.floor((ctx.setupEnd-ctx.setupStart)/1000);
+  const rawSec=Math.floor((ctx.setupEnd-ctx.setupStart)/1000);
+  const paused=ctx.setupTotalLunch+ctx.setupDowntimes.reduce((a,d)=>a+(d.secs||0),0);
+  const actualSec=Math.max(1,rawSec-paused);
   const e=effCalc(ctx.operation.setup_time,actualSec);
   ctx.setupEff=e;
   const c=effColor(e);
@@ -1594,6 +1624,48 @@ function toggleLunch(){
   else{ ctx.totalLunch+=Math.floor((Date.now()-ctx.lunchStart)/1000); ctx.lunchStart=null; btn.textContent='🍽 LONCHE'; btn.className='btn btn-ghost btn-lg'; document.getElementById('prod-status').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN PRODUCCIÓN</span>'; }
 }
 function toggleDowntime(){ document.getElementById('downtime-box').classList.toggle('hidden'); }
+
+// ── Lonche en MONTAJE ──
+function toggleSetupLunch(){
+  const btn=document.getElementById('setup-btn-lonche');
+  if(!ctx.setupLunchStart){
+    ctx.setupLunchStart=Date.now();
+    btn.textContent='▶ REGRESAR DE LONCHE'; btn.className='btn btn-warn btn-lg';
+    document.getElementById('setup-live').innerHTML='<div class="live-dot" style="background:var(--warn)"></div><span style="font-size:12px;color:var(--warn);font-weight:700"> LONCHE</span>';
+  } else {
+    ctx.setupTotalLunch+=Math.floor((Date.now()-ctx.setupLunchStart)/1000);
+    ctx.setupLunchStart=null;
+    btn.textContent='🍽 LONCHE'; btn.className='btn btn-ghost btn-lg';
+    document.getElementById('setup-live').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN MONTAJE</span>';
+  }
+}
+
+// ── Paros en MONTAJE ──
+function toggleSetupParo(){ document.getElementById('setup-downtime-box').classList.toggle('hidden'); }
+function cancelSetupParo(){ document.getElementById('setup-downtime-box').classList.add('hidden'); }
+function confirmSetupParo(){
+  ctx.setupDtCat=document.getElementById('setup-dt-cat').value;
+  ctx.setupDtStart=Date.now();
+  document.getElementById('setup-downtime-box').classList.add('hidden');
+  document.getElementById('setup-end-downtime-box').classList.remove('hidden');
+  document.getElementById('setup-btn-paro').disabled=true;
+  document.getElementById('setup-btn-lonche').disabled=true;
+  document.getElementById('setup-live').innerHTML='<div class="live-dot" style="background:var(--danger)"></div><span style="font-size:12px;color:var(--danger);font-weight:700"> PARO</span>';
+}
+function endSetupParo(){
+  if(!ctx.setupDtStart) return;
+  const secs=Math.floor((Date.now()-ctx.setupDtStart)/1000);
+  ctx.setupDowntimes.push({cat:ctx.setupDtCat,secs});
+  ctx.setupDtStart=null;
+  document.getElementById('setup-end-downtime-box').classList.add('hidden');
+  document.getElementById('setup-btn-paro').disabled=false;
+  document.getElementById('setup-btn-lonche').disabled=false;
+  document.getElementById('setup-live').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN MONTAJE</span>';
+  const total=ctx.setupDowntimes.reduce((a,d)=>a+d.secs,0);
+  document.getElementById('setup-dt-list').innerHTML=
+    '<div style="color:var(--muted);margin-bottom:4px">Paros: '+fmtSec(total)+'</div>'+
+    ctx.setupDowntimes.map(d=>'<div style="display:flex;justify-content:space-between"><span style="color:var(--danger)">'+d.cat+'</span><span style="font-family:DM Mono,monospace;color:var(--muted)">'+fmtSec(d.secs)+'</span></div>').join('');
+}
 function confirmDowntime(){ ctx.dtCat=document.getElementById('dt-cat').value; ctx.dtStart=Date.now(); document.getElementById('downtime-box').classList.add('hidden'); document.getElementById('end-downtime-box').classList.remove('hidden'); document.getElementById('btn-downtime').disabled=true; }
 function cancelDowntime(){ document.getElementById('downtime-box').classList.add('hidden'); }
 function endDowntime(){
@@ -3831,13 +3903,35 @@ function getMachineLoadSessionData(otId, opId, machineName){
 
   // Get efficiency from sessions
   const setupRec=allSess.find(s=>s.type==='setup');
-  const pieceRecs=allSess.filter(s=>s.type==='piece');
+  const pieceRecs=allSess.filter(s=>s.type==='piece').sort((a,b)=>a.piece_num-b.piece_num);
   const setupEff=setupRec?setupRec.efficiency:null;
   const setupPcs=parseInt((setupRec&&(setupRec.setup_pieces||setupRec.setup_pcs))||0);
   const prodPcs=pieceRecs.length;
+  // Usar la eficiencia acumulada del último registro de pieza (igual que calcula el operador)
+  // efficiency en cada piece = effCalc(unit_time, pieceNet) — es por pieza individual
+  // Para eficiencia acumulada: (piezas * std_unit_seg) / suma(actual_sec) * 100
   const totalActSec=pieceRecs.reduce((a,s)=>a+(parseInt(s.actual_sec)||0),0);
   const stdUnit=parseFloat((pieceRecs[0]?.std_time||setupRec?.std_time||0))*60;
-  const prodEff=(prodPcs>0&&totalActSec>0&&stdUnit>0)?Math.round((prodPcs*stdUnit)/totalActSec*100):null;
+  // Si hay sesión activa en este momento (operador trabajando), tomar en cuenta
+  // el tiempo neto acumulado del ctx local si la sesión coincide
+  let prodEff=null;
+  if(prodPcs>0&&totalActSec>0&&stdUnit>0){
+    // Verificar si hay sesión local activa para esta operación
+    const localActive=(typeof ctx!=='undefined'&&ctx.wo&&ctx.operation&&
+      ctx.wo.id===otId&&ctx.operation.id===opId&&ctx.prodStart);
+    if(localActive){
+      // Usar el mismo cálculo que el operador en tiempo real
+      const localNet=typeof getNetElapsed==='function'?getNetElapsed():totalActSec;
+      const localPcs=ctx.pieceTimes?ctx.pieceTimes.length:prodPcs;
+      if(localNet>0&&localPcs>0){
+        prodEff=Math.round((localPcs*stdUnit)/localNet*100);
+      } else {
+        prodEff=Math.round((prodPcs*stdUnit)/totalActSec*100);
+      }
+    } else {
+      prodEff=Math.round((prodPcs*stdUnit)/totalActSec*100);
+    }
+  }
   return {status,setupEff,prodEff,prodPcs,setupPcs,isActive:mlStatus==='in_progress'};
 }
 
