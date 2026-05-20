@@ -791,7 +791,13 @@ function useSavedConfig(){
     document.getElementById('cfg-key').value=cfg.key||'';
     // Re-save and try connecting
     SB_URL=cfg.url; SB_KEY=cfg.key;
-    
+    connect();
+  } else {
+    document.getElementById('cfg-error').textContent='No hay credenciales guardadas.';
+    document.getElementById('cfg-error').classList.remove('hidden');
+  }
+}
+
 let _mlDrag = null;
 
 function setupMLDrag(){
@@ -1038,11 +1044,6 @@ async function processPDFText(text){
 
 
 initApp();
-  } else {
-    document.getElementById('cfg-error').textContent='No hay credenciales guardadas.';
-    document.getElementById('cfg-error').classList.remove('hidden');
-  }
-}
 
 function saveConfig(){
   let url=document.getElementById('cfg-url').value.trim();
