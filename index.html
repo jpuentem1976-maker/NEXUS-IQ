@@ -491,7 +491,16 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     </div>
     <div id="r-ot-body"></div>
   </div>
-  <div id="r-downtime" class="subpage"><div id="r-downtime-body"></div></div>
+  <div id="r-downtime" class="subpage">
+    <div class="card" style="margin-bottom:14px">
+      <div class="g3">
+        <div class="field"><label>Fecha Desde</label><input type="date" id="rdt-from" onchange="renderDowntimeReport()"></div>
+        <div class="field"><label>Fecha Hasta</label><input type="date" id="rdt-to" onchange="renderDowntimeReport()"></div>
+        <div class="field"><label>Operador</label><select id="rdt-oper" onchange="renderDowntimeReport()"><option value="">Todos</option></select></div>
+      </div>
+    </div>
+    <div id="r-downtime-body"></div>
+  </div>
   <div id="r-learning" class="subpage">
     <div class="card" style="margin-bottom:14px">
       <div class="g2">
@@ -1196,6 +1205,8 @@ function setPTab(id,btn){
   document.querySelectorAll('#page-reports .subpage').forEach(el=>{el.classList.add('hidden');el.classList.remove('fade');el.classList.remove('active');});
   document.querySelectorAll('#page-reports .ptab').forEach(b=>b.classList.remove('active'));
   const el=document.getElementById(id); el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('fade'); btn.classList.add('active');
+  // Repoblar selects y luego renderizar
+  if(typeof refreshReportSelects==='function') refreshReportSelects();
   if(id==='r-operator') renderOpReport();
   if(id==='r-ot') renderOTReport();
   if(id==='r-downtime') renderDowntimeReport();
@@ -4794,14 +4805,26 @@ function refreshReportSelects(){
       .map(n=>`<option value="${n}">${n}</option>`).join('');
   }
   // Fechas por defecto: últimos 30 días
+  const today2=new Date().toISOString().substring(0,10);
+  const d30=new Date(); d30.setDate(d30.getDate()-30);
+  const from30=d30.toISOString().substring(0,10);
   const fromEl=document.getElementById('rf-from');
   const toEl=document.getElementById('rf-to');
-  if(fromEl&&!fromEl.value){
-    const d=new Date(); d.setDate(d.getDate()-30);
-    fromEl.value=d.toISOString().substring(0,10);
+  if(fromEl&&!fromEl.value) fromEl.value=from30;
+  if(toEl&&!toEl.value) toEl.value=today2;
+  // Fechas paros
+  const rdtFrom=document.getElementById('rdt-from');
+  const rdtTo=document.getElementById('rdt-to');
+  if(rdtFrom&&!rdtFrom.value) rdtFrom.value=from30;
+  if(rdtTo&&!rdtTo.value) rdtTo.value=today2;
+  // Operador select de paros
+  const rdtOper=document.getElementById('rdt-oper');
+  if(rdtOper){
+    const curRdt=rdtOper.value;
+    rdtOper.innerHTML='<option value="">Todos</option>'+
+      [...new Set(sessions.filter(s=>s.operator_name).map(s=>s.operator_name))].sort()
+      .map(n=>`<option value="${n}" ${curRdt===n?'selected':''}>${n}</option>`).join('');
   }
-  if(toEl&&!toEl.value) toEl.value=new Date().toISOString().substring(0,10);
-  renderOpReport();
 }
 
 // ── Helpers comunes ──
@@ -4976,21 +4999,6 @@ function renderOTReport(){
 function renderDowntimeReport(){
   const body=document.getElementById('r-downtime-body');
   if(!body) return;
-
-  // Inyectar filtros de fecha si no existen
-  if(!document.getElementById('rdt-from')){
-    const filt=document.createElement('div');
-    filt.className='card'; filt.style.marginBottom='14px';
-    const today=new Date().toISOString().substring(0,10);
-    const d30=new Date(); d30.setDate(d30.getDate()-30);
-    const from30=d30.toISOString().substring(0,10);
-    filt.innerHTML=`<div class="g3">
-      <div class="field"><label>Fecha Desde</label><input type="date" id="rdt-from" value="${from30}" onchange="renderDowntimeReport()"></div>
-      <div class="field"><label>Fecha Hasta</label><input type="date" id="rdt-to" value="${today}" onchange="renderDowntimeReport()"></div>
-      <div class="field"><label>Operador</label><select id="rdt-oper" onchange="renderDowntimeReport()"><option value="">Todos</option>${[...new Set(sessions.filter(s=>s.operator_name).map(s=>s.operator_name))].sort().map(n=>`<option>${n}</option>`).join('')}</select></div>
-    </div>`;
-    body.parentElement.insertBefore(filt, body);
-  }
 
   const from=document.getElementById('rdt-from')?.value||'';
   const to=document.getElementById('rdt-to')?.value||'';
