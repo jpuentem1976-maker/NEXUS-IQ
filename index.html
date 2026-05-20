@@ -849,6 +849,22 @@ window.addDelivery = addDelivery;
 window.addScrap = addScrap;
 window.closeOT = closeOT;
 window.deleteReleasedOT = deleteReleasedOT;
+async function removeMachineLoad(id){
+  if(!id) return;
+  if(!confirm('¿Eliminar esta operación de la carga de máquinas?')) return;
+  const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+  try{
+    const res=await fetch(SB_URL+'/rest/v1/machine_load?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:H});
+    if(!res.ok){ const err=await res.text(); alert('Error al eliminar: '+err); return; }
+    // Eliminar del array local
+    const idx=machineLoad.findIndex(m=>m.id===id);
+    if(idx>=0) machineLoad.splice(idx,1);
+    // Re-renderizar
+    renderMachineLoad();
+  } catch(e){
+    alert('Error de red: '+e.message);
+  }
+}
 window.removeMachineLoad = removeMachineLoad;
 
 
