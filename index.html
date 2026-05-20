@@ -1110,14 +1110,16 @@ async function initApp(){
     hideLoading();
   }catch(e){
     hideLoading();
+    // NO borrar credenciales — puede ser error temporal de red
+    // Solo mostrar error y permitir reintentar
     document.getElementById('config-screen').style.display='flex';
     const errEl=document.getElementById('cfg-error');
-    errEl.textContent='❌ '+e.message;
+    errEl.textContent='❌ Error de conexión: '+e.message+' — Verifica tu red e intenta de nuevo.';
     errEl.style.color='var(--danger)';
     errEl.classList.remove('hidden');
     console.error('Connection error:', e);
-    localStorage.removeItem(CFG_KEY);
-    SB_URL=''; SB_KEY='';
+    // Mantener SB_URL y SB_KEY para que el usuario pueda reintentar
+    // sin tener que volver a escribir las credenciales
   }
 }
 
