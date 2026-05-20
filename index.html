@@ -851,19 +851,34 @@ window.closeOT = closeOT;
 window.deleteReleasedOT = deleteReleasedOT;
 async function removeMachineLoad(id){
   if(!id) return;
-  if(!confirm('¿Eliminar esta operación de la carga de máquinas?')) return;
-  const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
-  try{
-    const res=await fetch(SB_URL+'/rest/v1/machine_load?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:H});
-    if(!res.ok){ const err=await res.text(); alert('Error al eliminar: '+err); return; }
-    // Eliminar del array local
-    const idx=machineLoad.findIndex(m=>m.id===id);
-    if(idx>=0) machineLoad.splice(idx,1);
-    // Re-renderizar
-    renderMachineLoad();
-  } catch(e){
-    alert('Error de red: '+e.message);
-  }
+  // Mostrar diálogo visual propio (evita problemas con confirm() en PWA)
+  const existing=document.getElementById('ml-confirm-box');
+  if(existing) existing.remove();
+  const box=document.createElement('div');
+  box.id='ml-confirm-box';
+  box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  box.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:380px;width:90%;text-align:center">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">¿Eliminar operación?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">Se eliminará de la carga de máquinas permanentemente.</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="ml-confirm-yes" class="btn btn-danger" style="min-width:100px">Sí, eliminar</button>
+      <button id="ml-confirm-no" class="btn btn-ghost" style="min-width:100px">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(box);
+  document.getElementById('ml-confirm-no').onclick=()=>box.remove();
+  document.getElementById('ml-confirm-yes').onclick=async()=>{
+    box.remove();
+    try{
+      await sbDelete('machine_load',{id});
+      const idx=machineLoad.findIndex(m=>m.id===id);
+      if(idx>=0) machineLoad.splice(idx,1);
+      renderMachineLoad();
+    } catch(e){
+      console.error('removeMachineLoad error:',e);
+      alert('Error al eliminar: '+e.message);
+    }
+  };
 }
 window.removeMachineLoad = removeMachineLoad;
 
