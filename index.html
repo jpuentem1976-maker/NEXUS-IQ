@@ -1152,7 +1152,7 @@ async function loadAllData(){
     sbSelect('raw_material','select=*&status=eq.active&order=created_at.desc'),
     sbSelect('ot_deliveries','select=*&order=delivered_at.desc'),
     sbSelect('ot_scrap','select=*&order=recorded_at.desc'),
-    sbSelect('product_materials','select=*&order=created_at.asc'),
+    sbSelect('product_materials','select=*'),
   ]);
   products=prods.map(p=>({...p,operations:(ops||[]).filter(o=>o.product_id===p.id).sort((a,b)=>a.sort_order-b.sort_order),materials:(prodMats||[]).filter(m=>m.product_id===p.id)}));
   operators=(opsList||[]);
@@ -1303,7 +1303,7 @@ function populateSelects(){
   selOt.innerHTML='<option value="">-- Selecciona O.T. --</option>';
   workOrders.filter(o=>o.status==='released').forEach(o=>{
     const p=getProduct(o.product_id);
-    selOt.innerHTML+=`<option value="${o.id}">${o.number} — ${p?p.name:'?'}</option>`;
+    selOt.innerHTML+=`<option value="${o.id}">${o.number} — ${p?p.name:'?'}${p&&p.code?' ('+p.code+')':''}</option>`;
   });
   const selOper=document.getElementById('sel-operator');
   selOper.innerHTML='<option value="">-- Selecciona operador --</option>';
