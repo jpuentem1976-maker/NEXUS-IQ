@@ -333,6 +333,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
       <div>
         <div class="sec-h" style="margin-bottom:0;font-size:22px">PRODUCCIÓN EN PROCESO</div>
         <div id="prod-sub" style="color:var(--muted);font-size:12px"></div>
+        <div id="prev-pieces-info" style="display:none;font-size:11px;color:var(--warn);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:6px;padding:6px 12px;margin-bottom:4px;text-align:center"></div>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:6px" id="prod-status">
         <div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700">EN PRODUCCIÓN</span>
@@ -1302,7 +1303,7 @@ function populateSelects(){
   selOt.innerHTML='<option value="">-- Selecciona O.T. --</option>';
   workOrders.filter(o=>o.status==='released').forEach(o=>{
     const p=getProduct(o.product_id);
-    selOt.innerHTML+=`<option value="${o.id}">${o.number} — ${p?p.name:'?'}</option>`;
+    selOt.innerHTML+=`<option value="${o.id}">${o.number} — ${p?p.name:'?'}${p&&p.code?' ('+p.code+')':''}</option>`;
   });
   const selOper=document.getElementById('sel-operator');
   selOper.innerHTML='<option value="">-- Selecciona operador --</option>';
@@ -1479,6 +1480,21 @@ async function finishSetup(){
 function goProduction(){
   ctx.prodStart=Date.now(); ctx.pieceTimes=[]; ctx.elapsed=0; ctx.totalLunch=0; ctx.downtimes=[];
   ctx.setupPieces=0; ctx.setupScrap=0; ctx.scrapCount=0; ctx.adjustedQty=null;
+  // Calcular piezas ya producidas en sesiones ANTERIORES de esta misma operación
+  // (turnos previos del mismo o diferente operador)
+  const prevSessions=sessions.filter(s=>
+    s.ot_id===ctx.wo.id &&
+    s.operation_id===ctx.operation.id &&
+    s.session_id!==ctx.sessionId &&
+    !s.is_op_complete
+  );
+  // Sumar piezas de summaries anteriores (fin de turno)
+  const prevPiecesBySummary=prevSessions
+    .filter(s=>s.type==='summary')
+    .reduce((a,s)=>a+(parseInt(s.pieces_produced)||0),0);
+  // Si no hay summaries, contar registros type='piece' de otras sesiones
+  const prevPiecesByCount=prevSessions.filter(s=>s.type==='piece').length;
+  ctx.prevPieces=prevPiecesBySummary||prevPiecesByCount||0;
   // Pick up pieces made during setup
   const setupPzs=parseInt(document.getElementById('setup-piezas')?.value)||0;
   const setupScrap=parseInt(document.getElementById('setup-scrap')?.value)||0;
@@ -1513,10 +1529,22 @@ function goProduction(){
   const scrapEl=document.getElementById('disp-scrap');
   if(scrapEl) scrapEl.textContent=setupScrap;
   const pendingEl=document.getElementById('disp-pending');
-  if(pendingEl) pendingEl.textContent=Math.max(0,adjustedQty-setupPzs-setupScrap);
+  if(pendingEl) pendingEl.textContent=Math.max(0,adjustedQty-(ctx.prevPieces||0)-setupPzs-setupScrap);
   document.getElementById('prod-sub').textContent=`${ctx.product.name} · Op.${ctx.operation.op_number} ${ctx.operation.name} · OT: ${ctx.wo.number}`;
-  document.getElementById('prod-count').textContent=String(setupPzs);
+  // Mostrar contador incluyendo piezas de turnos anteriores
+  const startCount=setupPzs+(ctx.prevPieces||0);
+  document.getElementById('prod-count').textContent=String(startCount);
   document.getElementById('prod-qty-total').textContent=adjustedQty;
+  // Mostrar aviso de piezas previas si hay
+  const prevInfo=document.getElementById('prev-pieces-info');
+  if(prevInfo){
+    if(ctx.prevPieces>0){
+      prevInfo.textContent='▶ Retomando operación — '+ctx.prevPieces+' piezas de turno(s) anterior(es)';
+      prevInfo.style.display='block';
+    } else {
+      prevInfo.style.display='none';
+    }
+  }
   document.getElementById('prod-qty-bar').style.width='0%';
   document.getElementById('prod-eff-val').textContent='0%'; document.getElementById('prod-eff-val').style.color='var(--muted)'; document.getElementById('prod-eff-val').style.textShadow='none';
   const bRegBtn=document.getElementById('btn-register-piece'); if(bRegBtn){bRegBtn.disabled=false;bRegBtn.textContent='✚ REGISTRAR PIEZA';bRegBtn.style.background='';}
@@ -4155,7 +4183,7 @@ function buildDashCards(todaySess,scrapSess){
     for(const sid of sessionIds){
       const sr=machineSess.filter(function(s){return s.session_id===sid;});
       const hasSetup=sr.some(function(s){return s.type==='setup'||s.type==='setup_start';});
-      const hasComplete=sr.some(function(s){return s.type==='op_complete'||s.type==='summary';});
+      const hasComplete=sr.some(function(s){return s.type==='op_complete';});  // summary=fin turno, NO es op completa
       const hasPiece=sr.some(function(s){return s.type==='piece';});
       if(hasSetup&&!hasComplete){activeSessionId=sid;hasProd=hasPiece;break;}
     }
