@@ -1437,6 +1437,7 @@ async function startSetup(){
   const startRec={id:uid(),session_id:ctx.sessionId,ot_id:ctx.wo.id,ot_number:ctx.wo.number,product_id:ctx.product.id,product_name:ctx.product.name,product_code:ctx.product.code,operation_id:ctx.operation.id,operation_name:ctx.operation.name,op_number:ctx.operation.op_number,op_type:ctx.operation.op_type,machine_id:ctx.operation.machine_id,machine_name:ctx.operation.machine_name,operator_id:ctx.operator.id,operator_name:ctx.operator.name,qty:ctx.wo.qty,type:'setup_start',std_time:ctx.operation.setup_time,actual_sec:0,efficiency:0,recorded_at:new Date().toISOString(),date_label:dateStr(Date.now())};
   sessions.unshift(startRec);
   try{ await sbInsert('sessions',startRec); }catch(e2){ console.error(e2); }
+  saveMachineStatus('running','Montaje iniciado');
   clearInterval(tickInterval);
   tickInterval=setInterval(()=>{
     const lunchActive=ctx.setupLunchStart?Math.floor((Date.now()-ctx.setupLunchStart)/1000):0;
@@ -1531,6 +1532,7 @@ function goProduction(){
   const pendingEl=document.getElementById('disp-pending');
   if(pendingEl) pendingEl.textContent=Math.max(0,adjustedQty-(ctx.prevPieces||0)-setupPzs-setupScrap);
   document.getElementById('prod-sub').textContent=`${ctx.product.name} · Op.${ctx.operation.op_number} ${ctx.operation.name} · OT: ${ctx.wo.number}`;
+  saveMachineStatus('running','Producción iniciada');
   // Mostrar contador incluyendo piezas de turnos anteriores
   const startCount=setupPzs+(ctx.prevPieces||0);
   document.getElementById('prod-count').textContent=String(startCount);
@@ -1700,10 +1702,34 @@ window.reportScrap = async function reportScrap(){
 
 function toggleLunch(){
   const btn=document.getElementById('btn-lunch');
-  if(!ctx.lunchStart){ ctx.lunchStart=Date.now(); btn.textContent='▶ REGRESAR DE LONCHE'; btn.className='btn btn-warn btn-lg'; document.getElementById('prod-status').innerHTML='<span style="font-size:12px;color:var(--warn);font-weight:700">⏸ LONCHE</span>'; }
-  else{ ctx.totalLunch+=Math.floor((Date.now()-ctx.lunchStart)/1000); ctx.lunchStart=null; btn.textContent='🍽 LONCHE'; btn.className='btn btn-ghost btn-lg'; document.getElementById('prod-status').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN PRODUCCIÓN</span>'; }
+  if(!ctx.lunchStart){
+    ctx.lunchStart=Date.now();
+    btn.textContent='▶ REGRESAR DE LONCHE'; btn.className='btn btn-warn btn-lg';
+    document.getElementById('prod-status').innerHTML='<span style="font-size:12px;color:var(--warn);font-weight:700">⏸ LONCHE</span>';
+    saveMachineStatus('lunch','Lonche');
+  } else {
+    ctx.totalLunch+=Math.floor((Date.now()-ctx.lunchStart)/1000);
+    ctx.lunchStart=null;
+    btn.textContent='🍽 LONCHE'; btn.className='btn btn-ghost btn-lg';
+    document.getElementById('prod-status').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN PRODUCCIÓN</span>';
+    saveMachineStatus('running','Regreso de lonche');
+  }
 }
 function toggleDowntime(){ document.getElementById('downtime-box').classList.toggle('hidden'); }
+
+// ── Helper: guardar estado de máquina en Supabase ──
+async function saveMachineStatus(status, reason=''){
+  if(!ctx.operation||!ctx.operation.machine_name) return;
+  const rec={
+    id:uid(), session_id:ctx.sessionId,
+    ot_id:ctx.wo?.id||null, operation_id:ctx.operation?.id||null,
+    operator_name:ctx.operator?.name||'',
+    machine_name:ctx.operation.machine_name,
+    status, reason:reason||'',
+    recorded_at:new Date().toISOString()
+  };
+  try{ await sbInsert('machine_status',rec); }catch(e){ console.error('saveMachineStatus:',e); }
+}
 
 // ── Lonche en MONTAJE ──
 function toggleSetupLunch(){
@@ -1712,11 +1738,13 @@ function toggleSetupLunch(){
     ctx.setupLunchStart=Date.now();
     btn.textContent='▶ REGRESAR DE LONCHE'; btn.className='btn btn-warn btn-lg';
     document.getElementById('setup-live').innerHTML='<div class="live-dot" style="background:var(--warn)"></div><span style="font-size:12px;color:var(--warn);font-weight:700"> LONCHE</span>';
+    saveMachineStatus('lunch','Lonche en montaje');
   } else {
     ctx.setupTotalLunch+=Math.floor((Date.now()-ctx.setupLunchStart)/1000);
     ctx.setupLunchStart=null;
     btn.textContent='🍽 LONCHE'; btn.className='btn btn-ghost btn-lg';
     document.getElementById('setup-live').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN MONTAJE</span>';
+    saveMachineStatus('running','Regreso de lonche en montaje');
   }
 }
 
@@ -1731,6 +1759,7 @@ function confirmSetupParo(){
   document.getElementById('setup-btn-paro').disabled=true;
   document.getElementById('setup-btn-lonche').disabled=true;
   document.getElementById('setup-live').innerHTML='<div class="live-dot" style="background:var(--danger)"></div><span style="font-size:12px;color:var(--danger);font-weight:700"> PARO</span>';
+  saveMachineStatus('stopped',ctx.setupDtCat);
 }
 function endSetupParo(){
   if(!ctx.setupDtStart) return;
@@ -1741,18 +1770,29 @@ function endSetupParo(){
   document.getElementById('setup-btn-paro').disabled=false;
   document.getElementById('setup-btn-lonche').disabled=false;
   document.getElementById('setup-live').innerHTML='<div class="live-dot"></div><span style="font-size:12px;color:var(--green);font-weight:700"> EN MONTAJE</span>';
+  saveMachineStatus('running','Paro de montaje terminado');
   const total=ctx.setupDowntimes.reduce((a,d)=>a+d.secs,0);
   document.getElementById('setup-dt-list').innerHTML=
     '<div style="color:var(--muted);margin-bottom:4px">Paros: '+fmtSec(total)+'</div>'+
     ctx.setupDowntimes.map(d=>'<div style="display:flex;justify-content:space-between"><span style="color:var(--danger)">'+d.cat+'</span><span style="font-family:DM Mono,monospace;color:var(--muted)">'+fmtSec(d.secs)+'</span></div>').join('');
 }
-function confirmDowntime(){ ctx.dtCat=document.getElementById('dt-cat').value; ctx.dtStart=Date.now(); document.getElementById('downtime-box').classList.add('hidden'); document.getElementById('end-downtime-box').classList.remove('hidden'); document.getElementById('btn-downtime').disabled=true; }
+function confirmDowntime(){
+  ctx.dtCat=document.getElementById('dt-cat').value;
+  ctx.dtStart=Date.now();
+  document.getElementById('downtime-box').classList.add('hidden');
+  document.getElementById('end-downtime-box').classList.remove('hidden');
+  document.getElementById('btn-downtime').disabled=true;
+  saveMachineStatus('stopped',ctx.dtCat);
+}
 function cancelDowntime(){ document.getElementById('downtime-box').classList.add('hidden'); }
 function endDowntime(){
   if(!ctx.dtStart) return;
   const secs=Math.floor((Date.now()-ctx.dtStart)/1000);
   ctx.downtimes.push({id:uid(),cat:ctx.dtCat,secs});
-  ctx.dtStart=null; document.getElementById('end-downtime-box').classList.add('hidden'); document.getElementById('btn-downtime').disabled=false;
+  ctx.dtStart=null;
+  document.getElementById('end-downtime-box').classList.add('hidden');
+  document.getElementById('btn-downtime').disabled=false;
+  saveMachineStatus('running','Paro terminado');
   document.getElementById('dt-list-box').style.display='block';
   const total=ctx.downtimes.reduce((a,d)=>a+d.secs,0);
   document.getElementById('dt-total').textContent=fmtSec(total);
@@ -1783,6 +1823,7 @@ async function markOpComplete(netSec,piecesProduced,isSecondary){
       await sbUpdate('machine_load',{id:mlEntry.id},{status:'completed',completed_at:new Date().toISOString(),efficiency:e});
     }
   }catch(er){ console.error(er); }
+  saveMachineStatus('completed','Operación concluida');
   if(!isSecondary){ clearInterval(tickInterval); showStep('step-select'); }
 }
 
@@ -1809,6 +1850,7 @@ async function finishProduction(){
   const sum={id:uid(),session_id:ctx.sessionId,ot_id:ctx.wo.id,ot_number:ctx.wo.number,product_id:ctx.product.id,product_name:ctx.product.name,product_code:ctx.product.code,operation_id:ctx.operation.id,operation_name:ctx.operation.name,op_number:ctx.operation.op_number,op_type:'machining',machine_name:ctx.operation.machine_name,operator_id:ctx.operator.id,operator_name:ctx.operator.name,qty:ctx.wo.qty,type:'summary',pieces_produced:totalProduced,efficiency:e,total_net_sec:net,lunch_sec:ctx.totalLunch,downtimes:ctx.downtimes,recorded_at:new Date().toISOString(),date_label:dateStr(Date.now())};
   try{ await sbInsert('sessions',sum); }catch(er){ console.error(er); }
   sessions.unshift(sum);
+  saveMachineStatus('stopped','Fin de turno');
   showStep('step-select');
 }
 
@@ -4160,16 +4202,18 @@ let _dashInterval=null;
 async function loadDashboardData(){
   const today=dateStr(Date.now());
   try{
-    const [sess,scrap]=await Promise.all([
+    const [sess,scrap,mStatus]=await Promise.all([
       sbSelect('sessions','select=*&date_label=eq.'+encodeURIComponent(today)+'&order=recorded_at.desc'),
-      sbSelect('ot_scrap','select=*&order=recorded_at.desc&limit=500')
+      sbSelect('ot_scrap','select=*&order=recorded_at.desc&limit=500'),
+      sbSelect('machine_status','select=*&order=recorded_at.desc&limit=200')
     ]);
-    return {sess:sess||[],scrap:scrap||[]};
-  }catch(e){ return {sess:sessions||[],scrap:otScrap||[]}; }
+    return {sess:sess||[],scrap:scrap||[],mStatus:mStatus||[]};
+  }catch(e){ return {sess:sessions||[],scrap:otScrap||[],mStatus:[]}; }
 }
 
-function buildDashCards(todaySess,scrapSess){
+function buildDashCards(todaySess,scrapSess,mStatus){
   const now=Date.now();
+  mStatus=mStatus||[];
   return DASHBOARD_MACHINES.map(function(machine){
     const machineSess=todaySess.filter(function(s){return s.machine_name===machine;});
     if(!machineSess.length){
@@ -4236,6 +4280,44 @@ function buildDashCards(todaySess,scrapSess){
     const setupPcsCount=parseInt((setupRec&&setupRec.setup_pieces)||(setupRec&&setupRec.setup_pcs)||0);
     const totalPcsAll=prodPcs+setupPcsCount;
     const pending=Math.max(0,lote-totalPcsAll-scrapQty);
+    // ── Semáforo: último estado de machine_status para esta máquina ──
+    const lastMStatus=mStatus.filter(function(s){return s.machine_name===machine;})
+      .sort(function(a,b){return new Date(b.recorded_at)-new Date(a.recorded_at);})[0];
+    const msStatus=lastMStatus?lastMStatus.status:'';
+    const msReason=lastMStatus?(lastMStatus.reason||''):'';
+
+    // 5 estados con colores distintos y significado único
+    // 🟢 Verde    = EN OPERACIÓN (máquina corriendo)
+    // 🔴 Rojo     = PARO (con motivo visible)
+    // 🟡 Amarillo = LONCHE
+    // 🔵 Azul     = CONCLUIDO (operación terminada exitosamente)
+    // ⚫ Gris     = SIN ACTIVIDAD
+    let semColor, semLabel, semDetail='', semBg;
+    if(!lastMStatus||!machineSess.length){
+      semColor='#666666'; semBg='rgba(102,102,102,.1)'; semLabel='SIN ACTIVIDAD';
+    } else if(msStatus==='running'){
+      semColor='#10b981'; semBg='rgba(16,185,129,.12)'; semLabel='EN OPERACIÓN';
+    } else if(msStatus==='lunch'){
+      semColor='#f59e0b'; semBg='rgba(245,158,11,.12)'; semLabel='LONCHE';
+      semDetail='Operador en lonche';
+    } else if(msStatus==='stopped'){
+      semColor='#ef4444'; semBg='rgba(239,68,68,.12)'; semLabel='PARO';
+      semDetail=msReason||'Sin especificar';
+    } else if(msStatus==='completed'){
+      semColor='#3b82f6'; semBg='rgba(59,130,246,.12)'; semLabel='CONCLUIDO';
+      semDetail='Operación terminada';
+    } else {
+      semColor='#666666'; semBg='rgba(102,102,102,.1)'; semLabel='SIN ACTIVIDAD';
+    }
+
+    const semBtn='<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:'+semBg+';border:1px solid '+semColor+'33;margin-bottom:8px">'
+      +'<div style="width:12px;height:12px;border-radius:50%;background:'+semColor
+      +';box-shadow:0 0 6px '+semColor+';flex-shrink:0'+(msStatus==='running'?';animation:pulse 1.5s infinite':'')+'"></div>'
+      +'<div style="flex:1">'
+      +'<div style="font-size:10px;font-weight:700;color:'+semColor+';text-transform:uppercase;letter-spacing:.5px;line-height:1.2">'+semLabel+'</div>'
+      +(semDetail?'<div style="font-size:10px;color:'+semColor+';opacity:.8;line-height:1.2">'+semDetail+'</div>':'')
+      +'</div>'
+      +'</div>';
     const statusTag=isConcluded
       ?'<span class="tag" style="background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)">✓ CONCLUIDO</span>'
       :isInSetup
@@ -4243,8 +4325,9 @@ function buildDashCards(todaySess,scrapSess){
         :'<span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)">▶ PRODUCCIÓN</span>';
     const bdrColor=isConcluded?'rgba(16,185,129,.2)':isInSetup?'rgba(245,158,11,.3)':'rgba(0,212,255,.2)';
     return '<div class="card" style="border:1px solid '+bdrColor+';'+(!isActive&&!isConcluded?'opacity:.5':'')+'">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
       '<div style="font-size:14px;color:var(--accent2);font-weight:700">'+machine+'</div>'+statusTag+'</div>'+
+      semBtn+
       '<div style="font-weight:700;font-size:13px;margin-bottom:1px">'+productName+'</div>'+
       '<div style="font-size:11px;color:var(--muted);margin-bottom:3px">'+productCode+' · Op.'+opNum+' '+opName+'</div>'+
       '<div style="font-size:11px;color:var(--accent2);margin-bottom:8px">👤 '+operatorName+(lote?' &nbsp;·&nbsp; Lote: '+lote:'')+'</div>'+
@@ -4276,7 +4359,7 @@ window.renderDashboard = async function renderDashboard(){
   const dash=document.getElementById('c-dashboard-list');
   if(!dash) return;
   const {sess,scrap}=await loadDashboardData();
-  const cards=buildDashCards(sess,scrap);
+  const cards=buildDashCards(sess,scrap,[]);
   dash.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">'+cards.join('')+'</div>';
   if(_dashInterval) clearInterval(_dashInterval);
   _dashInterval=setInterval(async function(){
@@ -4285,7 +4368,7 @@ window.renderDashboard = async function renderDashboard(){
       clearInterval(_dashInterval); _dashInterval=null; return;
     }
     const fresh=await loadDashboardData();
-    el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">'+buildDashCards(fresh.sess,fresh.scrap).join('')+'</div>';
+    el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">'+buildDashCards(fresh.sess,fresh.scrap,fresh.mStatus).join('')+'</div>';
   },30000);
 }
 function buildConsultaProdCard(p){
