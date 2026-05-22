@@ -4178,12 +4178,16 @@ function buildDashCards(todaySess,scrapSess){
         +'<div style="color:var(--muted);font-size:12px;text-align:center;padding:18px 0">SIN ACTIVIDAD</div>'
         +'</div>';
     }
-    const sessionIds=[...new Set(machineSess.map(function(s){return s.session_id;}))];
+    // Ordenar sessionIds por fecha descendente — más reciente primero
+    const sessionIds=[...new Set(machineSess
+      .sort(function(a,b){return new Date(b.recorded_at)-new Date(a.recorded_at);})
+      .map(function(s){return s.session_id;})
+    )];
     let activeSessionId=null, hasProd=false;
     for(const sid of sessionIds){
       const sr=machineSess.filter(function(s){return s.session_id===sid;});
       const hasSetup=sr.some(function(s){return s.type==='setup'||s.type==='setup_start';});
-      const hasComplete=sr.some(function(s){return s.type==='op_complete';});  // summary=fin turno, NO es op completa
+      const hasComplete=sr.some(function(s){return s.type==='op_complete';});
       const hasPiece=sr.some(function(s){return s.type==='piece';});
       if(hasSetup&&!hasComplete){activeSessionId=sid;hasProd=hasPiece;break;}
     }
@@ -4204,10 +4208,14 @@ function buildDashCards(todaySess,scrapSess){
     const stdSetupMin=parseFloat((setupRec&&setupRec.std_time)||0);
     const setupEff=(setupActSec>0&&stdSetupMin>0)?Math.round((stdSetupMin*60/setupActSec)*100):0;
     const setupEc=setupEff>=90?'var(--green)':setupEff>=70?'var(--warn)':'var(--danger)';
-    const prodPcs=pieceRecs.length;
-    const totalActSec=pieceRecs.reduce(function(a,s){return a+(parseInt(s.actual_sec)||0);},0);
-    const stdUnit=parseFloat((pieceRecs[0]&&pieceRecs[0].std_time)||(setupRec&&setupRec.std_time)||0)*60;
-    const prodEff=(prodPcs>0&&totalActSec>0&&stdUnit>0)?Math.round((prodPcs*stdUnit)/totalActSec*100):0;
+    // PIEZAS: acumulado de todas las sesiones del día
+    const allPieceRecs=machineSess.filter(function(s){return s.type==='piece';});
+    const prodPcs=allPieceRecs.length;
+    // EFICIENCIA: solo de la sesión activa actual (pieceRecs = sesión más reciente)
+    const effPieces=pieceRecs.length>0?pieceRecs:allPieceRecs;
+    const totalActSec=effPieces.reduce(function(a,s){return a+(parseInt(s.actual_sec)||0);},0);
+    const stdUnit=parseFloat((effPieces[0]&&effPieces[0].std_time)||(setupRec&&setupRec.std_time)||0)*60;
+    const prodEff=(effPieces.length>0&&totalActSec>0&&stdUnit>0)?Math.round((effPieces.length*stdUnit)/totalActSec*100):0;
     const prodEc=prodEff>=90?'var(--green)':prodEff>=70?'var(--warn)':'var(--danger)';
     // Filter scrap by session_id for current session accuracy
     const sessionOtId=setupRec&&setupRec.ot_id||(dispRecs[0]&&dispRecs[0].ot_id);
@@ -4224,6 +4232,7 @@ function buildDashCards(todaySess,scrapSess){
     // Count setup pieces from sessions with type='piece' recorded before first prod piece
     // Actually setup pieces are tracked as part of the session qty field in goProduction
     // We need to find setup_pieces from context - stored in sessions as setup record's setup_pieces field
+    // Setup pieces del setup más reciente
     const setupPcsCount=parseInt((setupRec&&setupRec.setup_pieces)||(setupRec&&setupRec.setup_pcs)||0);
     const totalPcsAll=prodPcs+setupPcsCount;
     const pending=Math.max(0,lote-totalPcsAll-scrapQty);
