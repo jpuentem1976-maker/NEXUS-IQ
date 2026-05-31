@@ -2937,7 +2937,7 @@ async function deleteOperator(id){
 /* ═══════════════════════════════════════════════════════
    ENGINEERING — TOOLING BY MACHINE
 ═══════════════════════════════════════════════════════ */
-const TARGET_MACHINES=['Torno CNC Cadet','Torno CNC Crown','Torno CNC Viwa','Centro de Maquinado Viwa','Centro de Maquinado V3016'];
+const TARGET_MACHINES=['Torno CNC Cadet','Torno CNC Crown','Torno CNC Viwa','Centro de Maquinado Viwa','Centro de Maquinado V3016','Sander'];
 
 function renderTooling(){
   const body=document.getElementById('tooling-body');
@@ -3015,7 +3015,7 @@ function renderMachineTimes(){
   const MAQUINAS = [
     'Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa',
     'Centro de Maquinado Viwa','Centro de Maquinado V3016',
-    'Rectificadora BU-28','Rectificadora Bryant'
+    'Rectificadora BU-28','Rectificadora Bryant','Sander'
   ];
   const body = document.getElementById('machine-times-body');
   if(!body) return;
@@ -4196,7 +4196,7 @@ window.toggleConsultaProd = function toggleConsultaProd(pid){
   if(a) a.style.transform=open?'':'rotate(90deg)';
 }
 
-const DASHBOARD_MACHINES=['Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa','Centro de Maquinado V3016','Centro de Maquinado Viwa','Rectificadora Bryant','Rectificadora BU-28'];
+const DASHBOARD_MACHINES=['Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa','Centro de Maquinado V3016','Centro de Maquinado Viwa','Rectificadora Bryant','Rectificadora BU-28','Sander'];
 let _dashInterval=null;
 
 async function loadDashboardData(){
