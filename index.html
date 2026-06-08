@@ -133,7 +133,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   body{background:#fff!important;color:#000!important}
   .card{background:#fff!important;border:1px solid #ccc!important}
   .page{display:block!important}
-  #page-operator,#page-engineering,#page-programming,#config-screen,#loading-overlay{display:none!important}
+  #page-operator,#page-engineering,#page-programming,#page-almacen,#config-screen,#loading-overlay{display:none!important}
   #page-reports{display:block!important;padding:0!important}
 }
 </style>
@@ -175,6 +175,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <button class="nav-btn" id="nb-eng-logout" onclick="engLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" id="nb-programming" onclick="programmingClick()" style="display:flex;align-items:center;gap:4px"><span id="prog-lock">🔒</span> Programación</button>
   <button class="nav-btn" id="nb-prog-logout" onclick="progLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
+  <button class="nav-btn" id="nb-almacen" onclick="almacenClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-lock">🔒</span> Almacén</button>
+  <button class="nav-btn" id="nb-alm-logout" onclick="almLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" onclick="reconectar()" style="font-size:11px;margin-left:4px">🔄</button>
   <div style="margin-left:6px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px;white-space:nowrap"><div class="live-dot"></div>EN LÍNEA</div>
   <button onclick="showDebug()" style="margin-left:6px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);padding:4px 8px;border-radius:6px;font-size:10px;cursor:pointer">🔍</button>
@@ -758,6 +760,134 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 </div>
 
+
+<!-- MODAL ALMACÉN LOGIN -->
+<div id="almacen-modal" class="modal hidden">
+  <div class="modal-box" style="max-width:340px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);margin-bottom:14px">🔒 ALMACÉN</div>
+    <div class="field"><label>Contraseña</label>
+      <input type="password" id="alm-pass" placeholder="••••" onkeydown="if(event.key==='Enter')tryAlmLogin()">
+    </div>
+    <div id="alm-error" class="hidden" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+    <div class="g2">
+      <button class="btn btn-accent" onclick="tryAlmLogin()">Entrar</button>
+      <button class="btn btn-ghost" onclick="closeModal('almacen-modal')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE ALMACÉN -->
+<div id="page-almacen" class="page" style="padding:20px;max-width:1200px;margin:0 auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent2)">ALMACÉN DE MATERIA PRIMA</div>
+    <div id="alm-pending-badge" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700">🔴 <span id="alm-pending-count">0</span> solicitudes pendientes</div>
+  </div>
+
+  <!-- PESTAÑAS -->
+  <div class="ptabs" style="margin-bottom:16px">
+    <button class="ptab active" onclick="setAlmTab('alm-general',this)">📦 Almacén General</button>
+    <button class="ptab" onclick="setAlmTab('alm-transit',this)">🔄 Tránsito Producción</button>
+    <button class="ptab" onclick="setAlmTab('alm-scrap',this)">♻ Merma</button>
+    <button class="ptab" onclick="setAlmTab('alm-movements',this)">📋 Movimientos</button>
+    <button class="ptab" onclick="setAlmTab('alm-suppliers',this)">🏭 Proveedores</button>
+    <button class="ptab" onclick="setAlmTab('alm-report',this)">📊 Reporte Mínimos</button>
+  </div>
+
+  <!-- ALMACÉN GENERAL -->
+  <div id="alm-general" class="subpage active">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-accent btn-sm" onclick="showMpStockForm(null)">+ Nueva Entrada</button>
+      <select id="alm-filter-mat" onchange="renderAlmGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+        <option value="">Todos los materiales</option>
+        <option value="acero">Acero</option>
+        <option value="laton">Latón</option>
+        <option value="aluminio">Aluminio</option>
+        <option value="bronce">Bronce</option>
+        <option value="tubing">Tubing</option>
+        <option value="forja">Forja</option>
+        <option value="fundicion">Fundición</option>
+      </select>
+      <select id="alm-filter-status" onchange="renderAlmGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+        <option value="">Todos los estados</option>
+        <option value="disponible">Disponible</option>
+        <option value="apartado">Apartado</option>
+        <option value="parcial">Apartado parcial</option>
+      </select>
+    </div>
+    <div id="alm-general-form"></div>
+    <div id="alm-general-list"></div>
+  </div>
+
+  <!-- TRÁNSITO PRODUCCIÓN -->
+  <div id="alm-transit" class="subpage">
+    <div id="alm-transit-list"></div>
+  </div>
+
+  <!-- MERMA -->
+  <div id="alm-scrap" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <div style="font-size:13px;color:var(--muted)">Sobrantes pendientes de autorización</div>
+      <button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)" onclick="showBajaModal()">📋 Solicitar baja del mes</button>
+    </div>
+    <div id="alm-scrap-list"></div>
+  </div>
+
+  <!-- MOVIMIENTOS -->
+  <div id="alm-movements" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="date" id="alm-mov-from" onchange="renderAlmMovements()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+      <input type="date" id="alm-mov-to" onchange="renderAlmMovements()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+    </div>
+    <div id="alm-movements-list"></div>
+  </div>
+
+  <!-- PROVEEDORES -->
+  <div id="alm-suppliers" class="subpage">
+    <div style="margin-bottom:14px">
+      <button class="btn btn-accent btn-sm" onclick="showSupplierForm(null)">+ Nuevo Proveedor</button>
+    </div>
+    <div id="alm-suppliers-form"></div>
+    <div id="alm-suppliers-list"></div>
+  </div>
+
+  <!-- REPORTE MÍNIMOS -->
+  <div id="alm-report" class="subpage">
+    <div id="alm-report-body"></div>
+  </div>
+</div>
+
+<!-- MODAL BAJA MERMA -->
+<div id="baja-modal" class="modal hidden">
+  <div class="modal-box" style="max-width:420px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--danger);margin-bottom:14px">SOLICITAR BAJA DE MERMA</div>
+    <div id="baja-list-preview" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="field"><label>Contraseña Almacenista (4340)</label>
+      <input type="password" id="baja-pass1" placeholder="••••">
+    </div>
+    <div id="baja-error" class="hidden" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+    <div class="g2">
+      <button class="btn btn-danger" onclick="submitBajaSolicitud()">Solicitar baja</button>
+      <button class="btn btn-ghost" onclick="closeModal('baja-modal')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AUTORIZAR BAJA -->
+<div id="autorizar-modal" class="modal hidden">
+  <div class="modal-box" style="max-width:420px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--warn);margin-bottom:14px">AUTORIZAR BAJA DE MERMA</div>
+    <div id="autorizar-list" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="field"><label>Contraseña Responsable de Inventarios (52100)</label>
+      <input type="password" id="autorizar-pass" placeholder="••••">
+    </div>
+    <div id="autorizar-error" class="hidden" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+    <div class="g2">
+      <button class="btn btn-warn" onclick="submitAutorizarBaja()">Autorizar baja definitiva</button>
+      <button class="btn btn-ghost" onclick="closeModal('autorizar-modal')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOADING -->
 <div id="loading-overlay" class="hidden">
   <div style="text-align:center">
@@ -775,6 +905,8 @@ console.log("NEXUS IQ v6.0 JS LOADED OK");
 const PASS_REPORTS     = '4140';
 const PASS_ENGINEERING = '9840';
 const PASS_PROGRAMMING = '8620';
+const PASS_ALMACEN     = '4340';
+const PASS_INVENTARIOS = '52100';
 const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
 
@@ -1138,6 +1270,16 @@ async function initApp(){
   }
 }
 
+async function loadAlmDataSilent(){
+  try{
+    const [stock,transit]=await Promise.all([
+      sbSelect('mp_stock','select=*&order=material.asc'),
+      sbSelect('mp_transit','select=*&status=eq.listo'),
+    ]);
+    mpStock=stock||[]; mpTransit=transit||[];
+  }catch(e){ console.warn('loadAlmDataSilent:',e); }
+}
+
 async function loadAllData(){
   const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
@@ -1199,6 +1341,7 @@ function goPage(p){
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('nb-'+p)?.classList.add('active');
   if(p==='reports'){ loadAllData().then(refreshReportSelects); }
+  if(p==='almacen'){ loadAlmData(); }
   if(p==='engineering'){ loadAllData().then(renderEngineering); }
   if(p==='programming'){ loadAllData().then(renderProgramming); }
   if(p==='consulta'){ loadAllData().then(renderConsulta); }
@@ -5332,6 +5475,707 @@ function renderCompare(){
   </div>`;
   body.innerHTML=html;
 }
+
+
+// ═══════════════════════════════════════════════════════
+//  MÓDULO ALMACÉN DE MATERIA PRIMA
+// ═══════════════════════════════════════════════════════
+
+// ── Variables globales ──
+let almAuth = false;
+let mpStock = [], mpReservations = [], mpTransit = [], mpScrap = [], mpMovements = [], mpSuppliers = [];
+
+// ── Autenticación ──
+function almacenClick(){
+  if(almAuth){ goPage('almacen'); loadAlmData(); return; }
+  document.getElementById('alm-pass').value='';
+  document.getElementById('alm-error').classList.add('hidden');
+  openModal('almacen-modal');
+  setTimeout(()=>document.getElementById('alm-pass').focus(),100);
+}
+function tryAlmLogin(){
+  const v=document.getElementById('alm-pass').value;
+  if(v===PASS_ALMACEN){
+    almAuth=true;
+    document.getElementById('alm-lock').textContent='🔓';
+    document.getElementById('nb-alm-logout').style.display='';
+    closeModal('almacen-modal');
+    goPage('almacen');
+    loadAlmData();
+  } else {
+    document.getElementById('alm-error').textContent='Contraseña incorrecta';
+    document.getElementById('alm-error').classList.remove('hidden');
+  }
+}
+function almLogout(){
+  almAuth=false;
+  document.getElementById('alm-lock').textContent='🔒';
+  document.getElementById('nb-alm-logout').style.display='none';
+  goPage('operator');
+}
+window.almacenClick=almacenClick;
+window.tryAlmLogin=tryAlmLogin;
+window.almLogout=almLogout;
+
+// ── Navegación pestañas ──
+function setAlmTab(id,btn){
+  document.querySelectorAll('#page-almacen .subpage').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('#page-almacen .ptab').forEach(el=>el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id==='alm-general')   renderAlmGeneral();
+  if(id==='alm-transit')   renderAlmTransit();
+  if(id==='alm-scrap')     renderAlmScrap();
+  if(id==='alm-movements') renderAlmMovements();
+  if(id==='alm-suppliers') renderAlmSuppliers();
+  if(id==='alm-report')    renderAlmReport();
+}
+window.setAlmTab=setAlmTab;
+
+// ── Cargar datos ──
+async function loadAlmData(){
+  try{
+    const [stock,res,transit,scrap,mov,sup]=await Promise.all([
+      sbSelect('mp_stock','select=*&order=material.asc,diametro.asc'),
+      sbSelect('mp_reservations','select=*&order=requested_at.desc'),
+      sbSelect('mp_transit','select=*&order=moved_at.desc'),
+      sbSelect('mp_scrap','select=*&order=solicitado_at.desc'),
+      sbSelect('mp_movements','select=*&order=recorded_at.desc&limit=500'),
+      sbSelect('mp_suppliers','select=*&order=name.asc'),
+    ]);
+    mpStock=stock||[]; mpReservations=res||[]; mpTransit=transit||[];
+    mpScrap=scrap||[]; mpMovements=mov||[]; mpSuppliers=sup||[];
+    // Contador de solicitudes pendientes (tránsito no liberado)
+    const pending=mpTransit.filter(t=>t.status==='listo').length;
+    const badge=document.getElementById('alm-pending-badge');
+    const cnt=document.getElementById('alm-pending-count');
+    if(badge&&cnt){ cnt.textContent=pending; badge.style.display=pending>0?'':'none'; }
+    renderAlmGeneral();
+  }catch(e){ console.error('loadAlmData:',e); }
+}
+
+// ── Helpers de cálculo ──
+const DENSITY_MP={acero:0.2836,laton:0.3075,aluminio:0.0975,bronce:0.295,tubing:0.2836,forja:0.2836,fundicion:0.26};
+function calcKgBarra(mat){
+  const d=DENSITY_MP[mat.material]||0.2836;
+  const diam=parseFloat(mat.diametro)||0;
+  const dint=parseFloat(mat.diametro_int)||0;
+  const lon=parseFloat(mat.longitud_in)||0;
+  if(!diam||!lon) return 0;
+  let vol=0;
+  if(mat.forma==='barra_hueca'||mat.forma==='tubing'){
+    vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint,2))*lon;
+  } else if(mat.forma==='hexagonal'){
+    vol=Math.pow(diam,2)*1.155*(Math.PI/4)*lon;
+  } else {
+    vol=(Math.PI/4)*Math.pow(diam,2)*lon;
+  }
+  return parseFloat((vol*d*0.4536).toFixed(3));
+}
+function mToIn(m){ return parseFloat((parseFloat(m)*39.3701).toFixed(3)); }
+function semaforo(cant,min){
+  if(cant<=0) return {color:'var(--danger)',label:'SIN STOCK'};
+  if(cant<=min) return {color:'var(--danger)',label:'BAJO MÍNIMO'};
+  if(cant<=min*1.5) return {color:'var(--warn)',label:'EN MÍNIMO'};
+  return {color:'var(--green)',label:'OK'};
+}
+
+// ══════════════════════════════════════
+//  ALMACÉN GENERAL
+// ══════════════════════════════════════
+function renderAlmGeneral(){
+  const list=document.getElementById('alm-general-list');
+  if(!list) return;
+  const matF=document.getElementById('alm-filter-mat')?.value||'';
+  const stF=document.getElementById('alm-filter-status')?.value||'';
+  let items=mpStock.filter(s=>(!matF||s.material===matF)&&(!stF||s.status===stF));
+  if(!items.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin registros. Agrega la primera entrada de material.</div>'; return; }
+  list.innerHTML=items.map(s=>{
+    const sem=semaforo(s.cantidad,s.cantidad_min);
+    const kgBarra=calcKgBarra(s);
+    const kgTotal=(kgBarra*(s.cantidad||0)).toFixed(1);
+    const valor=((parseFloat(s.precio_kg)||0)*parseFloat(kgTotal)).toFixed(2);
+    const statusColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':'var(--warn)';
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:14px;color:var(--text)">${s.material?.toUpperCase()||'--'}</span>
+            <span class="tag" style="color:var(--muted)">${s.forma||'--'}</span>
+            ${s.diametro?`<span class="tag" style="color:var(--accent)">Ø ${s.diametro}"${s.diametro_int?' / Øi '+s.diametro_int+'"':''}</span>`:''}
+            <span class="tag" style="color:var(--muted)">${s.longitud_in?s.longitud_in+'"':'--'}</span>
+            <span class="tag" style="background:rgba(0,0,0,.2);color:${statusColor}">${s.status||'disponible'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
+            <span>Cant: <strong style="color:${sem.color};font-size:13px">${s.cantidad||0}</strong> barras</span>
+            <span>Mín: <strong style="color:var(--muted)">${s.cantidad_min||0}</strong></span>
+            <span style="color:${sem.color};font-weight:700">${sem.label}</span>
+            <span>Kg/barra: <strong style="color:var(--text)">${kgBarra}</strong></span>
+            <span>Kg total: <strong style="color:var(--accent2)">${kgTotal}</strong></span>
+            <span>$/kg: <strong style="color:var(--text)">${s.precio_kg||0}</strong></span>
+            <span>Valor: <strong style="color:var(--green)">$${valor}</strong></span>
+            ${s.ubicacion?`<span>📍 ${s.ubicacion}</span>`:''}
+            ${s.supplier_name?`<span>🏭 ${s.supplier_name}</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-accent" onclick="showMpStockForm('${s.id}')">✏</button>
+          <button class="btn btn-sm" style="background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3)" onclick="showApartarForm('${s.id}')">📌 Apartar</button>
+          <button class="btn btn-sm" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)" onclick="showTransitForm('${s.id}')">→ Tránsito</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.renderAlmGeneral=renderAlmGeneral;
+
+// ── Formulario nueva entrada / editar ──
+function showMpStockForm(id){
+  const s=id?mpStock.find(x=>x.id===id):null;
+  const supOpts=mpSuppliers.map(sp=>`<option value="${sp.id}" ${s?.supplier_id===sp.id?'selected':''}>${sp.name}</option>`).join('');
+  const MATERIALES=['acero','laton','aluminio','bronce','tubing','forja','fundicion'];
+  const FORMAS=['redondo','hexagonal','barra_hueca','cuadrado','tubing','pieza'];
+  document.getElementById('alm-general-form').innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        <div class="field"><label>MATERIAL</label>
+          <select id="mpf-mat">
+            ${MATERIALES.map(m=>`<option value="${m}" ${s?.material===m?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>FORMA</label>
+          <select id="mpf-forma">
+            ${FORMAS.map(f=>`<option value="${f}" ${s?.forma===f?'selected':''}>${f.charAt(0).toUpperCase()+f.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>DIÁMETRO EXT. (")</label>
+          <input type="number" step="0.001" id="mpf-diam" value="${s?.diametro||''}" placeholder="1.790">
+        </div>
+        <div class="field"><label>DIÁMETRO INT. (") — Barra hueca/tubing</label>
+          <input type="number" step="0.001" id="mpf-dint" value="${s?.diametro_int||''}" placeholder="0.000">
+        </div>
+        <div class="field"><label>LONGITUD (metros)</label>
+          <input type="number" step="0.001" id="mpf-long-m" value="${s?.longitud_m||''}" placeholder="6.000" oninput="this.nextElementSibling.textContent='= '+(parseFloat(this.value)*39.3701||0).toFixed(3)+'&quot;'">
+          <small style="color:var(--muted)">${s?.longitud_in?'= '+s.longitud_in+'"':''}</small>
+        </div>
+        <div class="field"><label>CANTIDAD (barras)</label>
+          <input type="number" id="mpf-cant" value="${s?.cantidad||''}" placeholder="8">
+        </div>
+        <div class="field"><label>MÍNIMO (barras)</label>
+          <input type="number" id="mpf-min" value="${s?.cantidad_min||''}" placeholder="3">
+        </div>
+        <div class="field"><label>PRECIO/KG ($)</label>
+          <input type="number" step="0.01" id="mpf-precio" value="${s?.precio_kg||''}" placeholder="0.00">
+        </div>
+        <div class="field"><label>PROVEEDOR</label>
+          <select id="mpf-sup"><option value="">-- Sin proveedor --</option>${supOpts}</select>
+        </div>
+        <div class="field"><label>UBICACIÓN</label>
+          <input type="text" id="mpf-ubic" value="${s?.ubicacion||''}" placeholder="Rack A - Pos 3">
+        </div>
+        <div class="field"><label>LOTE / REFERENCIA</label>
+          <input type="text" id="mpf-lote" value="${s?.lote||''}" placeholder="Opcional">
+        </div>
+        <div class="field"><label>NOTAS</label>
+          <input type="text" id="mpf-notes" value="${s?.notes||''}" placeholder="Opcional">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-accent" onclick="saveMpStock('${s?.id||''}')">💾 Guardar</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('alm-general-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+window.showMpStockForm=showMpStockForm;
+
+async function saveMpStock(id){
+  const longM=parseFloat(document.getElementById('mpf-long-m').value)||0;
+  const longIn=parseFloat((longM*39.3701).toFixed(3));
+  const supEl=document.getElementById('mpf-sup');
+  const supId=supEl.value||null;
+  const supName=supId?mpSuppliers.find(s=>s.id===supId)?.name||'':'';
+  const rec={
+    material:document.getElementById('mpf-mat').value,
+    forma:document.getElementById('mpf-forma').value,
+    diametro:parseFloat(document.getElementById('mpf-diam').value)||null,
+    diametro_int:parseFloat(document.getElementById('mpf-dint').value)||null,
+    longitud_m:longM||null,
+    longitud_in:longIn||null,
+    cantidad:parseInt(document.getElementById('mpf-cant').value)||0,
+    cantidad_min:parseInt(document.getElementById('mpf-min').value)||0,
+    precio_kg:parseFloat(document.getElementById('mpf-precio').value)||0,
+    supplier_id:supId,
+    supplier_name:supName,
+    ubicacion:document.getElementById('mpf-ubic').value||null,
+    lote:document.getElementById('mpf-lote').value||null,
+    notes:document.getElementById('mpf-notes').value||null,
+    updated_at:new Date().toISOString(),
+  };
+  // Calcular kg
+  rec.kg_barra=calcKgBarra(rec);
+  rec.kg_total=parseFloat((rec.kg_barra*(rec.cantidad||0)).toFixed(2));
+  rec.valor_total=parseFloat((rec.kg_total*(rec.precio_kg||0)).toFixed(2));
+  try{
+    if(id){
+      await sbUpdate('mp_stock',{id},rec);
+      const idx=mpStock.findIndex(s=>s.id===id);
+      if(idx>=0) mpStock[idx]={...mpStock[idx],...rec};
+    } else {
+      rec.id=uid();
+      rec.status='disponible';
+      await sbInsert('mp_stock',rec);
+      mpStock.unshift(rec);
+      // Registrar movimiento de entrada
+      await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:rec.id,
+        material:rec.material,forma:rec.forma,diametro:rec.diametro,longitud_in:rec.longitud_in,
+        cantidad:rec.cantidad,kg:rec.kg_total,valor:rec.valor_total,
+        origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
+        recorded_at:new Date().toISOString()});
+    }
+    document.getElementById('alm-general-form').innerHTML='';
+    renderAlmGeneral();
+  }catch(e){ alert('Error al guardar: '+e.message); }
+}
+window.saveMpStock=saveMpStock;
+
+// ── Apartar material ──
+function showApartarForm(stockId){
+  const s=mpStock.find(x=>x.id===stockId);
+  if(!s) return;
+  const otOpts=workOrders.filter(o=>o.status==='programming'||o.status==='released')
+    .map(o=>{const p=products.find(pr=>pr.id===o.product_id);return `<option value="${o.id}">${o.number} — ${p?.name||'?'} (${p?.code||''})</option>`;}).join('');
+  document.getElementById('alm-general-form').innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(245,158,11,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--warn);margin-bottom:12px">📌 APARTAR MATERIAL</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        ${s.material?.toUpperCase()} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — 
+        Disponible: <strong style="color:var(--green)">${s.cantidad||0} barras</strong>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field"><label>ORDEN DE TRABAJO</label>
+          <select id="apt-ot"><option value="">-- Selecciona OT --</option>${otOpts}</select>
+        </div>
+        <div class="field"><label>CANTIDAD A APARTAR (barras)</label>
+          <input type="number" id="apt-cant" placeholder="8" min="1" max="${s.cantidad||0}">
+        </div>
+      </div>
+      <div id="apt-alerta" class="hidden" style="color:var(--warn);font-size:12px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-warn" onclick="confirmarApartado('${stockId}')">📌 Confirmar apartado</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('alm-general-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+window.showApartarForm=showApartarForm;
+
+async function confirmarApartado(stockId){
+  const s=mpStock.find(x=>x.id===stockId);
+  if(!s) return;
+  const otId=document.getElementById('apt-ot').value;
+  const cant=parseInt(document.getElementById('apt-cant').value)||0;
+  if(!otId){ alert('Selecciona una OT'); return; }
+  if(cant<=0){ alert('Ingresa una cantidad válida'); return; }
+  const wo=workOrders.find(o=>o.id===otId);
+  const prod=products.find(p=>p.id===wo?.product_id);
+  const disponible=s.cantidad||0;
+  const falta=Math.max(0,cant-disponible);
+  const aptReal=Math.min(cant,disponible);
+  if(falta>0){
+    const alEl=document.getElementById('apt-alerta');
+    alEl.textContent=`⚠ Material insuficiente: se apartarán ${aptReal} barras. Faltan ${falta} barras. Se notificará al almacenista.`;
+    alEl.classList.remove('hidden');
+  }
+  try{
+    // Crear reservación
+    const res={id:uid(),mp_stock_id:stockId,ot_id:otId,ot_number:wo?.number||'',
+      product_id:wo?.product_id||null,product_name:prod?.name||'',product_code:prod?.code||'',
+      cantidad_req:cant,cantidad_apt:aptReal,cantidad_falta:falta,
+      material:s.material,forma:s.forma,diametro:s.diametro,longitud_in:s.longitud_in,
+      status:falta>0?'parcial':'apartado',requested_by:'Programación',
+      requested_at:new Date().toISOString()};
+    await sbInsert('mp_reservations',res);
+    // Actualizar stock
+    const newCant=Math.max(0,disponible-aptReal);
+    const newStatus=newCant===0?'apartado':falta>0?'parcial':'disponible';
+    await sbUpdate('mp_stock',{id:stockId},{cantidad:newCant,status:newStatus,updated_at:new Date().toISOString()});
+    const idx=mpStock.findIndex(x=>x.id===stockId);
+    if(idx>=0){mpStock[idx].cantidad=newCant;mpStock[idx].status=newStatus;}
+    mpReservations.unshift(res);
+    // Registrar movimiento
+    await sbInsert('mp_movements',{id:uid(),tipo:'apartado',mp_stock_id:stockId,
+      ot_id:otId,ot_number:wo?.number||'',product_name:prod?.name||'',
+      material:s.material,forma:s.forma,diametro:s.diametro,longitud_in:s.longitud_in,
+      cantidad:aptReal,usuario:'Programación',origen:'Almacén General',destino:'Apartado',
+      recorded_at:new Date().toISOString()});
+    document.getElementById('alm-general-form').innerHTML='';
+    renderAlmGeneral();
+    alert(`✅ Apartado exitoso: ${aptReal} barras para ${wo?.number||''} — ${prod?.name||''}`+(falta>0?`
+⚠ Faltan ${falta} barras.`:''));
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.confirmarApartado=confirmarApartado;
+
+// ── Mover a Tránsito ──
+function showTransitForm(stockId){
+  const s=mpStock.find(x=>x.id===stockId);
+  if(!s) return;
+  const resItems=mpReservations.filter(r=>r.mp_stock_id===stockId&&(r.status==='apartado'||r.status==='parcial'));
+  const resOpts=resItems.map(r=>`<option value="${r.id}">${r.ot_number} — ${r.product_name}</option>`).join('');
+  document.getElementById('alm-general-form').innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(16,185,129,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--green);margin-bottom:12px">→ MOVER A TRÁNSITO PRODUCCIÓN</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        ${s.material?.toUpperCase()} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}"
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+        <div class="field"><label>APARTADO (OT)</label>
+          <select id="tr-res">${resOpts||'<option>Sin apartados</option>'}</select>
+        </div>
+        <div class="field"><label>CANTIDAD BARRAS HABILITADAS</label>
+          <input type="number" id="tr-cant" placeholder="18">
+        </div>
+        <div class="field"><label>KG REALES (pesados)</label>
+          <input type="number" step="0.01" id="tr-kg" placeholder="303.73">
+        </div>
+        <div class="field"><label>LONGITUD REAL (")</label>
+          <input type="number" step="0.001" id="tr-long" value="${s.longitud_in||''}" placeholder="52.125">
+        </div>
+        <div class="field" style="grid-column:1/-1"><label>NOTAS DE HABILITADO</label>
+          <input type="text" id="tr-notes" placeholder="Se agregan 2 tramos cortos al lote...">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-accent" style="background:rgba(16,185,129,.2);border-color:var(--green);color:var(--green)" onclick="confirmarTransito('${stockId}')">✅ Confirmar habilitado</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('alm-general-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+window.showTransitForm=showTransitForm;
+
+async function confirmarTransito(stockId){
+  const s=mpStock.find(x=>x.id===stockId);
+  if(!s) return;
+  const resId=document.getElementById('tr-res').value;
+  const res=mpReservations.find(r=>r.id===resId);
+  const cant=parseInt(document.getElementById('tr-cant').value)||0;
+  const kg=parseFloat(document.getElementById('tr-kg').value)||0;
+  const long=parseFloat(document.getElementById('tr-long').value)||s.longitud_in||0;
+  const notes=document.getElementById('tr-notes').value||'';
+  if(!resId||!cant||!kg){ alert('Completa todos los campos requeridos'); return; }
+  try{
+    const tr={id:uid(),ot_id:res?.ot_id||null,ot_number:res?.ot_number||'',
+      product_id:res?.product_id||null,product_name:res?.product_name||'',product_code:res?.product_code||'',
+      material:s.material,forma:s.forma,diametro:s.diametro,longitud_in:long,
+      cantidad_barras:cant,kg_real:kg,notas_habilitado:notes,
+      status:'listo',moved_by:'Almacenista',moved_at:new Date().toISOString()};
+    await sbInsert('mp_transit',tr);
+    // Actualizar reservación
+    if(res) await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
+    // Actualizar stock — el material ya salió del general
+    await sbUpdate('mp_stock',{id:stockId},{status:'consumido',updated_at:new Date().toISOString()});
+    const idx=mpStock.findIndex(x=>x.id===stockId);
+    if(idx>=0) mpStock[idx].status='consumido';
+    mpTransit.unshift(tr);
+    // Movimiento
+    await sbInsert('mp_movements',{id:uid(),tipo:'transito',mp_stock_id:stockId,
+      ot_id:res?.ot_id||null,ot_number:res?.ot_number||'',product_name:res?.product_name||'',
+      material:s.material,forma:s.forma,diametro:s.diametro,longitud_in:long,
+      cantidad:cant,kg:kg,origen:'Almacén General',destino:'Tránsito Producción',
+      usuario:'Almacenista',recorded_at:new Date().toISOString()});
+    document.getElementById('alm-general-form').innerHTML='';
+    renderAlmGeneral();
+    // Actualizar badge
+    const pending=mpTransit.filter(t=>t.status==='listo').length;
+    const badge=document.getElementById('alm-pending-badge');
+    const cnt=document.getElementById('alm-pending-count');
+    if(badge&&cnt){cnt.textContent=pending;badge.style.display=pending>0?'':'none';}
+    alert(`✅ Material movido a Tránsito Producción para ${res?.ot_number||''} — ${res?.product_name||''}`);
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.confirmarTransito=confirmarTransito;
+
+// ══════════════════════════════════════
+//  TRÁNSITO PRODUCCIÓN
+// ══════════════════════════════════════
+function renderAlmTransit(){
+  const list=document.getElementById('alm-transit-list');
+  if(!list) return;
+  const now=Date.now();
+  if(!mpTransit.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin material en tránsito</div>'; return; }
+  list.innerHTML=mpTransit.map(t=>{
+    const dias=Math.floor((now-new Date(t.moved_at).getTime())/(1000*60*60*24));
+    const alerta7=dias>=7;
+    const statusColor=t.status==='listo'?'var(--accent)':t.status==='liberado'?'var(--green)':'var(--muted)';
+    return `<div class="card" style="margin-bottom:10px;${alerta7&&t.status==='listo'?'border-color:rgba(245,158,11,.4)':''}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <span style="font-family:'DM Mono',monospace;color:var(--accent);font-weight:700">${t.ot_number||'--'}</span>
+            <span style="font-weight:700">${t.product_name||'--'}</span>
+            <span class="tag" style="color:var(--muted)">${t.product_code||''}</span>
+            <span class="tag" style="color:${statusColor}">${t.status==='listo'?'🟡 LISTO PARA LIBERAR':t.status==='liberado'?'🟢 LIBERADO':'--'}</span>
+            ${alerta7&&t.status==='listo'?'<span class="tag" style="color:var(--warn);background:rgba(245,158,11,.1)">⚠ +7 días en tránsito</span>':''}
+          </div>
+          <div style="font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
+            <span>${t.material?.toUpperCase()||'--'} — ${t.forma||''} — Ø ${t.diametro||'--'}"</span>
+            <span>Barras: <strong style="color:var(--text)">${t.cantidad_barras||0}</strong></span>
+            <span>Kg reales: <strong style="color:var(--accent2)">${t.kg_real||0}</strong></span>
+            <span>Long: <strong style="color:var(--text)">${t.longitud_in||'--'}"</strong></span>
+            <span>Días en tránsito: <strong style="color:${alerta7?'var(--warn)':'var(--muted)'}">${dias}</strong></span>
+            ${t.notas_habilitado?`<span>📝 ${t.notas_habilitado}</span>`:''}
+          </div>
+        </div>
+        ${t.status==='listo'?`<button class="btn btn-sm btn-accent" onclick="moverScrapModal('${t.id}')">♻ Merma</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+window.renderAlmTransit=renderAlmTransit;
+
+// ══════════════════════════════════════
+//  MERMA
+// ══════════════════════════════════════
+function renderAlmScrap(){
+  const list=document.getElementById('alm-scrap-list');
+  if(!list) return;
+  const pending=mpScrap.filter(s=>s.status==='pendiente');
+  const autorizados=mpScrap.filter(s=>s.status==='autorizado');
+  let html='';
+  if(pending.length){
+    html+=`<div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:8px">PENDIENTES DE AUTORIZACIÓN (${pending.length})</div>`;
+    html+=pending.map(s=>`<div class="card" style="margin-bottom:8px;border-color:rgba(239,68,68,.2)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;font-size:12px">
+          <strong>${s.material?.toUpperCase()||'--'}</strong> — ${s.forma||''} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}"
+          <span style="color:var(--muted);margin-left:8px">Kg: ${s.kg||'--'}</span>
+          ${s.origen_ot?`<span style="color:var(--muted);margin-left:8px">OT: ${s.origen_ot}</span>`:''}
+          ${s.origen_producto?`<span style="color:var(--muted);margin-left:8px">${s.origen_producto}</span>`:''}
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="openAutorizarModal('${s.id}')">🔐 Autorizar baja</button>
+      </div>
+    </div>`).join('');
+  }
+  if(!pending.length&&!autorizados.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin registros de merma</div>'; return; }
+  list.innerHTML=html;
+}
+window.renderAlmScrap=renderAlmScrap;
+
+function showBajaModal(){
+  const pending=mpScrap.filter(s=>s.status==='pendiente');
+  if(!pending.length){ alert('No hay merma pendiente de baja'); return; }
+  document.getElementById('baja-list-preview').innerHTML=pending.map(s=>
+    `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">
+      ${s.material?.toUpperCase()||''} Ø${s.diametro||''}${s.forma?' '+s.forma:''} — ${s.longitud_in||'--'}" — ${s.kg||0}kg
+    </div>`).join('');
+  document.getElementById('baja-pass1').value='';
+  document.getElementById('baja-error').classList.add('hidden');
+  openModal('baja-modal');
+}
+window.showBajaModal=showBajaModal;
+
+async function submitBajaSolicitud(){
+  const p=document.getElementById('baja-pass1').value;
+  if(p!==PASS_ALMACEN){
+    document.getElementById('baja-error').textContent='Contraseña incorrecta';
+    document.getElementById('baja-error').classList.remove('hidden');
+    return;
+  }
+  // Marcar como "solicitado" — espera autorización
+  const pending=mpScrap.filter(s=>s.status==='pendiente');
+  for(const s of pending){
+    await sbUpdate('mp_scrap',{id:s.id},{status:'solicitado',solicitado_por:'Almacenista',solicitado_at:new Date().toISOString()});
+    s.status='solicitado';
+  }
+  closeModal('baja-modal');
+  renderAlmScrap();
+  alert(`✅ Solicitud de baja enviada. Pendiente autorización del Responsable de Inventarios.`);
+}
+window.submitBajaSolicitud=submitBajaSolicitud;
+
+function openAutorizarModal(scrapId){
+  const s=mpScrap.find(x=>x.id===scrapId);
+  if(!s) return;
+  document.getElementById('autorizar-list').innerHTML=`<div style="font-size:12px;padding:8px;background:var(--bg3);border-radius:6px">
+    ${s.material?.toUpperCase()||''} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — ${s.kg||0} kg
+    ${s.origen_ot?`<br>OT: ${s.origen_ot}`:''}
+  </div>`;
+  document.getElementById('autorizar-pass').value='';
+  document.getElementById('autorizar-error').classList.add('hidden');
+  document.getElementById('autorizar-modal').dataset.scrapId=scrapId;
+  openModal('autorizar-modal');
+}
+window.openAutorizarModal=openAutorizarModal;
+
+async function submitAutorizarBaja(){
+  const p=document.getElementById('autorizar-pass').value;
+  if(p!==PASS_INVENTARIOS){
+    document.getElementById('autorizar-error').textContent='Contraseña incorrecta';
+    document.getElementById('autorizar-error').classList.remove('hidden');
+    return;
+  }
+  const scrapId=document.getElementById('autorizar-modal').dataset.scrapId;
+  const mes=new Date().toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+  await sbUpdate('mp_scrap',{id:scrapId},{status:'autorizado',
+    autorizado_por:'Responsable Inventarios',autorizado_at:new Date().toISOString(),mes_baja:mes});
+  const idx=mpScrap.findIndex(s=>s.id===scrapId);
+  if(idx>=0) mpScrap[idx].status='autorizado';
+  closeModal('autorizar-modal');
+  renderAlmScrap();
+  alert('✅ Baja autorizada y registrada.');
+}
+window.submitAutorizarBaja=submitAutorizarBaja;
+
+// Agregar a merma directamente
+async function moverScrapModal(transitId){
+  const t=mpTransit.find(x=>x.id===transitId);
+  if(!t) return;
+  const long=prompt('Longitud del sobrante (pulgadas):');
+  const kg=prompt('Kg del sobrante:');
+  if(!long||!kg) return;
+  const rec={id:uid(),material:t.material,forma:t.forma,diametro:t.diametro,
+    longitud_in:parseFloat(long)||0,kg:parseFloat(kg)||0,
+    origen_ot:t.ot_number,origen_producto:t.product_name,
+    status:'pendiente',solicitado_at:new Date().toISOString()};
+  await sbInsert('mp_scrap',rec);
+  mpScrap.unshift(rec);
+  renderAlmScrap();
+  alert('✅ Sobrante registrado en Almacén de Merma');
+}
+window.moverScrapModal=moverScrapModal;
+
+// ══════════════════════════════════════
+//  MOVIMIENTOS
+// ══════════════════════════════════════
+function renderAlmMovements(){
+  const list=document.getElementById('alm-movements-list');
+  if(!list) return;
+  const from=document.getElementById('alm-mov-from')?.value||'';
+  const to=document.getElementById('alm-mov-to')?.value||'';
+  let items=mpMovements;
+  if(from) items=items.filter(m=>m.recorded_at>=from);
+  if(to)   items=items.filter(m=>m.recorded_at<=to+'T23:59:59');
+  if(!items.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin movimientos</div>'; return; }
+  const TIPO_COLOR={entrada:'var(--green)',apartado:'var(--warn)',transito:'var(--accent)',liberado:'var(--accent2)',merma:'var(--danger)'};
+  list.innerHTML=`<table class="tbl"><thead><tr>
+    <th>Fecha</th><th>Tipo</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Cant.</th><th>Kg</th><th>OT</th><th>Producto</th><th>Origen→Destino</th>
+  </tr></thead><tbody>${items.map(m=>`<tr>
+    <td style="font-size:10px;color:var(--muted)">${new Date(m.recorded_at).toLocaleDateString('es-MX')}</td>
+    <td><span style="font-size:10px;font-weight:700;color:${TIPO_COLOR[m.tipo]||'var(--text)'};text-transform:uppercase">${m.tipo||'--'}</span></td>
+    <td style="font-size:11px">${m.material||'--'}</td>
+    <td style="font-size:11px;color:var(--muted)">${m.forma||'--'}</td>
+    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.diametro||'--'}"</td>
+    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.longitud_in||'--'}"</td>
+    <td style="font-size:11px">${m.cantidad||'--'}</td>
+    <td style="font-size:11px;color:var(--accent2)">${m.kg||'--'}</td>
+    <td style="font-size:11px;color:var(--accent)">${m.ot_number||'--'}</td>
+    <td style="font-size:11px">${m.product_name||'--'}</td>
+    <td style="font-size:10px;color:var(--muted)">${m.origen||''}→${m.destino||''}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+window.renderAlmMovements=renderAlmMovements;
+
+// ══════════════════════════════════════
+//  PROVEEDORES
+// ══════════════════════════════════════
+function renderAlmSuppliers(){
+  const list=document.getElementById('alm-suppliers-list');
+  if(!list) return;
+  if(!mpSuppliers.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin proveedores. Agrega el primero.</div>'; return; }
+  list.innerHTML=mpSuppliers.map(s=>`<div class="card" style="margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1">
+        <div style="font-weight:700">${s.name}</div>
+        <div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
+          ${s.contact?`<span>👤 ${s.contact}</span>`:''}
+          ${s.phone?`<span>📞 ${s.phone}</span>`:''}
+          ${s.email?`<span>✉ ${s.email}</span>`:''}
+          ${s.notes?`<span>📝 ${s.notes}</span>`:''}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-accent" onclick="showSupplierForm('${s.id}')">✏</button>
+    </div>
+  </div>`).join('');
+}
+window.renderAlmSuppliers=renderAlmSuppliers;
+
+function showSupplierForm(id){
+  const s=id?mpSuppliers.find(x=>x.id===id):null;
+  document.getElementById('alm-suppliers-form').innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR PROVEEDOR':'NUEVO PROVEEDOR'}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        <div class="field"><label>NOMBRE</label><input type="text" id="spf-name" value="${s?.name||''}" placeholder="Nombre del proveedor"></div>
+        <div class="field"><label>CONTACTO</label><input type="text" id="spf-contact" value="${s?.contact||''}" placeholder="Nombre del contacto"></div>
+        <div class="field"><label>TELÉFONO</label><input type="text" id="spf-phone" value="${s?.phone||''}" placeholder="000-000-0000"></div>
+        <div class="field"><label>EMAIL</label><input type="email" id="spf-email" value="${s?.email||''}" placeholder="correo@proveedor.com"></div>
+        <div class="field" style="grid-column:1/-1"><label>NOTAS</label><input type="text" id="spf-notes" value="${s?.notes||''}" placeholder="Notas adicionales"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-accent" onclick="saveSupplier('${s?.id||''}')">💾 Guardar</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('alm-suppliers-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+window.showSupplierForm=showSupplierForm;
+
+async function saveSupplier(id){
+  const rec={name:document.getElementById('spf-name').value,
+    contact:document.getElementById('spf-contact').value||null,
+    phone:document.getElementById('spf-phone').value||null,
+    email:document.getElementById('spf-email').value||null,
+    notes:document.getElementById('spf-notes').value||null,active:true};
+  if(!rec.name){ alert('El nombre es requerido'); return; }
+  try{
+    if(id){
+      await sbUpdate('mp_suppliers',{id},rec);
+      const idx=mpSuppliers.findIndex(s=>s.id===id);
+      if(idx>=0) mpSuppliers[idx]={...mpSuppliers[idx],...rec};
+    } else {
+      rec.id=uid();
+      await sbInsert('mp_suppliers',rec);
+      mpSuppliers.push(rec);
+    }
+    document.getElementById('alm-suppliers-form').innerHTML='';
+    renderAlmSuppliers();
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.saveSupplier=saveSupplier;
+
+// ══════════════════════════════════════
+//  REPORTE DE MÍNIMOS
+// ══════════════════════════════════════
+function renderAlmReport(){
+  const body=document.getElementById('alm-report-body');
+  if(!body) return;
+  const sorted=[...mpStock].sort((a,b)=>{
+    const sa=semaforo(a.cantidad,a.cantidad_min);
+    const sb=semaforo(b.cantidad,b.cantidad_min);
+    const order={'SIN STOCK':0,'BAJO MÍNIMO':1,'EN MÍNIMO':2,'OK':3};
+    return (order[sa.label]||3)-(order[sb.label]||3);
+  });
+  if(!sorted.length){ body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin materiales registrados</div>'; return; }
+  body.innerHTML=`<div class="card">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">REPORTE DE EXISTENCIAS VS MÍNIMOS</div>
+    <table class="tbl"><thead><tr>
+      <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th>
+    </tr></thead><tbody>${sorted.map(s=>{
+      const sem=semaforo(s.cantidad,s.cantidad_min);
+      return `<tr>
+        <td><span style="font-size:10px;font-weight:700;color:${sem.color}">${sem.label}</span></td>
+        <td style="font-weight:600">${s.material?.toUpperCase()||'--'}</td>
+        <td style="font-size:11px;color:var(--muted)">${s.forma||'--'}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.diametro||'--'}"${s.diametro_int?'/'+s.diametro_int+'"':''}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in||'--'}"</td>
+        <td style="font-weight:700;color:${sem.color};font-size:14px">${s.cantidad||0}</td>
+        <td style="color:var(--muted)">${s.cantidad_min||0}</td>
+        <td style="font-size:11px;color:var(--muted)">${s.ubicacion||'--'}</td>
+        <td style="font-size:11px;color:var(--muted)">${s.supplier_name||'--'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>
+  </div>`;
+}
+window.renderAlmReport=renderAlmReport;
 
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
 if(typeof releaseOT!=='undefined') window.releaseOT=releaseOT;
