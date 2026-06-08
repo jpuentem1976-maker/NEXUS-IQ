@@ -5705,10 +5705,15 @@ async function saveMpStock(id){
 
   if(!id){
     // Nueva entrada — verificar si ya existe stock del mismo material/forma/diámetro/longitud
-    const existing=mpStock.find(s=>s.material_id===matId&&s.forma===forma&&
-      parseFloat(s.diametro||0)===parseFloat(diam||0)&&
-      parseFloat(s.longitud_in||0)===parseFloat(longIn||0)&&
-      s.status==='disponible');
+    // Comparación robusta: tolera diferencias mínimas de decimales (±0.01)
+    const existing=mpStock.find(s=>{
+      const mismoMat=(s.material_id&&s.material_id===matId)||(s.material===matName);
+      const mismaForma=!forma||(s.forma||'')===(forma||'');
+      const mismoDiam=Math.abs(parseFloat(s.diametro||0)-parseFloat(diam||0))<0.01;
+      const mismaLong=Math.abs(parseFloat(s.longitud_in||0)-parseFloat(longIn||0))<0.1;
+      const disponible=s.status==='disponible'||s.status==='parcial';
+      return mismoMat&&mismaForma&&mismoDiam&&mismaLong&&disponible;
+    });
     if(existing){
       // Calcular PPP con el stock existente
       const kgExist=parseFloat(existing.kg_total)||0;
