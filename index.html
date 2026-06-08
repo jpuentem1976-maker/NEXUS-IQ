@@ -762,16 +762,19 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 
 
 <!-- MODAL ALMACÉN LOGIN -->
-<div id="almacen-modal" class="modal hidden">
-  <div class="modal-box" style="max-width:340px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);margin-bottom:14px">🔒 ALMACÉN</div>
-    <div class="field"><label>Contraseña</label>
-      <input type="password" id="alm-pass" placeholder="••••" onkeydown="if(event.key==='Enter')tryAlmLogin()">
+<div id="almacen-modal" class="overlay hidden">
+  <div class="card modal card-accent" style="text-align:center">
+    <div style="font-size:32px;margin-bottom:12px">📦</div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent)">ACCESO A ALMACÉN</div>
+    <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
+    <div class="field" style="text-align:left;margin-bottom:6px">
+      <label>Contraseña</label>
+      <input type="password" id="alm-pass" style="text-align:center;letter-spacing:6px;font-size:20px" onkeydown="if(event.key==='Enter')tryAlmLogin()">
     </div>
-    <div id="alm-error" class="hidden" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
-    <div class="g2">
-      <button class="btn btn-accent" onclick="tryAlmLogin()">Entrar</button>
+    <div id="alm-error" class="hidden" style="color:var(--danger);font-size:12px;font-weight:700;margin:6px 0">✕ Contraseña incorrecta</div>
+    <div class="g2" style="margin-top:14px;gap:10px">
       <button class="btn btn-ghost" onclick="closeModal('almacen-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="tryAlmLogin()">🔓 Ingresar</button>
     </div>
   </div>
 </div>
@@ -5488,10 +5491,7 @@ let mpStock = [], mpReservations = [], mpTransit = [], mpScrap = [], mpMovements
 // ── Autenticación ──
 function almacenClick(){
   if(almAuth){ goPage('almacen'); loadAlmData(); return; }
-  document.getElementById('alm-pass').value='';
-  document.getElementById('alm-error').classList.add('hidden');
-  openModal('almacen-modal');
-  setTimeout(()=>document.getElementById('alm-pass').focus(),100);
+  openModal('almacen-modal','alm-pass','alm-error');
 }
 function tryAlmLogin(){
   const v=document.getElementById('alm-pass').value;
