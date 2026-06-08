@@ -536,6 +536,18 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setEngTab('e-machine-times',this)">⏱ Tiempos Máquina</button>
     <button class="ptab" onclick="setEngTab('e-drawings',this)">📐 Dibujos</button>
     <button class="ptab" onclick="setEngTab('e-cnc',this)">💾 Programas CNC</button>
+    <button class="ptab" onclick="setEngTab('e-materials',this)">🧱 Catálogo Materiales</button>
+  </div>
+
+  <!-- MATERIALS CATALOG -->
+  <div id="e-materials" class="subpage">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:700">Catálogo de Materiales</div>
+      <span id="materials-counter" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25);border-radius:20px;padding:2px 10px;font-size:12px;font-family:'DM Mono',monospace;font-weight:700"></span>
+      <div style="margin-left:auto"><button class="btn btn-accent btn-sm" onclick="showMaterialForm(null)">+ Nuevo Material</button></div>
+    </div>
+    <div id="material-form-wrap"></div>
+    <div id="materials-list"></div>
   </div>
 
   <!-- PRODUCTS -->
@@ -1284,7 +1296,7 @@ async function loadAlmDataSilent(){
 }
 
 async function loadAllData(){
-  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats]=await Promise.all([
+  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats,mpMatsData]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
     sbSelect('operations','select=*&order=sort_order'),
     sbSelect('work_orders','select=*&order=created_at.desc'),
@@ -1298,6 +1310,7 @@ async function loadAllData(){
     sbSelect('ot_deliveries','select=*&order=delivered_at.desc'),
     sbSelect('ot_scrap','select=*&order=recorded_at.desc'),
     sbSelect('product_materials','select=*'),
+    sbSelect('mp_materials','select=*&active=eq.true&order=name.asc'),
   ]);
   products=prods.map(p=>({...p,operations:(ops||[]).filter(o=>o.product_id===p.id).sort((a,b)=>a.sort_order-b.sort_order),materials:(prodMats||[]).filter(m=>m.product_id===p.id)}));
   operators=(opsList||[]);
@@ -1314,6 +1327,12 @@ async function loadAllData(){
   rawMaterial=rm||[];
   otDeliveries=del||[];
   otScrap=scr||[];
+  // Catálogo de materiales dinámico
+  mpMaterials=mpMatsData||[];
+  if(mpMaterials.length){
+    MAT_TYPES=mpMaterials.map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836}));
+    window._mpMaterialsRaw=mpMaterials;
+  }
 }
 
 function showLoading(m){ document.getElementById('loading-msg').textContent=m||'CARGANDO...'; document.getElementById('loading-overlay').classList.remove('hidden'); }
@@ -1413,6 +1432,7 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-machine-times') renderMachineTimes();
     if(id==='e-drawings') renderDrawings();
     if(id==='e-cnc') renderCNCPrograms();
+  if(id==='e-materials') renderMaterials();
   });
 }
 
@@ -2129,18 +2149,12 @@ function renderProducts(){
 /* ═══════════════════════════════════════════════════════
    BOM - BILL OF MATERIALS
 ═══════════════════════════════════════════════════════ */
-const MAT_TYPES = [
-  {val:'acero', label:'Acero'},
-  {val:'laton', label:'Latón'},
-  {val:'aluminio', label:'Aluminio'},
-  {val:'bronce', label:'Bronce'},
-  {val:'nylamid', label:'Nylamid/Plástico'},
-  {val:'fundicion', label:'Fundición'},
-  {val:'forja', label:'Forja'},
-  {val:'pieza_unitaria', label:'Pieza Unitaria'},
-  {val:'pieza_comprada', label:'Pieza Comprada'},
-  {val:'corte_externo', label:'Corte Externo'},
-];
+// MAT_TYPES se carga dinámicamente desde mp_materials en Supabase
+// Se mantiene array vacío inicial, se puebla en loadAllData
+let MAT_TYPES = [];
+// Grupos de materiales (determina qué campos se muestran)
+// barra: Forma+Ø+Long+Barras+Kg | tubing: ØExt+ØInt+Long+Cant+Kg | pieza: Cantidad en piezas
+const MAT_GRUPOS = {barra:['acero','laton','aluminio','bronce'],tubing:['tubing'],pieza:['pieza','forja','fundicion']};
 const MAT_SHAPES = [
   {val:'redondo', label:'Redondo'},
   {val:'hexagonal', label:'Hexagonal'},
@@ -2151,7 +2165,9 @@ const DENSITY2 = {acero:0.2836,laton:0.3075,aluminio:0.0975,bronce:0.295,nylamid
 
 function calcBomKg(mat){
   if(!mat.longitud||!mat.diametro) return 0;
-  const d=DENSITY2[mat.tipo]||0.2836;
+  // Buscar densidad en catálogo dinámico, fallback a DENSITY2
+  const matCat=MAT_TYPES.find(m=>m.val===mat.tipo);
+  const d=matCat?matCat.densidad:(DENSITY2[mat.tipo]||0.2836);
   const len=parseFloat(mat.longitud)||0;
   const diam=parseFloat(mat.diametro)||0;
   let vol=0;
@@ -2174,8 +2190,9 @@ function bomRowHTML(m, prodId, idx){
   const mid=m.id||uid();
   return `<div id="bom-row-${mid}" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end">
-      <div class="field" style="margin:0"><label style="font-size:9px">TIPO</label>
+      <div class="field" style="margin:0"><label style="font-size:9px">MATERIAL</label>
         <select id="bom-tipo-${mid}" onchange="onBomTypeChange('${mid}')" style="font-size:11px">
+          <option value="">-- Selecciona material --</option>
           ${MAT_TYPES.map(t=>`<option value="${t.val}" ${m.tipo===t.val?'selected':''}>${t.label}</option>`).join('')}
         </select>
       </div>
@@ -2190,7 +2207,7 @@ function bomRowHTML(m, prodId, idx){
       </div>
       <button type="button" onclick="removeBomRow('${mid}')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;height:32px">✕</button>
     </div>
-    <div id="bom-barra-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'':'display:none'}">
+    <div id="bom-barra-${mid}" style="${(()=>{const mc=MAT_TYPES.find(x=>x.val===m.tipo);return mc&&(mc.grupo==='barra'||mc.grupo==='tubing')?'':'display:none';})()}">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div class="field" style="margin:0"><label style="font-size:9px">FORMA</label>
           <select id="bom-forma-${mid}" onchange="onBomFormaChange('${mid}')" style="font-size:11px">
@@ -2200,7 +2217,7 @@ function bomRowHTML(m, prodId, idx){
         <div class="field" style="margin:0"><label style="font-size:9px">DIÁM. EXT. (")</label>
           <input type="number" step="0.001" id="bom-diam-${mid}" value="${m.diametro||''}" placeholder="1.000" oninput="calcBomRowKg('${mid}')" style="font-size:11px">
         </div>
-        <div class="field" id="bom-dint-wrap-${mid}" style="margin:0;${m.forma==='barra_hueca'?'':'display:none'}"><label style="font-size:9px">DIÁM. INT. (")</label>
+        <div class="field" id="bom-dint-wrap-${mid}" style="margin:0;${(()=>{const mc=MAT_TYPES.find(x=>x.val===m.tipo);return m.forma==='barra_hueca'||mc?.grupo==='tubing'?'':'display:none';})()}"><label style="font-size:9px">DIÁM. INT. (")</label>
           <input type="number" step="0.001" id="bom-dint-${mid}" value="${m.diametro_int||''}" placeholder="0.500" oninput="calcBomRowKg('${mid}')" style="font-size:11px">
         </div>
         <div class="field" style="margin:0"><label style="font-size:9px">LONGITUD (")</label>
@@ -2215,7 +2232,7 @@ function bomRowHTML(m, prodId, idx){
         </div>
       </div>
     </div>
-    <div id="bom-pieza-${mid}" style="${['acero','laton','aluminio','bronce'].includes(m.tipo)?'display:none':''}">
+    <div id="bom-pieza-${mid}" style="${(()=>{const mc=MAT_TYPES.find(x=>x.val===m.tipo);return mc&&(mc.grupo==='barra'||mc.grupo==='tubing')?'display:none':'';})()}">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="field" style="margin:0"><label style="font-size:9px">CANTIDAD</label>
           <input type="number" id="bom-cant2-${mid}" value="${m.cantidad||''}" placeholder="ej. 50" style="font-size:11px">
@@ -2233,14 +2250,15 @@ function bomRowHTML(m, prodId, idx){
 
 function onBomTypeChange(mid){
   const tipo=document.getElementById('bom-tipo-'+mid)?.value;
-  const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
+  const matCat=MAT_TYPES.find(m=>m.val===tipo);
+  const grupo=matCat?matCat.grupo:'pieza';
+  const isBarra=grupo==='barra'||grupo==='tubing';
   const barraDiv=document.getElementById('bom-barra-'+mid);
   const piezaDiv=document.getElementById('bom-pieza-'+mid);
   if(barraDiv) barraDiv.style.display=isBarra?'':'none';
   if(piezaDiv) piezaDiv.style.display=isBarra?'none':'';
-  // reset dint-wrap si cambia tipo
   const dintWrap=document.getElementById('bom-dint-wrap-'+mid);
-  if(dintWrap) dintWrap.style.display='none';
+  if(dintWrap) dintWrap.style.display=grupo==='tubing'?'':'none';
 }
 
 function onBomFormaChange(mid){
@@ -5486,7 +5504,7 @@ function renderCompare(){
 
 // ── Variables globales ──
 let almAuth = false;
-let mpStock = [], mpReservations = [], mpTransit = [], mpScrap = [], mpMovements = [], mpSuppliers = [];
+let mpStock = [], mpReservations = [], mpTransit = [], mpScrap = [], mpMovements = [], mpSuppliers = [], mpMaterials = [];
 
 // ── Autenticación ──
 function almacenClick(){
@@ -5630,92 +5648,109 @@ function renderAlmGeneral(){
 window.renderAlmGeneral=renderAlmGeneral;
 
 // ── Formulario nueva entrada / editar ──
-function showMpStockForm(id){
-  const s=id?mpStock.find(x=>x.id===id):null;
-  const supOpts=mpSuppliers.map(sp=>`<option value="${sp.id}" ${s?.supplier_id===sp.id?'selected':''}>${sp.name}</option>`).join('');
-  const MATERIALES=['acero','laton','aluminio','bronce','tubing','forja','fundicion'];
-  const FORMAS=['redondo','hexagonal','barra_hueca','cuadrado','tubing','pieza'];
-  document.getElementById('alm-general-form').innerHTML=`
-    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-        <div class="field"><label>MATERIAL</label>
-          <select id="mpf-mat">
-            ${MATERIALES.map(m=>`<option value="${m}" ${s?.material===m?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field"><label>FORMA</label>
-          <select id="mpf-forma">
-            ${FORMAS.map(f=>`<option value="${f}" ${s?.forma===f?'selected':''}>${f.charAt(0).toUpperCase()+f.slice(1)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field"><label>DIÁMETRO EXT. (")</label>
-          <input type="number" step="0.001" id="mpf-diam" value="${s?.diametro||''}" placeholder="1.790">
-        </div>
-        <div class="field"><label>DIÁMETRO INT. (") — Barra hueca/tubing</label>
-          <input type="number" step="0.001" id="mpf-dint" value="${s?.diametro_int||''}" placeholder="0.000">
-        </div>
-        <div class="field"><label>LONGITUD (metros)</label>
-          <input type="number" step="0.001" id="mpf-long-m" value="${s?.longitud_m||''}" placeholder="6.000" oninput="this.nextElementSibling.textContent='= '+(parseFloat(this.value)*39.3701||0).toFixed(3)+'&quot;'">
-          <small style="color:var(--muted)">${s?.longitud_in?'= '+s.longitud_in+'"':''}</small>
-        </div>
-        <div class="field"><label>CANTIDAD (barras)</label>
-          <input type="number" id="mpf-cant" value="${s?.cantidad||''}" placeholder="8">
-        </div>
-        <div class="field"><label>MÍNIMO (barras)</label>
-          <input type="number" id="mpf-min" value="${s?.cantidad_min||''}" placeholder="3">
-        </div>
-        <div class="field"><label>PRECIO/KG ($)</label>
-          <input type="number" step="0.01" id="mpf-precio" value="${s?.precio_kg||''}" placeholder="0.00">
-        </div>
-        <div class="field"><label>PROVEEDOR</label>
-          <select id="mpf-sup"><option value="">-- Sin proveedor --</option>${supOpts}</select>
-        </div>
-        <div class="field"><label>UBICACIÓN</label>
-          <input type="text" id="mpf-ubic" value="${s?.ubicacion||''}" placeholder="Rack A - Pos 3">
-        </div>
-        <div class="field"><label>LOTE / REFERENCIA</label>
-          <input type="text" id="mpf-lote" value="${s?.lote||''}" placeholder="Opcional">
-        </div>
-        <div class="field"><label>NOTAS</label>
-          <input type="text" id="mpf-notes" value="${s?.notes||''}" placeholder="Opcional">
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn btn-accent" onclick="saveMpStock('${s?.id||''}')">💾 Guardar</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('alm-general-form').innerHTML=''">Cancelar</button>
-      </div>
-    </div>`;
-}
-window.showMpStockForm=showMpStockForm;
-
 async function saveMpStock(id){
-  const longM=parseFloat(document.getElementById('mpf-long-m').value)||0;
-  const longIn=parseFloat((longM*39.3701).toFixed(3));
+  // Leer datos del formulario dinámico
+  const matSel=document.getElementById('mpf-mat');
+  const matOpt=matSel?.options[matSel?.selectedIndex];
+  const grupo=matOpt?.dataset?.grupo||'pieza';
+  const dens=parseFloat(matOpt?.dataset?.dens)||0.2836;
+  const matId=matSel?.value||'';
+  const matName=matOpt?.text||'';
+  const desc=document.getElementById('mpf-desc')?.value||'';
   const supEl=document.getElementById('mpf-sup');
-  const supId=supEl.value||null;
+  const supId=supEl?.value||null;
   const supName=supId?mpSuppliers.find(s=>s.id===supId)?.name||'':'';
+  const precioNuevo=parseFloat(document.getElementById('mpf-precio')?.value)||0;
+  const min=parseInt(document.getElementById('mpf-min')?.value)||0;
+  const ubic=document.getElementById('mpf-ubic')?.value||null;
+  const lote=document.getElementById('mpf-lote')?.value||null;
+
+  let forma=null,diam=null,dint=null,longM=null,longIn=null,cant=0,kgUnit=0;
+
+  if(grupo==='barra'){
+    forma=document.getElementById('mpf-forma')?.value||'redondo';
+    diam=parseFloat(document.getElementById('mpf-diam')?.value)||null;
+    dint=parseFloat(document.getElementById('mpf-dint')?.value)||null;
+    longM=parseFloat(document.getElementById('mpf-long-m')?.value)||null;
+    longIn=parseFloat(document.getElementById('mpf-long-in')?.value)||null;
+    cant=parseInt(document.getElementById('mpf-cant')?.value)||0;
+    if(diam&&longIn){
+      let vol=0;
+      if(forma==='barra_hueca') vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint||0,2))*longIn;
+      else if(forma==='hexagonal') vol=Math.pow(diam,2)*1.155*(Math.PI/4)*longIn;
+      else vol=(Math.PI/4)*Math.pow(diam,2)*longIn;
+      kgUnit=parseFloat((vol*dens*0.4536).toFixed(3));
+    }
+  } else if(grupo==='tubing'){
+    forma='tubing';
+    diam=parseFloat(document.getElementById('mpf-t-diam')?.value)||null;
+    dint=parseFloat(document.getElementById('mpf-t-dint')?.value)||null;
+    longM=parseFloat(document.getElementById('mpf-t-long-m')?.value)||null;
+    longIn=parseFloat(document.getElementById('mpf-t-long-in')?.value)||null;
+    cant=parseInt(document.getElementById('mpf-t-cant')?.value)||0;
+    if(diam&&dint&&longIn){
+      const vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint,2))*longIn;
+      kgUnit=parseFloat((vol*dens*0.4536).toFixed(3));
+    }
+  } else {
+    cant=parseInt(document.getElementById('mpf-p-cant')?.value)||0;
+  }
+
+  const kgNuevo=parseFloat((kgUnit*cant).toFixed(2));
+
+  // ── PRECIO PROMEDIO PONDERADO (PPP) ──
+  let precioPPP=precioNuevo;
+  let kgTotal=kgNuevo;
+  let valorTotal=parseFloat((kgTotal*precioPPP).toFixed(2));
+
+  if(!id){
+    // Nueva entrada — verificar si ya existe stock del mismo material/forma/diámetro/longitud
+    const existing=mpStock.find(s=>s.material_id===matId&&s.forma===forma&&
+      parseFloat(s.diametro||0)===parseFloat(diam||0)&&
+      parseFloat(s.longitud_in||0)===parseFloat(longIn||0)&&
+      s.status==='disponible');
+    if(existing){
+      // Calcular PPP con el stock existente
+      const kgExist=parseFloat(existing.kg_total)||0;
+      const valorExist=parseFloat(existing.valor_total)||0;
+      kgTotal=parseFloat((kgExist+kgNuevo).toFixed(2));
+      precioPPP=kgTotal>0?parseFloat(((valorExist+(kgNuevo*precioNuevo))/kgTotal).toFixed(4)):precioNuevo;
+      valorTotal=parseFloat((kgTotal*precioPPP).toFixed(2));
+      const newCant=(parseInt(existing.cantidad)||0)+cant;
+      // Actualizar registro existente con PPP
+      await sbUpdate('mp_stock',{id:existing.id},{
+        cantidad:newCant,kg_barra:kgUnit,kg_total:kgTotal,
+        precio_kg:precioPPP,valor_total:valorTotal,
+        cantidad_min:min||existing.cantidad_min,
+        updated_at:new Date().toISOString()
+      });
+      const idx=mpStock.findIndex(s=>s.id===existing.id);
+      if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:kgTotal,precio_kg:precioPPP,valor_total:valorTotal};
+      await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:existing.id,
+        material:matName,forma,diametro:diam,longitud_in:longIn,
+        cantidad:cant,kg:kgNuevo,valor:parseFloat((kgNuevo*precioNuevo).toFixed(2)),
+        notas:'PPP recalculado: $'+precioPPP+'/kg',
+        origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
+        recorded_at:new Date().toISOString()});
+      document.getElementById('alm-general-form').innerHTML='';
+      renderAlmGeneral();
+      alert(`✅ Entrada registrada. PPP actualizado a $${precioPPP}/kg`);
+      return;
+    }
+  }
+
   const rec={
-    material:document.getElementById('mpf-mat').value,
-    forma:document.getElementById('mpf-forma').value,
-    diametro:parseFloat(document.getElementById('mpf-diam').value)||null,
-    diametro_int:parseFloat(document.getElementById('mpf-dint').value)||null,
-    longitud_m:longM||null,
-    longitud_in:longIn||null,
-    cantidad:parseInt(document.getElementById('mpf-cant').value)||0,
-    cantidad_min:parseInt(document.getElementById('mpf-min').value)||0,
-    precio_kg:parseFloat(document.getElementById('mpf-precio').value)||0,
-    supplier_id:supId,
-    supplier_name:supName,
-    ubicacion:document.getElementById('mpf-ubic').value||null,
-    lote:document.getElementById('mpf-lote').value||null,
-    notes:document.getElementById('mpf-notes').value||null,
+    material_id:matId,material:matName,descripcion:desc,grupo,
+    forma,diametro:diam,diametro_int:dint,
+    longitud_m:longM,longitud_in:longIn,
+    cantidad:cant,cantidad_min:min,
+    kg_barra:kgUnit,kg_total:kgTotal,
+    precio_kg:precioPPP,valor_total:valorTotal,
+    supplier_id:supId,supplier_name:supName,
+    ubicacion:ubic,lote,status:'disponible',
     updated_at:new Date().toISOString(),
   };
-  // Calcular kg
-  rec.kg_barra=calcKgBarra(rec);
-  rec.kg_total=parseFloat((rec.kg_barra*(rec.cantidad||0)).toFixed(2));
-  rec.valor_total=parseFloat((rec.kg_total*(rec.precio_kg||0)).toFixed(2));
+
   try{
     if(id){
       await sbUpdate('mp_stock',{id},rec);
@@ -5723,13 +5758,11 @@ async function saveMpStock(id){
       if(idx>=0) mpStock[idx]={...mpStock[idx],...rec};
     } else {
       rec.id=uid();
-      rec.status='disponible';
       await sbInsert('mp_stock',rec);
       mpStock.unshift(rec);
-      // Registrar movimiento de entrada
       await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:rec.id,
-        material:rec.material,forma:rec.forma,diametro:rec.diametro,longitud_in:rec.longitud_in,
-        cantidad:rec.cantidad,kg:rec.kg_total,valor:rec.valor_total,
+        material:matName,forma,diametro:diam,longitud_in:longIn,
+        cantidad:cant,kg:kgTotal,valor:valorTotal,
         origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
         recorded_at:new Date().toISOString()});
     }
@@ -6104,12 +6137,10 @@ function showSupplierForm(id){
   document.getElementById('alm-suppliers-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR PROVEEDOR':'NUEVO PROVEEDOR'}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-        <div class="field"><label>NOMBRE</label><input type="text" id="spf-name" value="${s?.name||''}" placeholder="Nombre del proveedor"></div>
-        <div class="field"><label>CONTACTO</label><input type="text" id="spf-contact" value="${s?.contact||''}" placeholder="Nombre del contacto"></div>
-        <div class="field"><label>TELÉFONO</label><input type="text" id="spf-phone" value="${s?.phone||''}" placeholder="000-000-0000"></div>
-        <div class="field"><label>EMAIL</label><input type="email" id="spf-email" value="${s?.email||''}" placeholder="correo@proveedor.com"></div>
-        <div class="field" style="grid-column:1/-1"><label>NOTAS</label><input type="text" id="spf-notes" value="${s?.notes||''}" placeholder="Notas adicionales"></div>
+      <div class="field" style="max-width:400px">
+        <label>NOMBRE DEL PROVEEDOR</label>
+        <input type="text" id="spf-name" value="${s?.name||''}" placeholder="Nombre del proveedor">
+        <small style="color:var(--muted);font-size:10px">El catálogo completo de proveedores se administrará en el módulo de Compras</small>
       </div>
       <div style="display:flex;gap:10px;margin-top:12px">
         <button class="btn btn-accent" onclick="saveSupplier('${s?.id||''}')">💾 Guardar</button>
@@ -6120,12 +6151,9 @@ function showSupplierForm(id){
 window.showSupplierForm=showSupplierForm;
 
 async function saveSupplier(id){
-  const rec={name:document.getElementById('spf-name').value,
-    contact:document.getElementById('spf-contact').value||null,
-    phone:document.getElementById('spf-phone').value||null,
-    email:document.getElementById('spf-email').value||null,
-    notes:document.getElementById('spf-notes').value||null,active:true};
-  if(!rec.name){ alert('El nombre es requerido'); return; }
+  const name=document.getElementById('spf-name').value.trim();
+  if(!name){alert('El nombre es requerido');return;}
+  const rec={name,active:true};
   try{
     if(id){
       await sbUpdate('mp_suppliers',{id},rec);
@@ -6138,7 +6166,7 @@ async function saveSupplier(id){
     }
     document.getElementById('alm-suppliers-form').innerHTML='';
     renderAlmSuppliers();
-  }catch(e){ alert('Error: '+e.message); }
+  }catch(e){alert('Error: '+e.message);}
 }
 window.saveSupplier=saveSupplier;
 
@@ -6176,6 +6204,308 @@ function renderAlmReport(){
   </div>`;
 }
 window.renderAlmReport=renderAlmReport;
+
+
+// ═══════════════════════════════════════════════════════
+//  CATÁLOGO DE MATERIALES — Ingeniería
+// ═══════════════════════════════════════════════════════
+
+function renderMaterials(){
+  const list=document.getElementById('materials-list');
+  if(!list) return;
+  const counter=document.getElementById('materials-counter');
+  if(counter) counter.textContent=mpMaterials.length+' material'+(mpMaterials.length!==1?'es':'');
+  if(!mpMaterials.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin materiales. Agrega el primero.</div>';
+    return;
+  }
+  const GRUPO_LABEL={barra:'Barra metálica',tubing:'Tubing/Tubo',pieza:'Pieza'};
+  const GRUPO_COLOR={barra:'var(--accent)',tubing:'var(--accent2)',pieza:'var(--warn)'};
+  list.innerHTML=mpMaterials.map(m=>`
+    <div class="card fade" style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:14px">${m.name}</span>
+            <span class="tag" style="color:${GRUPO_COLOR[m.grupo]||'var(--muted)'}">${GRUPO_LABEL[m.grupo]||m.grupo}</span>
+            <span style="font-size:11px;color:var(--muted)">Densidad: <strong style="color:var(--text)">${m.densidad} lb/in³</strong></span>
+            ${!m.active?'<span class="tag" style="color:var(--danger)">Inactivo</span>':''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-accent" onclick="showMaterialForm('${m.id}')">✏</button>
+          <button class="btn btn-sm btn-danger" onclick="toggleMaterialActive('${m.id}',${m.active})">${m.active?'Desactivar':'Activar'}</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+window.renderMaterials=renderMaterials;
+
+function showMaterialForm(id){
+  const m=id?mpMaterials.find(x=>x.id===id):null;
+  const wrap=document.getElementById('material-form-wrap');
+  if(!wrap) return;
+  wrap.innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${m?'EDITAR MATERIAL':'NUEVO MATERIAL'}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        <div class="field"><label>NOMBRE DEL MATERIAL</label>
+          <input type="text" id="matf-name" value="${m?.name||''}" placeholder="ej. Acero SAE 8620">
+        </div>
+        <div class="field"><label>GRUPO</label>
+          <select id="matf-grupo">
+            <option value="barra" ${m?.grupo==='barra'?'selected':''}>Barra metálica (Ø + Long + Barras)</option>
+            <option value="tubing" ${m?.grupo==='tubing'?'selected':''}>Tubing / Tubo (Ø ext + Ø int + Long)</option>
+            <option value="pieza" ${m?.grupo==='pieza'?'selected':''}>Pieza (solo cantidad)</option>
+          </select>
+        </div>
+        <div class="field"><label>DENSIDAD (lb/in³)</label>
+          <input type="number" step="0.0001" id="matf-dens" value="${m?.densidad||0.2836}" placeholder="0.2836">
+          <small style="color:var(--muted);font-size:10px">Acero=0.2836 · Latón=0.3075 · Aluminio=0.0975 · Bronce=0.295</small>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-accent" onclick="saveMaterial('${m?.id||''}')">💾 Guardar</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('material-form-wrap').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+window.showMaterialForm=showMaterialForm;
+
+async function saveMaterial(id){
+  const name=document.getElementById('matf-name').value.trim();
+  const grupo=document.getElementById('matf-grupo').value;
+  const densidad=parseFloat(document.getElementById('matf-dens').value)||0.2836;
+  if(!name){alert('El nombre es requerido');return;}
+  const rec={name,grupo,densidad,active:true};
+  try{
+    if(id){
+      await sbUpdate('mp_materials',{id},rec);
+      const idx=mpMaterials.findIndex(m=>m.id===id);
+      if(idx>=0) mpMaterials[idx]={...mpMaterials[idx],...rec};
+    } else {
+      rec.id=uid();
+      await sbInsert('mp_materials',rec);
+      mpMaterials.push(rec);
+    }
+    // Actualizar MAT_TYPES dinámico
+    MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836}));
+    document.getElementById('material-form-wrap').innerHTML='';
+    renderMaterials();
+  }catch(e){alert('Error: '+e.message);}
+}
+window.saveMaterial=saveMaterial;
+
+async function toggleMaterialActive(id,active){
+  await sbUpdate('mp_materials',{id},{active:!active});
+  const idx=mpMaterials.findIndex(m=>m.id===id);
+  if(idx>=0) mpMaterials[idx].active=!active;
+  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836}));
+  renderMaterials();
+}
+window.toggleMaterialActive=toggleMaterialActive;
+
+// ═══════════════════════════════════════════════════════
+//  FORMULARIO DINÁMICO ALMACÉN — nueva entrada con PPP
+// ═══════════════════════════════════════════════════════
+
+function showMpStockForm(id){
+  const s=id?mpStock.find(x=>x.id===id):null;
+  const matOpts=MAT_TYPES.map(m=>`<option value="${m.val}" data-grupo="${m.grupo}" data-dens="${m.densidad}" ${s?.material_id===m.val||s?.material===m.label?'selected':''}>${m.label}</option>`).join('');
+  const supOpts=mpSuppliers.map(sp=>`<option value="${sp.id}" ${s?.supplier_id===sp.id?'selected':''}>${sp.name}</option>`).join('');
+  const MAT_SHAPES=[{val:'redondo',label:'Redondo'},{val:'hexagonal',label:'Hexagonal'},{val:'barra_hueca',label:'Barra Hueca'},{val:'cuadrado',label:'Cuadrado/Solera'}];
+
+  document.getElementById('alm-general-form').innerHTML=`
+    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+
+        <div class="field"><label>MATERIAL</label>
+          <select id="mpf-mat" onchange="onAlmMatChange()">
+            <option value="">-- Selecciona material --</option>
+            ${matOpts}
+          </select>
+        </div>
+
+        <div class="field"><label>DESCRIPCIÓN / ESPECIFICACIÓN</label>
+          <input type="text" id="mpf-desc" value="${s?.descripcion||''}" placeholder="ej. Acero SAE 8620, Tubo Sch 40...">
+        </div>
+
+        <!-- Panel BARRA (redondo, hex, cuadrado) -->
+        <div id="mpf-panel-barra" style="display:none;grid-column:1/-1">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+            <div class="field"><label>FORMA</label>
+              <select id="mpf-forma" onchange="onAlmFormaChange()">
+                ${MAT_SHAPES.map(sh=>`<option value="${sh.val}" ${s?.forma===sh.val?'selected':''}>${sh.label}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>DIÁMETRO EXT. (")</label>
+              <input type="number" step="0.001" id="mpf-diam" value="${s?.diametro||''}" placeholder="1.790" oninput="calcAlmKg()">
+            </div>
+            <div class="field" id="mpf-dint-wrap" style="display:none"><label>DIÁMETRO INT. (")</label>
+              <input type="number" step="0.001" id="mpf-dint" value="${s?.diametro_int||''}" placeholder="0.500" oninput="calcAlmKg()">
+            </div>
+            <div class="field"><label>LONGITUD (metros)</label>
+              <input type="number" step="0.001" id="mpf-long-m" value="${s?.longitud_m||''}" placeholder="6.000" oninput="onAlmLongChange()">
+            </div>
+            <div class="field"><label>LONGITUD (")</label>
+              <input type="number" step="0.001" id="mpf-long-in" value="${s?.longitud_in||''}" placeholder="236.220" oninput="calcAlmKg()">
+            </div>
+            <div class="field"><label>CANTIDAD (barras)</label>
+              <input type="number" id="mpf-cant" value="${s?.cantidad||''}" placeholder="8" oninput="calcAlmKg()">
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel TUBING -->
+        <div id="mpf-panel-tubing" style="display:none;grid-column:1/-1">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+            <div class="field"><label>DIÁMETRO EXT. (")</label>
+              <input type="number" step="0.001" id="mpf-t-diam" value="${s?.diametro||''}" placeholder="2.375" oninput="calcAlmKg()">
+            </div>
+            <div class="field"><label>DIÁMETRO INT. (")</label>
+              <input type="number" step="0.001" id="mpf-t-dint" value="${s?.diametro_int||''}" placeholder="2.067" oninput="calcAlmKg()">
+            </div>
+            <div class="field"><label>LONGITUD (metros)</label>
+              <input type="number" step="0.001" id="mpf-t-long-m" value="${s?.longitud_m||''}" placeholder="6.000" oninput="onAlmTLongChange()">
+            </div>
+            <div class="field"><label>LONGITUD (")</label>
+              <input type="number" step="0.001" id="mpf-t-long-in" value="${s?.longitud_in||''}" placeholder="236.220" oninput="calcAlmKg()">
+            </div>
+            <div class="field"><label>CANTIDAD (piezas)</label>
+              <input type="number" id="mpf-t-cant" value="${s?.cantidad||''}" placeholder="2100" oninput="calcAlmKg()">
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel PIEZA -->
+        <div id="mpf-panel-pieza" style="display:none;grid-column:1/-1">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+            <div class="field"><label>CANTIDAD (piezas)</label>
+              <input type="number" id="mpf-p-cant" value="${s?.cantidad||''}" placeholder="50">
+            </div>
+          </div>
+        </div>
+
+        <!-- Campos comunes -->
+        <div class="field"><label>STOCK MÍNIMO</label>
+          <input type="number" id="mpf-min" value="${s?.cantidad_min||''}" placeholder="3">
+        </div>
+        <div class="field"><label>PRECIO/KG ($)</label>
+          <input type="number" step="0.01" id="mpf-precio" value="${s?.precio_kg||''}" placeholder="0.00" oninput="calcAlmKg()">
+        </div>
+        <div class="field"><label>PROVEEDOR</label>
+          <select id="mpf-sup"><option value="">-- Sin proveedor --</option>${supOpts}</select>
+        </div>
+        <div class="field"><label>UBICACIÓN</label>
+          <input type="text" id="mpf-ubic" value="${s?.ubicacion||''}" placeholder="Rack A - Pos 3">
+        </div>
+        <div class="field"><label>LOTE / REFERENCIA</label>
+          <input type="text" id="mpf-lote" value="${s?.lote||''}" placeholder="Opcional">
+        </div>
+
+        <!-- Resumen kg y valor -->
+        <div style="background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.25);border-radius:8px;padding:12px;grid-column:1/-1">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
+            <div><div style="font-size:10px;color:var(--muted)">KG / PIEZA</div>
+              <div id="mpf-kg-unit" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent2);font-size:16px">--</div></div>
+            <div><div style="font-size:10px;color:var(--muted)">KG TOTAL</div>
+              <div id="mpf-kg-total" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent2);font-size:16px">--</div></div>
+            <div><div style="font-size:10px;color:var(--muted)">VALOR TOTAL</div>
+              <div id="mpf-valor" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--green);font-size:16px">--</div></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-accent" onclick="saveMpStock('${s?.id||''}')">💾 Guardar entrada</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('alm-general-form').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+
+  // Si editando, mostrar panel correcto
+  if(s) onAlmMatChange();
+}
+window.showMpStockForm=showMpStockForm;
+
+function onAlmMatChange(){
+  const sel=document.getElementById('mpf-mat');
+  const opt=sel?.options[sel.selectedIndex];
+  const grupo=opt?.dataset?.grupo||'pieza';
+  document.getElementById('mpf-panel-barra').style.display=grupo==='barra'?'':'none';
+  document.getElementById('mpf-panel-tubing').style.display=grupo==='tubing'?'':'none';
+  document.getElementById('mpf-panel-pieza').style.display=grupo==='pieza'?'':'none';
+  calcAlmKg();
+}
+window.onAlmMatChange=onAlmMatChange;
+
+function onAlmFormaChange(){
+  const forma=document.getElementById('mpf-forma')?.value;
+  const wrap=document.getElementById('mpf-dint-wrap');
+  if(wrap) wrap.style.display=forma==='barra_hueca'?'':'none';
+  calcAlmKg();
+}
+window.onAlmFormaChange=onAlmFormaChange;
+
+function onAlmLongChange(){
+  const m=parseFloat(document.getElementById('mpf-long-m')?.value)||0;
+  const inEl=document.getElementById('mpf-long-in');
+  if(inEl) inEl.value=m?(m*39.3701).toFixed(3):'';
+  calcAlmKg();
+}
+window.onAlmLongChange=onAlmLongChange;
+
+function onAlmTLongChange(){
+  const m=parseFloat(document.getElementById('mpf-t-long-m')?.value)||0;
+  const inEl=document.getElementById('mpf-t-long-in');
+  if(inEl) inEl.value=m?(m*39.3701).toFixed(3):'';
+  calcAlmKg();
+}
+window.onAlmTLongChange=onAlmTLongChange;
+
+function calcAlmKg(){
+  const sel=document.getElementById('mpf-mat');
+  const opt=sel?.options[sel?.selectedIndex];
+  const grupo=opt?.dataset?.grupo||'pieza';
+  const dens=parseFloat(opt?.dataset?.dens)||0.2836;
+  const precio=parseFloat(document.getElementById('mpf-precio')?.value)||0;
+  let kgUnit=0,cant=0;
+
+  if(grupo==='barra'){
+    const diam=parseFloat(document.getElementById('mpf-diam')?.value)||0;
+    const dint=parseFloat(document.getElementById('mpf-dint')?.value)||0;
+    const lon=parseFloat(document.getElementById('mpf-long-in')?.value)||0;
+    const forma=document.getElementById('mpf-forma')?.value||'redondo';
+    cant=parseInt(document.getElementById('mpf-cant')?.value)||0;
+    if(diam&&lon){
+      let vol=0;
+      if(forma==='barra_hueca') vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint,2))*lon;
+      else if(forma==='hexagonal') vol=Math.pow(diam,2)*1.155*(Math.PI/4)*lon;
+      else vol=(Math.PI/4)*Math.pow(diam,2)*lon;
+      kgUnit=parseFloat((vol*dens*0.4536).toFixed(3));
+    }
+  } else if(grupo==='tubing'){
+    const diam=parseFloat(document.getElementById('mpf-t-diam')?.value)||0;
+    const dint=parseFloat(document.getElementById('mpf-t-dint')?.value)||0;
+    const lon=parseFloat(document.getElementById('mpf-t-long-in')?.value)||0;
+    cant=parseInt(document.getElementById('mpf-t-cant')?.value)||0;
+    if(diam&&dint&&lon){
+      const vol=(Math.PI/4)*(Math.pow(diam,2)-Math.pow(dint,2))*lon;
+      kgUnit=parseFloat((vol*dens*0.4536).toFixed(3));
+    }
+  } else {
+    cant=parseInt(document.getElementById('mpf-p-cant')?.value)||0;
+  }
+
+  const kgTotal=parseFloat((kgUnit*cant).toFixed(2));
+  const valor=parseFloat((kgTotal*precio).toFixed(2));
+  const ku=document.getElementById('mpf-kg-unit');
+  const kt=document.getElementById('mpf-kg-total');
+  const vl=document.getElementById('mpf-valor');
+  if(ku) ku.textContent=kgUnit>0?kgUnit+' kg':'--';
+  if(kt) kt.textContent=kgTotal>0?kgTotal+' kg':'--';
+  if(vl) vl.textContent=valor>0?'$'+valor.toFixed(2):'--';
+}
+window.calcAlmKg=calcAlmKg;
 
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
 if(typeof releaseOT!=='undefined') window.releaseOT=releaseOT;
