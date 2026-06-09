@@ -832,16 +832,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <div id="alm-general" class="subpage active">
     <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-accent btn-sm" onclick="showMpStockForm(null)">+ Nueva Entrada</button>
-      <select id="alm-filter-mat" onchange="renderAlmGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
-        <option value="">Todos los materiales</option>
-        <option value="acero">Acero</option>
-        <option value="laton">Latón</option>
-        <option value="aluminio">Aluminio</option>
-        <option value="bronce">Bronce</option>
-        <option value="tubing">Tubing</option>
-        <option value="forja">Forja</option>
-        <option value="fundicion">Fundición</option>
-      </select>
+      <input type="text" id="alm-search" placeholder="🔍 Buscar material o diámetro..." oninput="renderAlmGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:240px">
       <select id="alm-filter-status" onchange="renderAlmGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
         <option value="">Todos los estados</option>
         <option value="disponible">Disponible</option>
@@ -5624,48 +5615,110 @@ function semaforo(cant,min){
 function renderAlmGeneral(){
   const list=document.getElementById('alm-general-list');
   if(!list) return;
-  const matF=document.getElementById('alm-filter-mat')?.value||'';
+  const search=(document.getElementById('alm-search')?.value||'').toLowerCase();
   const stF=document.getElementById('alm-filter-status')?.value||'';
-  let items=mpStock.filter(s=>(!matF||s.material===matF)&&(!stF||s.status===stF));
-  if(!items.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin registros. Agrega la primera entrada de material.</div>'; return; }
-  list.innerHTML=items.map(s=>{
-    const sem=semaforo(s.cantidad,s.cantidad_min);
-    const kgBarra=calcKgBarra(s);
-    const kgTotal=(kgBarra*(s.cantidad||0)).toFixed(1);
-    const valor=((parseFloat(s.precio_kg)||0)*parseFloat(kgTotal)).toFixed(2);
-    const statusColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':'var(--warn)';
-    return `<div class="card" style="margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-            <span style="font-weight:700;font-size:14px;color:var(--text)">${s.material?.toUpperCase()||'--'}</span>
-            <span class="tag" style="color:var(--muted)">${s.forma||'--'}</span>
-            ${s.diametro?`<span class="tag" style="color:var(--accent)">Ø ${s.diametro}"${s.diametro_int?' / Øi '+s.diametro_int+'"':''}</span>`:''}
-            <span class="tag" style="color:var(--muted)">${s.longitud_in?s.longitud_in+'"':'--'}</span>
-            <span class="tag" style="background:rgba(0,0,0,.2);color:${statusColor}">${s.status||'disponible'}</span>
-          </div>
-          <div style="font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
-            <span>Cant: <strong style="color:${sem.color};font-size:13px">${s.cantidad||0}</strong> barras</span>
-            <span>Mín: <strong style="color:var(--muted)">${s.cantidad_min||0}</strong></span>
-            <span style="color:${sem.color};font-weight:700">${sem.label}</span>
-            <span>Kg/barra: <strong style="color:var(--text)">${kgBarra}</strong></span>
-            <span>Kg total: <strong style="color:var(--accent2)">${kgTotal}</strong></span>
-            <span>$/kg: <strong style="color:var(--text)">${s.precio_kg||0}</strong></span>
-            <span>Valor: <strong style="color:var(--green)">$${valor}</strong></span>
-            ${s.ubicacion?`<span>📍 ${s.ubicacion}</span>`:''}
-            ${s.supplier_name?`<span>🏭 ${s.supplier_name}</span>`:''}
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-sm btn-accent" onclick="showMpStockForm('${s.id}')">✏</button>
 
-          <button class="btn btn-sm" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)" onclick="showTransitForm('${s.id}')">→ Tránsito</button>
-        </div>
-      </div>
-    </div>`;
+  let items=mpStock.filter(s=>
+    s.status!=='consumido'&&
+    (!stF||s.status===stF)&&
+    (!search||(s.material||'').toLowerCase().includes(search)||
+      String(s.diametro||'').includes(search)||
+      (s.forma||'').toLowerCase().includes(search))
+  );
+
+  if(!items.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin registros. Agrega la primera entrada de material.</div>';
+    return;
+  }
+
+  // Agrupar por material+forma+diámetro
+  const groups={};
+  items.forEach(s=>{
+    const key=(s.material||'--')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.diametro_int||'');
+    if(!groups[key]) groups[key]={material:s.material,forma:s.forma,diametro:s.diametro,diametro_int:s.diametro_int,items:[],es_especial:s.es_especial,material_id:s.material_id};
+    groups[key].items.push(s);
+  });
+
+  list.innerHTML=Object.entries(groups).map(([key,g])=>{
+    const gid='sg-'+btoa(key).replace(/[^a-zA-Z0-9]/g,'').substring(0,12);
+    const isOpen=!!search||g.items.length===1;
+    const totalBarras=g.items.reduce((a,s)=>a+(parseInt(s.cantidad)||1),0);
+    const totalKg=g.items.reduce((a,s)=>a+(parseFloat(s.kg_total)||parseFloat((calcKgBarra(s)*(parseInt(s.cantidad)||1)).toFixed(2))),0);
+    const totalValor=g.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
+    const pppAvg=totalKg>0?(totalValor/totalKg).toFixed(2):0;
+    const matCat=mpMaterials.find(m=>m.id===g.material_id||m.name===g.material);
+    const minCat=matCat?.cantidad_min||0;
+    const reposicion=matCat?.reposicion!==false;
+    const sem=semaforo(totalBarras,minCat);
+    return '<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">'+
+      '<div onclick="toggleAlmGroup(\"+gid+\")" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;background:var(--bg2)">'+
+        '<span id="'+gid+'-icon" style="font-size:12px;color:var(--muted)">'+(isOpen?'▼':'►')+'</span>'+
+        '<div style="flex:1">'+
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<span style="font-weight:700;font-size:14px;color:var(--text)">'+(g.material||'--').toUpperCase()+'</span>'+
+            (g.forma?'<span class="tag" style="color:var(--muted)">'+g.forma+'</span>':'')+
+            (g.diametro?'<span class="tag" style="color:var(--accent)">Ø '+g.diametro+'"'+(g.diametro_int?' / Øi '+g.diametro_int+'"':'')+'</span>':'')+
+            (g.es_especial?'<span class="tag" style="color:var(--accent2);background:rgba(124,58,237,.1)">🟣 ESPECIAL</span>':'')+
+            (reposicion&&minCat>0?'<span class="tag" style="color:'+sem.color+'">'+sem.label+'</span>':'')+
+            (!reposicion?'<span class="tag" style="color:var(--muted)">Sin reposición</span>':'')+
+          '</div>'+
+          '<div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">'+
+            '<span>Total: <strong style="color:var(--text)">'+totalBarras+' barras</strong></span>'+
+            (minCat&&reposicion?'<span>Mín: <strong style="color:var(--muted)">'+minCat+'</strong></span>':'')+
+            '<span>Kg: <strong style="color:var(--accent2)">'+totalKg.toFixed(1)+'</strong></span>'+
+            '<span>PPP: <strong style="color:var(--text)">$'+pppAvg+'/kg</strong></span>'+
+            '<span>Valor: <strong style="color:var(--green)">$'+totalValor.toFixed(2)+'</strong></span>'+
+            '<span style="color:var(--muted)">'+g.items.length+' lote'+(g.items.length!==1?'s':'')+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<button class="btn btn-sm btn-accent" onclick="event.stopPropagation();showMpStockForm(null)" style="flex-shrink:0">+ Entrada</button>'+
+      '</div>'+
+      '<div id="'+gid+'" style="display:'+(isOpen?'block':'none')+';border-top:1px solid var(--border)">'+
+        g.items.map(s=>{
+          const kgB=parseFloat(calcKgBarra({...s,cantidad:1}).toFixed(3));
+          const stColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':s.status==='parcial'?'var(--warn)':'var(--muted)';
+          const reservas=mpReservations.filter(r=>r.mp_stock_id===s.id&&(r.status==='apartado'||r.status==='parcial'||r.status==='en_transito'));
+          return '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">'+
+            '<div style="flex:1">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+                '<span style="font-family:DM Mono,monospace;font-size:13px;color:var(--text);font-weight:700">'+(s.longitud_in?s.longitud_in+'"':'--')+'</span>'+
+                '<span style="font-size:12px;color:var(--muted)">'+(s.cantidad||1)+' barra'+((s.cantidad||1)!==1?'s':'')+'</span>'+
+                '<span class="tag" style="color:'+stColor+';font-size:10px">'+(s.status||'disponible')+'</span>'+
+                (s.lote?'<span style="font-size:10px;color:var(--muted)">Lote: '+s.lote+'</span>':'')+
+                (reservas.length>0?'<span style="font-size:10px;color:var(--warn)">📌 '+reservas.map(r=>r.ot_number).join(', ')+'</span>':'')+
+              '</div>'+
+              '<div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'+
+                '<span>Kg/barra: '+kgB+'</span>'+
+                '<span>Kg total: '+(kgB*(s.cantidad||1)).toFixed(1)+'</span>'+
+                '<span>PPP: $'+(s.precio_kg||0)+'/kg</span>'+
+                '<span>Valor: $'+(s.valor_total||0)+'</span>'+
+                (s.ubicacion?'<span>📍 '+s.ubicacion+'</span>':'')+
+                (s.supplier_name?'<span>🏭 '+s.supplier_name+'</span>':'')+
+              '</div>'+
+            '</div>'+
+            '<div style="display:flex;gap:4px;flex-shrink:0">'+
+              '<button class="btn btn-sm btn-accent" onclick="showMpStockForm(\"'+s.id+'\")" style="font-size:11px">✏</button>'+
+              '<button class="btn btn-sm" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);font-size:11px" onclick="showTransitForm(\"'+s.id+'\")">>→</button>'+
+              '<button class="btn btn-sm btn-danger" onclick="deleteMpStock(\"'+s.id+'\")" style="font-size:11px">🗑</button>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>';
   }).join('');
 }
+
+function toggleAlmGroup(gid){
+  const el=document.getElementById(gid);
+  const icon=document.getElementById(gid+'-icon');
+  if(!el) return;
+  const open=el.style.display==='block';
+  el.style.display=open?'none':'block';
+  if(icon) icon.textContent=open?'►':'▼';
+}
+window.toggleAlmGroup=toggleAlmGroup;
 window.renderAlmGeneral=renderAlmGeneral;
+
 
 // ── Formulario nueva entrada / editar ──
 async function saveMpStock(id){
@@ -5684,6 +5737,7 @@ async function saveMpStock(id){
   const min=parseInt(document.getElementById('mpf-min')?.value)||0;
   const ubic=document.getElementById('mpf-ubic')?.value||null;
   const lote=document.getElementById('mpf-lote')?.value||null;
+  const esEspecial=document.getElementById('mpf-especial')?.value==='true';
 
   let forma=null,diam=null,dint=null,longM=null,longIn=null,cant=0,kgUnit=0;
 
@@ -5719,9 +5773,6 @@ async function saveMpStock(id){
   const kgNuevo=parseFloat((kgUnit*cant).toFixed(2));
 
   // ── PRECIO PROMEDIO PONDERADO (PPP) ──
-  let precioPPP=precioNuevo;
-  let kgTotal=kgNuevo;
-  let valorTotal=parseFloat((kgTotal*precioPPP).toFixed(2));
 
   if(!id){
     // Nueva entrada — verificar si ya existe stock del mismo material/forma/diámetro/longitud
@@ -5765,7 +5816,7 @@ async function saveMpStock(id){
   }
 
   const rec={
-    material_id:matId,material:matName,descripcion:desc,grupo,
+    material_id:matId,material:matName,grupo,es_especial:esEspecial,
     forma,diametro:diam,diametro_int:dint,
     longitud_m:longM,longitud_in:longIn,
     cantidad:cant,cantidad_min:min,
@@ -6298,6 +6349,7 @@ function renderMaterials(){
             <div style="display:flex;gap:6px;flex-shrink:0">
               <button class="btn btn-sm btn-accent" onclick="showMaterialForm('${m.id}')">✏</button>
               <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.2);font-size:11px" onclick="toggleMaterialActive('${m.id}',${m.active})">${m.active?'Desact.':'Activar'}</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteMpMaterial('${m.id}')" style="font-size:11px">🗑</button>
             </div>
           </div>`).join('')}
         <div style="padding:8px 6px">
@@ -6356,6 +6408,12 @@ function showMaterialForm(id){
         <div class="field"><label>STOCK MÍNIMO (barras/piezas)</label>
           <input type="number" id="matf-min" value="${m?.cantidad_min||0}" placeholder="3">
         </div>
+        <div class="field"><label>REPOSICIÓN AUTOMÁTICA</label>
+          <select id="matf-repos">
+            <option value="true" ${m?.reposicion!==false?'selected':''}>Sí — mantener en stock mínimo</option>
+            <option value="false" ${m?.reposicion===false?'selected':''}>No — compra bajo pedido especial</option>
+          </select>
+        </div>
         <div class="field"><label>NOTAS</label>
           <input type="text" id="matf-notas" value="${m?.notas||''}" placeholder="Opcional">
         </div>
@@ -6396,8 +6454,9 @@ async function saveMaterial(id){
   const diametro_int=parseFloat(document.getElementById('matf-dint')?.value)||null;
   const cantidad_min=parseInt(document.getElementById('matf-min')?.value)||0;
   const notas=document.getElementById('matf-notas')?.value||null;
+  const reposicion=document.getElementById('matf-repos')?.value!=='false';
   if(!name){alert('El nombre es requerido');return;}
-  const rec={name,grupo,densidad,forma,diametro,diametro_int,cantidad_min,notas,active:true};
+  const rec={name,grupo,densidad,forma,diametro,diametro_int,cantidad_min,notas,reposicion,active:true};
   try{
     if(id){
       await sbUpdate('mp_materials',{id},rec);
@@ -6520,6 +6579,12 @@ function showMpStockForm(id){
         </div>
         <div class="field"><label>LOTE / REFERENCIA</label>
           <input type="text" id="mpf-lote" value="${s?.lote||''}" placeholder="Opcional">
+        </div>
+        <div class="field"><label>TIPO DE COMPRA</label>
+          <select id="mpf-especial">
+            <option value="false" ${!s?.es_especial?'selected':''}>Stock regular</option>
+            <option value="true" ${s?.es_especial?'selected':''}>🟣 Compra especial (sin reposición)</option>
+          </select>
         </div>
 
         <!-- Resumen kg y valor -->
@@ -6865,6 +6930,72 @@ function renderRmtProd(){
     </div>`).join('');
 }
 window.renderRmtProd=renderRmtProd;
+
+
+// ── Eliminar registro de stock ──
+async function deleteMpStock(id){
+  const s=mpStock.find(x=>x.id===id);
+  if(!s) return;
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  box.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:400px;width:90%;text-align:center">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">¿Eliminar registro?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${s.material||'--'} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — ${s.cantidad||0} barras</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="del-yes" class="btn btn-danger" style="min-width:100px">Sí, eliminar</button>
+      <button id="del-no" class="btn btn-ghost" style="min-width:100px">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(box);
+  document.getElementById('del-no').onclick=()=>box.remove();
+  document.getElementById('del-yes').onclick=async()=>{
+    box.remove();
+    try{
+      await sbDelete('mp_stock',{id});
+      // Eliminar reservaciones asociadas
+      const resIds=mpReservations.filter(r=>r.mp_stock_id===id).map(r=>r.id);
+      for(const rid of resIds) await sbDelete('mp_reservations',{id:rid});
+      mpStock=mpStock.filter(x=>x.id!==id);
+      mpReservations=mpReservations.filter(r=>r.mp_stock_id!==id);
+      renderAlmGeneral();
+    }catch(e){alert('Error: '+e.message);}
+  };
+}
+window.deleteMpStock=deleteMpStock;
+
+// ── Eliminar material del catálogo ──
+async function deleteMpMaterial(id){
+  const m=mpMaterials.find(x=>x.id===id);
+  if(!m) return;
+  // Verificar si tiene stock
+  const hasStock=mpStock.some(s=>s.material_id===id||s.material===m.name);
+  if(hasStock){
+    alert('No se puede eliminar — este material tiene registros en el almacén. Desactívalo en su lugar.');
+    return;
+  }
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  box.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:400px;width:90%;text-align:center">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">¿Eliminar material del catálogo?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${m.name}${m.diametro?' — Ø '+m.diametro+'"':''}</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="delm-yes" class="btn btn-danger" style="min-width:100px">Sí, eliminar</button>
+      <button id="delm-no" class="btn btn-ghost" style="min-width:100px">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(box);
+  document.getElementById('delm-no').onclick=()=>box.remove();
+  document.getElementById('delm-yes').onclick=async()=>{
+    box.remove();
+    try{
+      await sbDelete('mp_materials',{id});
+      mpMaterials=mpMaterials.filter(x=>x.id!==id);
+      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+      renderMaterials();
+    }catch(e){alert('Error: '+e.message);}
+  };
+}
+window.deleteMpMaterial=deleteMpMaterial;
 
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
 if(typeof releaseOT!=='undefined') window.releaseOT=releaseOT;
