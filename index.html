@@ -2213,7 +2213,14 @@ function calcBomKg(mat){
 }
 
 function bomRowHTML(m, prodId, idx){
-  const isBarra=['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
+  // Pre-resolver diámetro/forma desde catálogo si el registro no los tiene guardados
+  const matCat=MAT_TYPES.find(x=>x.val===m.tipo);
+  if(matCat){
+    if(!m.diametro&&matCat.diametro)    m={...m,diametro:matCat.diametro};
+    if(!m.diametro_int&&matCat.diametro_int) m={...m,diametro_int:matCat.diametro_int};
+    if(!m.forma&&matCat.forma)          m={...m,forma:matCat.forma};
+  }
+  const isBarra=matCat?(matCat.grupo==='barra'||matCat.grupo==='tubing'):['acero','laton','aluminio','bronce'].includes(m.tipo)&&m.forma&&m.forma!=='pieza';
   const isKg=m.unidad==='kg'||isBarra;
   const kgBar=isBarra?calcBomKg(m):0;
   const totalKg=parseFloat((kgBar*(parseInt(m.cantidad)||0)).toFixed(2));
@@ -2315,8 +2322,32 @@ function onBomTypeChange(mid){
   const piezaDiv=document.getElementById('bom-pieza-'+mid);
   if(barraDiv) barraDiv.style.display=isBarra?'':'none';
   if(piezaDiv) piezaDiv.style.display=isBarra?'none':'';
+  // Auto-rellenar diámetro y forma desde catálogo (NO toca longitud ni cantidad)
+  if(matCat){
+    const diamEl=document.getElementById('bom-diam-'+mid);
+    const dintEl=document.getElementById('bom-dint-'+mid);
+    const formaEl=document.getElementById('bom-forma-'+mid);
+    // Solo auto-rellenar si el campo está vacío
+    if(diamEl&&!diamEl.value&&matCat.diametro)  diamEl.value=matCat.diametro;
+    if(dintEl&&!dintEl.value&&matCat.diametro_int) dintEl.value=matCat.diametro_int;
+    if(formaEl&&matCat.forma){
+      // Mapear forma nueva a valor legacy del select
+      const formaMap={'Redondo':'redondo','Hexagonal':'hexagonal',
+        'Barra Hueca':'barra_hueca','Cuadrado/Solera':'cuadrado',
+        'Tubo':'tubo'};
+      const formaVal=formaMap[matCat.forma]||matCat.forma.toLowerCase();
+      // Solo si existe esa opción en el select
+      const opt=[...formaEl.options].find(o=>o.value===formaVal);
+      if(opt) formaEl.value=formaVal;
+    }
+    calcBomRowKg(mid);
+  }
   const dintWrap=document.getElementById('bom-dint-wrap-'+mid);
-  if(dintWrap) dintWrap.style.display=grupo==='tubing'?'':'none';
+  if(dintWrap){
+    const formaEl=document.getElementById('bom-forma-'+mid);
+    const showDint=grupo==='tubing'||formaEl?.value==='barra_hueca';
+    dintWrap.style.display=showDint?'':'none';
+  }
 }
 
 function onBomFormaChange(mid){
