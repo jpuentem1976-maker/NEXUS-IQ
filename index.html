@@ -2200,18 +2200,30 @@ function bomRowHTML(m, prodId, idx){
   const totalKg=parseFloat((kgBar*(parseInt(m.cantidad)||0)).toFixed(2));
   const mid=m.id||uid();
   return `<div id="bom-row-${mid}" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end">
+    <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end">
       <div class="field" style="margin:0"><label style="font-size:9px">MATERIAL</label>
         <select id="bom-tipo-${mid}" onchange="onBomTypeChange('${mid}')" style="font-size:11px">
           <option value="">-- Selecciona material --</option>
-          ${MAT_TYPES.map(t=>{
+          ${[...MAT_TYPES].sort((a,b)=>{
+            // 1. Categoría según orden oficial
+            const CAT_ORDER=['Acero','Acero Inoxidable','Bronce','Latón','Aluminio','Nylamid','Pieza Comprada'];
+            const ci=(CAT_ORDER.indexOf(a.categoria||'')??99)-(CAT_ORDER.indexOf(b.categoria||'')??99);
+            if(ci!==0) return ci;
+            // 2. Nombre alfabético
+            const ni=(a.label||'').localeCompare(b.label||'');
+            if(ni!==0) return ni;
+            // 3. Forma alfabética
+            const fi=(a.forma||'').localeCompare(b.forma||'');
+            if(fi!==0) return fi;
+            // 4. Diámetro numérico ascendente
+            return (parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0);
+          }).map(t=>{
             const u=(t.categoria==='Acero'&&t.forma==='Barra Hueca')?'mm':'"';
             const sinDim=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
             let dim='';
             if(t.diametro){
               dim=` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`;
             } else if(sinDim.includes(t.forma)){
-              // Para estas formas mostrar forma + código si existe
               dim=` — ${t.forma||''}`+(t.codigo_especial?` [${t.codigo_especial}]`:'');
             } else if(t.forma&&t.forma!=='N/A'){
               dim=` — ${t.forma}`;
@@ -2219,9 +2231,6 @@ function bomRowHTML(m, prodId, idx){
             return `<option value="${t.val}" ${m.tipo===t.val?'selected':''}>${t.label}${dim}</option>`;
           }).join('')}
         </select>
-      </div>
-      <div class="field" style="margin:0"><label style="font-size:9px">DESCRIPCIÓN</label>
-        <input id="bom-desc-${mid}" value="${m.descripcion||''}" placeholder="ej. Acero SAE 8620" style="font-size:11px">
       </div>
       <div class="field" style="margin:0"><label style="font-size:9px">¿CRÍTICO? <span style="color:var(--muted);font-size:9px">(bloquea liberación)</span></label>
         <select id="bom-critical-${mid}" style="font-size:11px">
@@ -2336,7 +2345,6 @@ function readBomRows(prodId){
     rows.push({
       id:mid,
       tipo,
-      descripcion:document.getElementById('bom-desc-'+mid)?.value||'',
       critico:document.getElementById('bom-critical-'+mid)?.value!=='0',
       forma:isBarra?(document.getElementById('bom-forma-'+mid)?.value||'redondo'):'pieza',
       diametro:isBarra?parseFloat(document.getElementById('bom-diam-'+mid)?.value)||null:null,
