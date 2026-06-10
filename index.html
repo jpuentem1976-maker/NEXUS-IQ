@@ -2490,7 +2490,9 @@ function showProductForm(id){
         <div style="display:flex;align-items:center;gap:10px">
           <input type="file" id="pf-drawing-file" accept=".pdf" style="display:none" onchange="uploadDrawingFile(this)">
           <button type="button" onclick="document.getElementById('pf-drawing-file').click()" class="btn btn-ghost btn-sm">📁 Subir PDF</button>
-          <span id="pf-drawing-status" style="font-size:11px">${p.drawing_url?'<a href="'+p.drawing_url+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual</a>':"Sin dibujo cargado"}</span>
+          <span id="pf-drawing-status" style="font-size:11px">${p.drawing_url
+            ?'<a href="'+p.drawing_url+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual</a>&nbsp;<button onclick="deleteProductDrawing()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar</button>'
+            :'Sin dibujo cargado'}</span>
         </div>
         <input type="hidden" id="pf-drawing-url" value="${p.drawing_url||''}">
       </div>
@@ -2784,6 +2786,20 @@ function previewPhoto(){
   else prev.innerHTML='<div style="text-align:center"><div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:4px">Click para<br>subir foto</div></div>';
 }
 
+async function deleteNexusImage(url){
+  if(!url) return;
+  const marker='/object/public/nexusiq-images/';
+  const idx=url.indexOf(marker);
+  if(idx<0) return;
+  const filePath=url.slice(idx+marker.length);
+  try{
+    await fetch(SB_URL+'/storage/v1/object/nexusiq-images/'+filePath,{
+      method:'DELETE',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+    });
+  }catch(e){ console.warn('Image delete error:',e); }
+}
+
 async function uploadProductPhoto(input){
   const file = input.files[0];
   if(!file) return;
@@ -2792,6 +2808,9 @@ async function uploadProductPhoto(input){
   statusEl.textContent = '⏳ Subiendo imagen...';
   statusEl.style.color = 'var(--warn)';
   try{
+    // Borrar foto anterior si existe
+    const prevUrl=document.getElementById('pf-photo-url-final')?.value;
+    if(prevUrl) await deleteNexusImage(prevUrl);
     const ext = file.name.split('.').pop().toLowerCase();
     const filename = 'products/' + uid() + '.' + ext;
     const res = await fetch(SB_URL + '/storage/v1/object/nexusiq-images/' + filename, {
@@ -2809,7 +2828,8 @@ async function uploadProductPhoto(input){
     document.getElementById('pf-photo').value = publicUrl;
     document.getElementById('pf-photo-url-final').value = publicUrl;
     prevEl.innerHTML = `<img src="${publicUrl}" style="width:100%;height:100%;object-fit:cover">`;
-    statusEl.textContent = '✅ Imagen subida correctamente';
+    document.getElementById('pf-photo-url-final').value = publicUrl;
+    statusEl.innerHTML = '✅ Imagen subida &nbsp;<button onclick="deleteProductPhoto()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar foto</button>';
     statusEl.style.color = 'var(--green)';
   }catch(e){
     statusEl.textContent = '❌ Error al subir: ' + e.message;
@@ -2818,11 +2838,26 @@ async function uploadProductPhoto(input){
   }
 }
 
+async function deleteProductPhoto(){
+  if(!confirm('¿Eliminar la foto de este producto?')) return;
+  const urlEl=document.getElementById('pf-photo-url-final');
+  if(urlEl?.value) await deleteNexusImage(urlEl.value);
+  if(urlEl) urlEl.value='';
+  const prev=document.getElementById('pf-photo-preview');
+  if(prev) prev.innerHTML='<div style="text-align:center"><div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:4px">Sin foto</div></div>';
+  const st=document.getElementById('pf-upload-status');
+  if(st){st.textContent='Foto eliminada';st.style.color='var(--muted)';}
+}
+window.deleteProductPhoto=deleteProductPhoto;
+
 async function uploadItemPhoto(input, photoInputId, previewId){
   const file=input.files[0]; if(!file) return;
   const prevEl=document.getElementById(previewId);
   if(prevEl) prevEl.innerHTML='<span style="font-size:16px" class="spinning">⚙</span>';
   try{
+    // Borrar foto anterior si existe
+    const prevUrl=document.getElementById(photoInputId)?.value;
+    if(prevUrl) await deleteNexusImage(prevUrl);
     const ext=file.name.split('.').pop().toLowerCase();
     const filename='items/'+uid()+'.'+ext;
     const res=await fetch(SB_URL+'/storage/v1/object/nexusiq-images/'+filename,{
@@ -2844,6 +2879,9 @@ async function uploadOpImage(input, targetInputId, previewId){
   const file = input.files[0];
   if(!file) return;
   try{
+    // Borrar imagen anterior si existe
+    const prevUrl=document.getElementById(targetInputId)?.value;
+    if(prevUrl) await deleteNexusImage(prevUrl);
     const ext = file.name.split('.').pop().toLowerCase();
     const filename = 'operations/' + uid() + '.' + ext;
     const res = await fetch(SB_URL + '/storage/v1/object/nexusiq-images/' + filename, {
@@ -3405,29 +3443,59 @@ window.toggleMachineTime = function(mid){
    DRAWINGS & CNC PROGRAMS
 ═══════════════════════════════════════════════════════ */
 
-async function uploadDrawingFile(input){
-  const file = input.files[0]; if(!file) return;
-  const statusEl = document.getElementById('pf-drawing-status');
-  if(statusEl) statusEl.textContent = 'Subiendo PDF...';
+// ── Eliminar archivo de Supabase Storage por URL pública ──
+async function deleteStorageFile(url){
+  if(!url) return;
+  // Extraer path relativo: todo después de '/object/public/drawings/'
+  const marker='/object/public/drawings/';
+  const idx=url.indexOf(marker);
+  if(idx<0) return;
+  const filePath=url.slice(idx+marker.length);
   try{
-    const filename = 'drawings/' + uid() + '.pdf';
-    const res = await fetch(SB_URL+'/storage/v1/object/drawings/'+filename,{
+    await fetch(SB_URL+'/storage/v1/object/drawings/'+filePath,{
+      method:'DELETE',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+    });
+  }catch(e){ console.warn('Storage delete error:',e); }
+}
+
+async function uploadDrawingFile(input){
+  const file=input.files[0]; if(!file) return;
+  const statusEl=document.getElementById('pf-drawing-status');
+  if(statusEl) statusEl.textContent='⏳ Subiendo...';
+  try{
+    // Borrar archivo anterior si existe
+    const prevUrl=document.getElementById('pf-drawing-url')?.value;
+    if(prevUrl) await deleteStorageFile(prevUrl);
+    const ext=file.name.split('.').pop().toLowerCase();
+    const mime=file.type||'application/pdf';
+    const filename='drawings/'+uid()+'.'+ext;
+    const res=await fetch(SB_URL+'/storage/v1/object/drawings/'+filename,{
       method:'POST',
-      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/pdf','x-upsert':'true'},
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':mime,'x-upsert':'true'},
       body:file
     });
-    if(!res.ok){ const t=await res.text(); throw new Error(t); }
-    const url = SB_URL+'/storage/v1/object/public/drawings/'+filename;
-    const inp = document.getElementById('pf-drawing-url');
-    if(inp) inp.value = url;
-    if(statusEl) statusEl.innerHTML = '<a href="'+url+'" target="_blank" style="color:var(--accent2)">Dibujo cargado - Ver PDF</a>';
-    var drawHidden = document.getElementById('pf-drawing-url');
-    if(drawHidden) drawHidden.value = url;
+    if(!res.ok){const t=await res.text();throw new Error(t);}
+    const url=SB_URL+'/storage/v1/object/public/drawings/'+filename;
+    const inp=document.getElementById('pf-drawing-url');
+    if(inp) inp.value=url;
+    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" style="color:var(--accent2);font-weight:600">Dibujo cargado — Ver 🔗</a>'
+      +'&nbsp;<button onclick="deleteProductDrawing()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar</button>';
   }catch(e){
-    if(statusEl) statusEl.textContent = 'Error: '+e.message;
+    if(statusEl) statusEl.textContent='Error: '+e.message;
   }
 }
-window.uploadDrawingFile = uploadDrawingFile;
+window.uploadDrawingFile=uploadDrawingFile;
+
+async function deleteProductDrawing(){
+  if(!confirm('¿Eliminar el dibujo de este producto?')) return;
+  const urlEl=document.getElementById('pf-drawing-url');
+  if(urlEl?.value) await deleteStorageFile(urlEl.value);
+  if(urlEl) urlEl.value='';
+  const statusEl=document.getElementById('pf-drawing-status');
+  if(statusEl) statusEl.innerHTML='Sin dibujo cargado';
+}
+window.deleteProductDrawing=deleteProductDrawing;
 
 function onTipoProductoChange(){
   const tipo=document.getElementById('pf-tipo-producto')?.value;
@@ -3445,6 +3513,9 @@ async function uploadMaterialDrawing(input){
   const statusEl=document.getElementById('matf-dibujo-status');
   if(statusEl) statusEl.textContent='⏳ Subiendo...';
   try{
+    // Borrar archivo anterior si existe
+    const prevUrl=document.getElementById('matf-dibujo-url')?.value;
+    if(prevUrl) await deleteStorageFile(prevUrl);
     const ext=file.name.split('.').pop().toLowerCase();
     const mime=file.type||'application/octet-stream';
     const filename='materials/'+uid()+'.'+ext;
@@ -3453,18 +3524,30 @@ async function uploadMaterialDrawing(input){
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':mime,'x-upsert':'true'},
       body:file
     });
-    if(!res.ok){ const t=await res.text(); throw new Error(t); }
+    if(!res.ok){const t=await res.text();throw new Error(t);}
     const url=SB_URL+'/storage/v1/object/public/drawings/'+filename;
     const hidden=document.getElementById('matf-dibujo-url');
     if(hidden) hidden.value=url;
-    const extUp=filename.split('.').pop().toUpperCase();
-    const lblUp=extUp==='DWG'||extUp==='DXF'?'Archivo '+extUp+' cargado — Descargar ⬇':'Dibujo cargado — Ver 🔗';
-    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" download style="color:var(--accent2);font-weight:600">'+lblUp+'</a>';
+    const extUp=ext.toUpperCase();
+    const isDwgUp=extUp==='DWG'||extUp==='DXF';
+    const lblUp=isDwgUp?'Archivo '+extUp+' cargado — Descargar ⬇':'Dibujo cargado — Ver 🔗';
+    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" '+(isDwgUp?'download':'')+' style="color:var(--accent2);font-weight:600">'+lblUp+'</a>'
+      +'&nbsp;<button onclick="deleteMaterialDrawing()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar</button>';
   }catch(e){
     if(statusEl) statusEl.textContent='Error: '+e.message;
   }
 }
 window.uploadMaterialDrawing=uploadMaterialDrawing;
+
+async function deleteMaterialDrawing(){
+  if(!confirm('¿Eliminar el dibujo de este material?')) return;
+  const urlEl=document.getElementById('matf-dibujo-url');
+  if(urlEl?.value) await deleteStorageFile(urlEl.value);
+  if(urlEl) urlEl.value='';
+  const statusEl=document.getElementById('matf-dibujo-status');
+  if(statusEl) statusEl.innerHTML='Sin dibujo cargado';
+}
+window.deleteMaterialDrawing=deleteMaterialDrawing;
 
 function buildDrawingsGrid(prods, containerId){
   const body = document.getElementById(containerId);
@@ -6747,7 +6830,7 @@ function onMatfFormaChange(){
         +'<input type="file" id="matf-dibujo-file" accept=".pdf,.dwg,.dxf,image/*" style="display:none" onchange="uploadMaterialDrawing(this)">'
         +'<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'matf-dibujo-file\').click()">📁 Subir PDF o imagen</button>'
         +'<span id="matf-dibujo-status" style="font-size:11px">'
-          +(dibUrl?'<a href="'+dibUrl+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual 🔗</a>':'Sin dibujo cargado')
+          +(dibUrl?'<a href="'+dibUrl+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual 🔗</a>&nbsp;<button onclick="deleteMaterialDrawing()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar</button>':'Sin dibujo cargado')
         +'</span>'
       +'</div>'
       +'<input type="hidden" id="matf-dibujo-url" value="'+dibUrl+'">'  
