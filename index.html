@@ -1341,7 +1341,7 @@ async function loadAllData(){
   // Catálogo de materiales dinámico
   mpMaterials=mpMatsData||[];
   if(mpMaterials.length){
-    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
     window._mpMaterialsRaw=mpMaterials;
   }
 }
@@ -6441,7 +6441,7 @@ function renderMaterials(){
                     +(m.forma?'<span class="tag" style="color:'+catDef.color+';background:'+catDef.color+'15;border-color:'+catDef.color+'30;font-size:11px">'+m.forma+'</span>':'')
                     +(medStr?'<span style="font-family:\'DM Mono\',monospace;color:var(--accent);font-weight:700;font-size:13px">'+medStr+'</span>':'')
                     +'<span style="font-size:10px;color:var(--muted)">ρ '+m.densidad+' lb/in³</span>'
-                    +(m.cantidad_min?'<span class="tag" style="color:var(--green);font-size:10px">Mín: '+m.cantidad_min+'</span>':'')+(m.cantidad_max?'<span class="tag" style="color:var(--accent2);font-size:10px">Máx: '+m.cantidad_max+'</span>':'')
+                    +(m.cantidad_min?'<span class="tag" style="color:var(--green);font-size:10px">Mín: '+m.cantidad_min+'</span>':'')+(m.cantidad_max?'<span class="tag" style="color:var(--accent2);font-size:10px">'+(m.cantidad_max_tipo==='lote'?'🔄 Lote:':'📦 Máx:')+' '+m.cantidad_max+'</span>':'')
                     +(m.codigo_especial?'<span class="tag" style="color:var(--accent2);font-size:10px">'+m.codigo_especial+'</span>':'')+(m.dibujo_url?'<a href="'+m.dibujo_url+'" target="_blank" class="tag" style="color:var(--warn);font-size:10px;text-decoration:none">🖼 Dibujo</a>':'')+(m.reposicion===false?'<span class="tag" style="color:var(--warn);font-size:10px">Sin reposición auto</span>':'')+(m.reposicion!==false&&m.longitud_reposicion?'<span class="tag" style="color:var(--muted);font-size:10px">📏 Std: '+parseFloat(m.longitud_reposicion).toFixed(3)+(m.longitud_reposicion_unidad==='m'?'m':'"')+'</span>':'')
                     +(m.notas?'<span style="font-size:10px;color:var(--muted)">📝 '+m.notas+'</span>':'')
                     +(!m.active?'<span class="tag" style="color:var(--danger);font-size:10px">Inactivo</span>':'')
@@ -6496,7 +6496,17 @@ function showMaterialForm(id){
       +'<div id="matf-medidas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:12px"></div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px">'
         +'<div class="field"><label>STOCK MÍNIMO (barras/piezas)</label><input type="number" id="matf-min" value="'+(m?.cantidad_min||0)+'" placeholder="3"></div>'
-        +'<div class="field"><label>STOCK MÁXIMO (barras/piezas)</label><input type="number" id="matf-max" value="'+(m?.cantidad_max||0)+'" placeholder="10"></div>'
+        +'<div class="field">'
+          +'<label>CANTIDAD MÁXIMA (barras/piezas)</label>'
+          +'<div style="display:flex;gap:8px;align-items:center">'
+            +'<input type="number" id="matf-max" style="flex:1" value="'+(m?.cantidad_max||0)+'" placeholder="10">'
+            +'<select id="matf-max-tipo" style="width:160px">'
+              +'<option value="maximo" '+((m?.cantidad_max_tipo||'maximo')==='maximo'?'selected':'')+'>📦 Stock máximo</option>'
+              +'<option value="lote" '+(m?.cantidad_max_tipo==='lote'?'selected':'')+'>🔄 Lote de compra</option>'
+            +'</select>'
+          +'</div>'
+          +'<small id="matf-max-hint" style="color:var(--muted);font-size:10px">'+(  (m?.cantidad_max_tipo==='lote')?'Cantidad fija que se compra cada vez que se repone':'Límite superior del inventario — no comprar más de esta cantidad'  )+'</small>'
+        +'</div>'
         +'<div class="field"><label>REPOSICIÓN AUTOMÁTICA</label>'
           +'<select id="matf-repos" onchange="onMatfReposChange()">'
             +'<option value="true" '+(m?.reposicion!==false?'selected':'')+'>Sí — mantener en stock mínimo</option>'
@@ -6627,6 +6637,7 @@ async function saveMaterial(id){
   const codigo_especial=(document.getElementById('matf-codigo-especial')?.value||'')||null;
   const dibujo_url=(document.getElementById('matf-dibujo-url')?.value?.trim()||'')||null;
   const cantidad_max=parseInt(document.getElementById('matf-max')?.value)||0;
+  const cantidad_max_tipo=document.getElementById('matf-max-tipo')?.value||'maximo';
   const notas=(document.getElementById('matf-notas')?.value||'')||null;
   const reposicion=document.getElementById('matf-repos')?.value!=='false';
   const longitud_reposicion=reposicion?(parseFloat(document.getElementById('matf-longstd')?.value)||null):null;
@@ -6634,7 +6645,7 @@ async function saveMaterial(id){
   if(!name){alert('El nombre / especificación es requerido');return;}
   const fo=MAT_FORMAS.find(f=>f.val===forma)||{campos:[]};
   const grupoLegacy=fo.val==='Tubo'?'tubing':(fo.campos.length===0?'pieza':'barra');
-  const rec={name,categoria,grupo:grupoLegacy,densidad,forma,diametro,diametro_int,cantidad_min,cantidad_max,notas,reposicion,longitud_reposicion,longitud_reposicion_unidad,codigo_especial,dibujo_url,active:true};
+  const rec={name,categoria,grupo:grupoLegacy,densidad,forma,diametro,diametro_int,cantidad_min,cantidad_max,cantidad_max_tipo,notas,reposicion,longitud_reposicion,longitud_reposicion_unidad,codigo_especial,dibujo_url,active:true};
   try{
     if(id){
       await sbUpdate('mp_materials',{id},rec);
@@ -6648,7 +6659,7 @@ async function saveMaterial(id){
     MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({
       val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,
       densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,
-      diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,
+      diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,
       reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad
     }));
     document.getElementById('material-form-wrap').innerHTML='';
@@ -6662,7 +6673,7 @@ async function toggleMaterialActive(id,active){
   await sbUpdate('mp_materials',{id},{active:!active});
   const idx=mpMaterials.findIndex(m=>m.id===id);
   if(idx>=0) mpMaterials[idx].active=!active;
-  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
   renderMaterials();
 }
 window.toggleMaterialActive=toggleMaterialActive;
@@ -7174,7 +7185,7 @@ async function deleteMpMaterial(id){
     try{
       await sbDelete('mp_materials',{id});
       mpMaterials=mpMaterials.filter(x=>x.id!==id);
-      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
       renderMaterials();
     }catch(e){alert('Error: '+e.message);}
   };
