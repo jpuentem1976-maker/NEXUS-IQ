@@ -6349,6 +6349,15 @@ function renderMaterials(){
     return;
   }
 
+  // Ordenar filtered: por nombre, luego forma, luego diámetro numérico ascendente
+  filtered.sort((a,b)=>{
+    const nCmp=(a.name||'').localeCompare(b.name||'');
+    if(nCmp!==0) return nCmp;
+    const fCmp=(a.forma||'').localeCompare(b.forma||'');
+    if(fCmp!==0) return fCmp;
+    return (parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0);
+  });
+
   // Agrupar por CATEGORÍA (orden oficial) luego por NOMBRE
   const byCat={};
   filtered.forEach(m=>{
@@ -6378,12 +6387,6 @@ function renderMaterials(){
     const catDef=MAT_CATEGORIAS.find(c=>c.val===cat)||{color:'var(--muted)',icon:'•'};
     const byName={};
     items.forEach(m=>{ const k=m.name||'Sin nombre'; if(!byName[k])byName[k]=[]; byName[k].push(m); });
-    // Ordenar cada subgrupo: por forma alfabética, luego por diámetro ascendente
-    Object.values(byName).forEach(arr=>arr.sort((a,b)=>{
-      const fCmp=(a.forma||'').localeCompare(b.forma||'');
-      if(fCmp!==0) return fCmp;
-      return (parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0);
-    }));
     const nameKeys=Object.keys(byName).sort();
     const catId='catg-'+cat.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
     const isOpenCat=!!search;
