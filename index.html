@@ -3325,6 +3325,31 @@ async function uploadDrawingFile(input){
 }
 window.uploadDrawingFile = uploadDrawingFile;
 
+// ── Subida de dibujo para Catálogo de Materiales ──
+async function uploadMaterialDrawing(input){
+  const file=input.files[0]; if(!file) return;
+  const statusEl=document.getElementById('matf-dibujo-status');
+  if(statusEl) statusEl.textContent='⏳ Subiendo...';
+  try{
+    const ext=file.name.split('.').pop().toLowerCase();
+    const mime=file.type||'application/octet-stream';
+    const filename='materials/'+uid()+'.'+ext;
+    const res=await fetch(SB_URL+'/storage/v1/object/drawings/'+filename,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':mime,'x-upsert':'true'},
+      body:file
+    });
+    if(!res.ok){ const t=await res.text(); throw new Error(t); }
+    const url=SB_URL+'/storage/v1/object/public/drawings/'+filename;
+    const hidden=document.getElementById('matf-dibujo-url');
+    if(hidden) hidden.value=url;
+    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" style="color:var(--accent2);font-weight:600">Dibujo cargado — Ver 🔗</a>';
+  }catch(e){
+    if(statusEl) statusEl.textContent='Error: '+e.message;
+  }
+}
+window.uploadMaterialDrawing=uploadMaterialDrawing;
+
 function buildDrawingsGrid(prods, containerId){
   const body = document.getElementById(containerId);
   if(!body) return;
@@ -6506,8 +6531,8 @@ window.onMatfCatChange=onMatfCatChange;
 const FORMAS_SIN_LONGITUD=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
 // Formas con campo URL de dibujo
 const FORMAS_CON_DIBUJO=['Corte en Pantógrafo','Corte Láser','Forja','Fundición'];
-// Formas con código especial (Forja/Fundición)
-const FORMAS_CON_CODIGO=['Forja','Fundición'];
+// Formas con código especial
+const FORMAS_CON_CODIGO=['Forja','Fundición','Corte en Pantógrafo','Corte Láser'];
 
 function onMatfFormaChange(){
   const cat=document.getElementById('matf-cat')?.value||'Acero';
@@ -6535,22 +6560,30 @@ function onMatfFormaChange(){
   if(fo.campos.length===0)
     html+='<div style="grid-column:1/-1;font-size:12px;color:var(--muted);padding:6px 0">Esta forma no requiere dimensiones específicas.</div>';
 
-  // ── Código de Forja / Fundición ──
+  // ── Código especial según forma ──
   if(FORMAS_CON_CODIGO.includes(forma)){
-    const lbl=forma==='Forja'?'CÓDIGO DE FORJA':'CÓDIGO DE FUNDICIÓN';
+    const lblMap={'Forja':'CÓDIGO DE FORJA','Fundición':'CÓDIGO DE FUNDICIÓN',
+      'Corte en Pantógrafo':'CÓDIGO DE CORTE EN PANTÓGRAFO','Corte Láser':'CÓDIGO DE CORTE LÁSER'};
+    const lbl=lblMap[forma]||'CÓDIGO';
+    const phMap={'Forja':'ej. FRJ-083','Fundición':'ej. FND-041',
+      'Corte en Pantógrafo':'ej. PNT-120','Corte Láser':'ej. LSR-055'};
     html+='<div class="field"><label>'+lbl+'</label>'
-      +'<input type="text" id="matf-codigo-especial" value="'+(m?.codigo_especial||'')+'" placeholder="ej. FRJ-083">'
+      +'<input type="text" id="matf-codigo-especial" value="'+(m?.codigo_especial||'')+'" placeholder="'+phMap[forma]+'">'
     +'</div>';
   }
 
-  // ── URL de Dibujo (Pantógrafo, Láser, Forja, Fundición) ──
+  // ── Dibujo PDF — subida a Supabase Storage bucket 'drawings' ──
   if(FORMAS_CON_DIBUJO.includes(forma)){
-    html+='<div class="field" style="grid-column:1/-1"><label>🖼 URL DEL DIBUJO</label>'
-      +'<div style="display:flex;gap:8px;align-items:center">'
-        +'<input type="url" id="matf-dibujo-url" style="flex:1" value="'+(m?.dibujo_url||'')+'" placeholder="https://drive.google.com/... o similar">'
-        +(m?.dibujo_url?'<a href="'+(m?.dibujo_url||'')+'" target="_blank" class="btn btn-sm btn-accent" style="flex-shrink:0">Ver 🔗</a>':'')
+    const dibUrl=m?.dibujo_url||'';
+    html+='<div class="field" style="grid-column:1/-1"><label>🖼 DIBUJO (PDF)</label>'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +'<input type="file" id="matf-dibujo-file" accept=".pdf,image/*" style="display:none" onchange="uploadMaterialDrawing(this)">'
+        +'<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'matf-dibujo-file\').click()">📁 Subir PDF o imagen</button>'
+        +'<span id="matf-dibujo-status" style="font-size:11px">'
+          +(dibUrl?'<a href="'+dibUrl+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual 🔗</a>':'Sin dibujo cargado')
+        +'</span>'
       +'</div>'
-      +'<small style="color:var(--muted);font-size:10px">Pega el enlace de Google Drive, Dropbox u otro servicio</small>'
+      +'<input type="hidden" id="matf-dibujo-url" value="'+dibUrl+'">'  
     +'</div>';
   }
 
@@ -6592,7 +6625,7 @@ async function saveMaterial(id){
   const diametro_int=parseFloat(document.getElementById('matf-dint')?.value)||null;
   const cantidad_min=parseInt(document.getElementById('matf-min')?.value)||0;
   const codigo_especial=(document.getElementById('matf-codigo-especial')?.value||'')||null;
-  const dibujo_url=(document.getElementById('matf-dibujo-url')?.value||'')||null;
+  const dibujo_url=(document.getElementById('matf-dibujo-url')?.value?.trim()||'')||null;
   const cantidad_max=parseInt(document.getElementById('matf-max')?.value)||0;
   const notas=(document.getElementById('matf-notas')?.value||'')||null;
   const reposicion=document.getElementById('matf-repos')?.value!=='false';
