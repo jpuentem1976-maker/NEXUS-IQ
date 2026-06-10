@@ -2204,7 +2204,11 @@ function bomRowHTML(m, prodId, idx){
       <div class="field" style="margin:0"><label style="font-size:9px">MATERIAL</label>
         <select id="bom-tipo-${mid}" onchange="onBomTypeChange('${mid}')" style="font-size:11px">
           <option value="">-- Selecciona material --</option>
-          ${MAT_TYPES.map(t=>`<option value="${t.val}" ${m.tipo===t.val?'selected':''}>${t.label}</option>`).join('')}
+          ${MAT_TYPES.map(t=>{
+            const u=(t.categoria==='Acero'&&t.forma==='Barra Hueca')?'mm':'"';
+            const dim=t.diametro?` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`:(t.forma&&t.forma!=='N/A'?` — ${t.forma}`:'');
+            return `<option value="${t.val}" ${m.tipo===t.val?'selected':''}>${t.label}${dim}</option>`;
+          }).join('')}
         </select>
       </div>
       <div class="field" style="margin:0"><label style="font-size:9px">DESCRIPCIÓN</label>
