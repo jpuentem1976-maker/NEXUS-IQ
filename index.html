@@ -2205,26 +2205,32 @@ function bomRowHTML(m, prodId, idx){
         <select id="bom-tipo-${mid}" onchange="onBomTypeChange('${mid}')" style="font-size:11px">
           <option value="">-- Selecciona material --</option>
           ${[...MAT_TYPES].sort((a,b)=>{
-            // 1. Categoría según orden oficial
             const CAT_ORDER=['Acero','Acero Inoxidable','Bronce','Latón','Aluminio','Nylamid','Pieza Comprada'];
             const ci=(CAT_ORDER.indexOf(a.categoria||'')??99)-(CAT_ORDER.indexOf(b.categoria||'')??99);
             if(ci!==0) return ci;
-            // 2. Nombre alfabético
             const ni=(a.label||'').localeCompare(b.label||'');
             if(ni!==0) return ni;
-            // 3. Forma alfabética
             const fi=(a.forma||'').localeCompare(b.forma||'');
             if(fi!==0) return fi;
-            // 4. Diámetro numérico ascendente
             return (parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0);
           }).map(t=>{
             const u=(t.categoria==='Acero'&&t.forma==='Barra Hueca')?'mm':'"';
             const sinDim=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
             let dim='';
-            if(t.diametro){
-              dim=` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`;
-            } else if(sinDim.includes(t.forma)){
+            if(sinDim.includes(t.forma)){
               dim=` — ${t.forma||''}`+(t.codigo_especial?` [${t.codigo_especial}]`:'');
+            } else if(t.forma==='Barra Hueca'||t.forma==='Tubo'){
+              // Mostrar Øext / Øint
+              const ext=t.diametro?`Ø${parseFloat(t.diametro).toFixed(3)}${u}`:'';
+              const int=t.diametro_int?`/ Øi${parseFloat(t.diametro_int).toFixed(3)}${u}`:'';
+              dim=` — ${t.forma} ${ext}${int?` ${int}`:''}`.trimEnd();
+            } else if(t.forma==='Cuadrado/Solera'){
+              // Mostrar Lado A x Lado B
+              const la=t.diametro?`${parseFloat(t.diametro).toFixed(3)}${u}`:'';
+              const lb=t.diametro_int?`x ${parseFloat(t.diametro_int).toFixed(3)}${u}`:'';
+              dim=` — Cuadrado/Solera ${la}${lb?` ${lb}`:''}`.trimEnd();
+            } else if(t.diametro){
+              dim=` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`;
             } else if(t.forma&&t.forma!=='N/A'){
               dim=` — ${t.forma}`;
             }
