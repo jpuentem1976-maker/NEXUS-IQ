@@ -534,7 +534,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setEngTab('e-operators',this)">👷 Operadores</button>
     <button class="ptab" onclick="setEngTab('e-tooling',this)">🔧 Herramental</button>
     <button class="ptab" onclick="setEngTab('e-machine-times',this)">⏱ Tiempos Máquina</button>
-    <button class="ptab" onclick="setEngTab('e-drawings',this)">📐 Dibujos</button>
+    <button class="ptab" onclick="setEngTab('e-drawings',this)">📐 Dibujos Fabricación</button>
+    <button class="ptab" onclick="setEngTab('e-drawings-mp',this)">🗂 Dibujos Materia Prima</button>
     <button class="ptab" onclick="setEngTab('e-cnc',this)">💾 Programas CNC</button>
     <button class="ptab" onclick="setEngTab('e-materials',this)">🧱 Catálogo Materiales</button>
   </div>
@@ -580,9 +581,16 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 
   <!-- DRAWINGS -->
   <div id="e-drawings" class="subpage">
-    <div style="font-size:15px;font-weight:700;margin-bottom:4px">Dibujos de Productos</div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">📐 Dibujos de Fabricación</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Doble click para abrir en nueva ventana.</div>
     <div id="drawings-body"></div>
+  </div>
+
+  <!-- DRAWINGS MP -->
+  <div id="e-drawings-mp" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">🗂 Dibujos de Materia Prima</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Dibujos de piezas de Forja, Fundición, Corte en Pantógrafo y Corte Láser.</div>
+    <div id="drawings-mp-body"></div>
   </div>
 
   <!-- CNC PROGRAMS -->
@@ -1442,6 +1450,7 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-tooling') renderTooling();
     if(id==='e-machine-times') renderMachineTimes();
     if(id==='e-drawings') renderDrawings();
+    if(id==='e-drawings-mp') renderDrawingsMp();
     if(id==='e-cnc') renderCNCPrograms();
   if(id==='e-materials') renderMaterials();
   });
@@ -3448,7 +3457,9 @@ async function uploadMaterialDrawing(input){
     const url=SB_URL+'/storage/v1/object/public/drawings/'+filename;
     const hidden=document.getElementById('matf-dibujo-url');
     if(hidden) hidden.value=url;
-    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" style="color:var(--accent2);font-weight:600">Dibujo cargado — Ver 🔗</a>';
+    const extUp=filename.split('.').pop().toUpperCase();
+    const lblUp=extUp==='DWG'||extUp==='DXF'?'Archivo '+extUp+' cargado — Descargar ⬇':'Dibujo cargado — Ver 🔗';
+    if(statusEl) statusEl.innerHTML='<a href="'+url+'" target="_blank" download style="color:var(--accent2);font-weight:600">'+lblUp+'</a>';
   }catch(e){
     if(statusEl) statusEl.textContent='Error: '+e.message;
   }
@@ -3482,6 +3493,49 @@ window.renderDrawings = renderDrawings;
 
 function renderConsultaDrawings(){ buildDrawingsGrid(products, 'c-drawings-body'); }
 window.renderConsultaDrawings = renderConsultaDrawings;
+
+function buildDrawingsMpGrid(mats, containerId){
+  const body=document.getElementById(containerId);
+  if(!body) return;
+  const withDrawing=mats.filter(m=>m.dibujo_url)
+    .sort((a,b)=>{
+      // Ordenar por categoría oficial, luego nombre, luego forma
+      const CAT_ORDER=['Acero','Acero Inoxidable','Bronce','Latón','Aluminio','Nylamid','Pieza Comprada'];
+      const ci=CAT_ORDER.indexOf(a.categoria||'')-CAT_ORDER.indexOf(b.categoria||'');
+      if(ci!==0) return ci;
+      const ni=(a.name||'').localeCompare(b.name||'');
+      if(ni!==0) return ni;
+      return (a.forma||'').localeCompare(b.forma||'');
+    });
+  if(!withDrawing.length){
+    body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Ningún material tiene dibujo cargado.<br><small>Agrega dibujos desde Ingeniería → Catálogo de Materiales en formas: Corte en Pantógrafo, Corte Láser, Forja o Fundición.</small></div>';
+    return;
+  }
+  let html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
+  withDrawing.forEach(m=>{
+    const cat=m.categoria||'';
+    const catDef=(typeof MAT_CATEGORIAS!=='undefined'?MAT_CATEGORIAS:[]).find(c=>c.val===cat)||{color:'var(--muted)',icon:'•'};
+    const formaLabel=m.forma||'';
+    const codigo=m.codigo_especial?` [${m.codigo_especial}]`:'';
+    const esImg=m.dibujo_url.match(/\.(jpg|jpeg|png|gif|webp)/i);
+    const esDwg=m.dibujo_url.match(/\.(dwg|dxf)/i);
+    html+='<div class="card" style="text-align:center;padding:16px;cursor:pointer" onclick="window.open(\''+m.dibujo_url+'\',\'_blank\')">'
+      +'<div style="font-size:30px;margin-bottom:6px">'+(esImg?'🖼':esDwg?'📐':'📄')+'</div>'
+      +'<div style="font-weight:700;font-size:12px;margin-bottom:2px">'+m.name+'</div>'
+      +'<div style="font-size:10px;color:'+catDef.color+';margin-bottom:2px">'+catDef.icon+' '+cat+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);margin-bottom:8px">'+formaLabel+codigo+'</div>'
+      +'<a href="'+m.dibujo_url+'" target="_blank" download class="btn btn-accent btn-sm" style="display:inline-flex" onclick="event.stopPropagation()">'
+      +(esImg?'Ver imagen':esDwg?'⬇ Descargar DWG':'Ver PDF')+'</a>'
+    +'</div>';
+  });
+  html+='</div>';
+  body.innerHTML=html;
+}
+
+function renderDrawingsMp(){
+  buildDrawingsMpGrid(mpMaterials,'drawings-mp-body');
+}
+window.renderDrawingsMp=renderDrawingsMp;
 
 async function uploadCNCFile(input){
   const file = input.files[0]; if(!file) return;
@@ -6690,7 +6744,7 @@ function onMatfFormaChange(){
     const dibUrl=m?.dibujo_url||'';
     html+='<div class="field" style="grid-column:1/-1"><label>🖼 DIBUJO (PDF)</label>'
       +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-        +'<input type="file" id="matf-dibujo-file" accept=".pdf,image/*" style="display:none" onchange="uploadMaterialDrawing(this)">'
+        +'<input type="file" id="matf-dibujo-file" accept=".pdf,.dwg,.dxf,image/*" style="display:none" onchange="uploadMaterialDrawing(this)">'
         +'<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'matf-dibujo-file\').click()">📁 Subir PDF o imagen</button>'
         +'<span id="matf-dibujo-status" style="font-size:11px">'
           +(dibUrl?'<a href="'+dibUrl+'" target="_blank" style="color:var(--accent2);font-weight:600">Ver dibujo actual 🔗</a>':'Sin dibujo cargado')
