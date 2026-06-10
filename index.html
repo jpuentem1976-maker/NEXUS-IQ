@@ -1341,7 +1341,7 @@ async function loadAllData(){
   // Catálogo de materiales dinámico
   mpMaterials=mpMatsData||[];
   if(mpMaterials.length){
-    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad,codigo_especial:m.codigo_especial}));
     window._mpMaterialsRaw=mpMaterials;
   }
 }
@@ -2206,7 +2206,16 @@ function bomRowHTML(m, prodId, idx){
           <option value="">-- Selecciona material --</option>
           ${MAT_TYPES.map(t=>{
             const u=(t.categoria==='Acero'&&t.forma==='Barra Hueca')?'mm':'"';
-            const dim=t.diametro?` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`:(t.forma&&t.forma!=='N/A'?` — ${t.forma}`:'');
+            const sinDim=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
+            let dim='';
+            if(t.diametro){
+              dim=` — ${t.forma||''} Ø${parseFloat(t.diametro).toFixed(3)}${u}`;
+            } else if(sinDim.includes(t.forma)){
+              // Para estas formas mostrar forma + código si existe
+              dim=` — ${t.forma||''}`+(t.codigo_especial?` [${t.codigo_especial}]`:'');
+            } else if(t.forma&&t.forma!=='N/A'){
+              dim=` — ${t.forma}`;
+            }
             return `<option value="${t.val}" ${m.tipo===t.val?'selected':''}>${t.label}${dim}</option>`;
           }).join('')}
         </select>
@@ -6675,7 +6684,7 @@ async function toggleMaterialActive(id,active){
   await sbUpdate('mp_materials',{id},{active:!active});
   const idx=mpMaterials.findIndex(m=>m.id===id);
   if(idx>=0) mpMaterials[idx].active=!active;
-  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad,codigo_especial:m.codigo_especial}));
   renderMaterials();
 }
 window.toggleMaterialActive=toggleMaterialActive;
@@ -7187,7 +7196,7 @@ async function deleteMpMaterial(id){
     try{
       await sbDelete('mp_materials',{id});
       mpMaterials=mpMaterials.filter(x=>x.id!==id);
-      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad}));
+      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad,codigo_especial:m.codigo_especial}));
       renderMaterials();
     }catch(e){alert('Error: '+e.message);}
   };
