@@ -1341,7 +1341,7 @@ async function loadAllData(){
   // Catálogo de materiales dinámico
   mpMaterials=mpMatsData||[];
   if(mpMaterials.length){
-    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion}));
     window._mpMaterialsRaw=mpMaterials;
   }
 }
@@ -5657,7 +5657,7 @@ function renderAlmGeneral(){
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
             '<span style="font-weight:700;font-size:14px;color:var(--text)">'+(g.material||'--').toUpperCase()+'</span>'+
             (g.forma?'<span class="tag" style="color:var(--muted)">'+g.forma+'</span>':'')+
-            (g.diametro?'<span class="tag" style="color:var(--accent)">Ø '+g.diametro+'"'+(g.diametro_int?' / Øi '+g.diametro_int+'"':'')+'</span>':'')+
+            (g.diametro?'<span class="tag" style="color:var(--accent)">Ø '+parseFloat(g.diametro).toFixed(3)+'"'+(g.diametro_int?' / Øi '+parseFloat(g.diametro_int).toFixed(3)+'"':'')+'</span>':'')+
             (g.es_especial?'<span class="tag" style="color:var(--accent2);background:rgba(124,58,237,.1)">🟣 ESPECIAL</span>':'')+
             (reposicion&&minCat>0?'<span class="tag" style="color:'+sem.color+'">'+sem.label+'</span>':'')+
             (!reposicion?'<span class="tag" style="color:var(--muted)">Sin reposición</span>':'')+
@@ -5858,7 +5858,7 @@ function showApartarForm(stockId){
     <div class="card" style="margin-bottom:14px;border-color:rgba(245,158,11,.3)">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--warn);margin-bottom:12px">📌 APARTAR MATERIAL</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-        ${s.material?.toUpperCase()} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — 
+        ${s.material?.toUpperCase()} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" — 
         Disponible: <strong style="color:var(--green)">${s.cantidad||0} barras</strong>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -5935,7 +5935,7 @@ function showTransitForm(stockId){
     <div class="card" style="margin-bottom:14px;border-color:rgba(16,185,129,.3)">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--green);margin-bottom:12px">→ MOVER A TRÁNSITO PRODUCCIÓN</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-        ${s.material?.toUpperCase()} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}"
+        ${s.material?.toUpperCase()} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}"
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
         <div class="field"><label>APARTADO (OT)</label>
@@ -6027,10 +6027,10 @@ function renderAlmTransit(){
             ${alerta7&&t.status==='listo'?'<span class="tag" style="color:var(--warn);background:rgba(245,158,11,.1)">⚠ +7 días en tránsito</span>':''}
           </div>
           <div style="font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
-            <span>${t.material?.toUpperCase()||'--'} — ${t.forma||''} — Ø ${t.diametro||'--'}"</span>
+            <span>${t.material?.toUpperCase()||'--'} — ${t.forma||''} — Ø ${t.diametro?parseFloat(t.diametro).toFixed(3):'--'}"</span>
             <span>Barras: <strong style="color:var(--text)">${t.cantidad_barras||0}</strong></span>
             <span>Kg reales: <strong style="color:var(--accent2)">${t.kg_real||0}</strong></span>
-            <span>Long: <strong style="color:var(--text)">${t.longitud_in||'--'}"</strong></span>
+            <span>Long: <strong style="color:var(--text)">${t.longitud_in?parseFloat(t.longitud_in).toFixed(3):'--'}"</strong></span>
             <span>Días en tránsito: <strong style="color:${alerta7?'var(--warn)':'var(--muted)'}">${dias}</strong></span>
             ${t.notas_habilitado?`<span>📝 ${t.notas_habilitado}</span>`:''}
           </div>
@@ -6056,7 +6056,7 @@ function renderAlmScrap(){
     html+=pending.map(s=>`<div class="card" style="margin-bottom:8px;border-color:rgba(239,68,68,.2)">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;font-size:12px">
-          <strong>${s.material?.toUpperCase()||'--'}</strong> — ${s.forma||''} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}"
+          <strong>${s.material?.toUpperCase()||'--'}</strong> — ${s.forma||''} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in||'--'}"
           <span style="color:var(--muted);margin-left:8px">Kg: ${s.kg||'--'}</span>
           ${s.origen_ot?`<span style="color:var(--muted);margin-left:8px">OT: ${s.origen_ot}</span>`:''}
           ${s.origen_producto?`<span style="color:var(--muted);margin-left:8px">${s.origen_producto}</span>`:''}
@@ -6075,7 +6075,7 @@ function showBajaModal(){
   if(!pending.length){ alert('No hay merma pendiente de baja'); return; }
   document.getElementById('baja-list-preview').innerHTML=pending.map(s=>
     `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">
-      ${s.material?.toUpperCase()||''} Ø${s.diametro||''}${s.forma?' '+s.forma:''} — ${s.longitud_in||'--'}" — ${s.kg||0}kg
+      ${s.material?.toUpperCase()||''} Ø${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}${s.forma?' '+s.forma:''} — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" — ${s.kg||0}kg
     </div>`).join('');
   document.getElementById('baja-pass1').value='';
   document.getElementById('baja-error').classList.add('hidden');
@@ -6106,7 +6106,7 @@ function openAutorizarModal(scrapId){
   const s=mpScrap.find(x=>x.id===scrapId);
   if(!s) return;
   document.getElementById('autorizar-list').innerHTML=`<div style="font-size:12px;padding:8px;background:var(--bg3);border-radius:6px">
-    ${s.material?.toUpperCase()||''} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — ${s.kg||0} kg
+    ${s.material?.toUpperCase()||''} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" — ${s.kg||0} kg
     ${s.origen_ot?`<br>OT: ${s.origen_ot}`:''}
   </div>`;
   document.getElementById('autorizar-pass').value='';
@@ -6173,8 +6173,8 @@ function renderAlmMovements(){
     <td><span style="font-size:10px;font-weight:700;color:${TIPO_COLOR[m.tipo]||'var(--text)'};text-transform:uppercase">${m.tipo||'--'}</span></td>
     <td style="font-size:11px">${m.material||'--'}</td>
     <td style="font-size:11px;color:var(--muted)">${m.forma||'--'}</td>
-    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.diametro||'--'}"</td>
-    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.longitud_in||'--'}"</td>
+    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.diametro?parseFloat(m.diametro).toFixed(3):'--'}"</td>
+    <td style="font-size:11px;font-family:'DM Mono',monospace">${m.longitud_in?parseFloat(m.longitud_in).toFixed(3):'--'}"</td>
     <td style="font-size:11px">${m.cantidad||'--'}</td>
     <td style="font-size:11px;color:var(--accent2)">${m.kg||'--'}</td>
     <td style="font-size:11px;color:var(--accent)">${m.ot_number||'--'}</td>
@@ -6269,8 +6269,8 @@ function renderAlmReport(){
         <td><span style="font-size:10px;font-weight:700;color:${sem.color}">${sem.label}</span></td>
         <td style="font-weight:600">${s.material?.toUpperCase()||'--'}</td>
         <td style="font-size:11px;color:var(--muted)">${s.forma||'--'}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.diametro||'--'}"${s.diametro_int?'/'+s.diametro_int+'"':''}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in||'--'}"</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}"${s.diametro_int?'/'+parseFloat(s.diametro_int).toFixed(3)+'"':''}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}"</td>
         <td style="font-weight:700;color:${sem.color};font-size:14px">${s.cantidad||0}</td>
         <td style="color:var(--muted)">${s.cantidad_min||0}</td>
         <td style="font-size:11px;color:var(--muted)">${s.ubicacion||'--'}</td>
@@ -6364,12 +6364,12 @@ function renderMaterials(){
     const fo=MAT_FORMAS.find(f=>f.val===m.forma);
     if(!fo||fo.campos.length===0) return '';
     const parts=[];
-    if(fo.campos.includes('diam')&&m.diametro)        parts.push('Ø '+m.diametro+u);
-    if(fo.campos.includes('entre_caras')&&m.diametro) parts.push('⬡ '+m.diametro+u);
-    if(fo.campos.includes('diam_ext')&&m.diametro)    parts.push('Øext '+m.diametro+u);
-    if(fo.campos.includes('diam_int')&&m.diametro_int)parts.push('Øint '+m.diametro_int+u);
-    if(fo.campos.includes('lado_a')&&m.diametro)      parts.push('A: '+m.diametro+u);
-    if(fo.campos.includes('lado_b')&&m.diametro_int)  parts.push('B: '+m.diametro_int+u);
+    if(fo.campos.includes('diam')&&m.diametro)        parts.push('Ø '+parseFloat(m.diametro).toFixed(3)+u);
+    if(fo.campos.includes('entre_caras')&&m.diametro) parts.push('⬡ '+parseFloat(m.diametro).toFixed(3)+u);
+    if(fo.campos.includes('diam_ext')&&m.diametro)    parts.push('Øext '+parseFloat(m.diametro).toFixed(3)+u);
+    if(fo.campos.includes('diam_int')&&m.diametro_int)parts.push('Øint '+parseFloat(m.diametro_int).toFixed(3)+u);
+    if(fo.campos.includes('lado_a')&&m.diametro)      parts.push('A: '+parseFloat(m.diametro).toFixed(3)+u);
+    if(fo.campos.includes('lado_b')&&m.diametro_int)  parts.push('B: '+parseFloat(m.diametro_int).toFixed(3)+u);
     return parts.join(' · ');
   }
 
@@ -6408,7 +6408,7 @@ function renderMaterials(){
                     +(medStr?'<span style="font-family:\'DM Mono\',monospace;color:var(--accent);font-weight:700;font-size:13px">'+medStr+'</span>':'')
                     +'<span style="font-size:10px;color:var(--muted)">ρ '+m.densidad+' lb/in³</span>'
                     +(m.cantidad_min?'<span class="tag" style="color:var(--green);font-size:10px">Mín: '+m.cantidad_min+'</span>':'')
-                    +(m.reposicion===false?'<span class="tag" style="color:var(--warn);font-size:10px">Sin reposición auto</span>':'')
+                    +(m.reposicion===false?'<span class="tag" style="color:var(--warn);font-size:10px">Sin reposición auto</span>':'')+(m.reposicion!==false&&m.longitud_reposicion?'<span class="tag" style="color:var(--muted);font-size:10px">📏 Std: '+parseFloat(m.longitud_reposicion).toFixed(3)+'"</span>':'')
                     +(m.notas?'<span style="font-size:10px;color:var(--muted)">📝 '+m.notas+'</span>':'')
                     +(!m.active?'<span class="tag" style="color:var(--danger);font-size:10px">Inactivo</span>':'')
                   +'</div>'
@@ -6463,10 +6463,15 @@ function showMaterialForm(id){
       +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px">'
         +'<div class="field"><label>STOCK MÍNIMO (barras/piezas)</label><input type="number" id="matf-min" value="'+(m?.cantidad_min||0)+'" placeholder="3"></div>'
         +'<div class="field"><label>REPOSICIÓN AUTOMÁTICA</label>'
-          +'<select id="matf-repos">'
+          +'<select id="matf-repos" onchange="onMatfReposChange()">'
             +'<option value="true" '+(m?.reposicion!==false?'selected':'')+'>Sí — mantener en stock mínimo</option>'
             +'<option value="false" '+(m?.reposicion===false?'selected':'')+'>No — compra bajo pedido especial</option>'
           +'</select>'
+        +'</div>'
+        +'<div class="field" id="matf-longstd-wrap" style="'+(m?.reposicion===false?'display:none':'')+'">'  
+          +'<label>LONGITUD ESTÁNDAR DE COMPRA (")</label>'
+          +'<input type="number" step="0.001" id="matf-longstd" value="'+(m?.longitud_reposicion||'')+'" placeholder="236.220">'
+          +'<small style="color:var(--muted);font-size:10px">Longitud a la que normalmente se compra este material</small>'
         +'</div>'
         +'<div class="field" style="grid-column:span 2"><label>NOTAS</label><input type="text" id="matf-notas" value="'+(m?.notas||'')+'" placeholder="Opcional"></div>'
       +'</div>'
@@ -6519,6 +6524,13 @@ function onMatfFormaChange(){
 }
 window.onMatfFormaChange=onMatfFormaChange;
 
+function onMatfReposChange(){
+  const repos=document.getElementById('matf-repos')?.value;
+  const wrap=document.getElementById('matf-longstd-wrap');
+  if(wrap) wrap.style.display=repos==='false'?'none':'';
+}
+window.onMatfReposChange=onMatfReposChange;
+
 async function saveMaterial(id){
   const name=(document.getElementById('matf-name')?.value||'').trim();
   const categoria=document.getElementById('matf-cat')?.value||'Acero';
@@ -6529,10 +6541,11 @@ async function saveMaterial(id){
   const cantidad_min=parseInt(document.getElementById('matf-min')?.value)||0;
   const notas=(document.getElementById('matf-notas')?.value||'')||null;
   const reposicion=document.getElementById('matf-repos')?.value!=='false';
+  const longitud_reposicion=reposicion?(parseFloat(document.getElementById('matf-longstd')?.value)||null):null;
   if(!name){alert('El nombre / especificación es requerido');return;}
   const fo=MAT_FORMAS.find(f=>f.val===forma)||{campos:[]};
   const grupoLegacy=fo.val==='Tubo'?'tubing':(fo.campos.length===0?'pieza':'barra');
-  const rec={name,categoria,grupo:grupoLegacy,densidad,forma,diametro,diametro_int,cantidad_min,notas,reposicion,active:true};
+  const rec={name,categoria,grupo:grupoLegacy,densidad,forma,diametro,diametro_int,cantidad_min,notas,reposicion,longitud_reposicion,active:true};
   try{
     if(id){
       await sbUpdate('mp_materials',{id},rec);
@@ -6546,7 +6559,8 @@ async function saveMaterial(id){
     MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({
       val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,
       densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,
-      diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min
+      diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,
+      reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion
     }));
     document.getElementById('material-form-wrap').innerHTML='';
     window._matfEditing=null;
@@ -6559,7 +6573,7 @@ async function toggleMaterialActive(id,active){
   await sbUpdate('mp_materials',{id},{active:!active});
   const idx=mpMaterials.findIndex(m=>m.id===id);
   if(idx>=0) mpMaterials[idx].active=!active;
-  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion}));
   renderMaterials();
 }
 window.toggleMaterialActive=toggleMaterialActive;
@@ -6851,8 +6865,8 @@ function renderRmtStock(){
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
             <span style="font-weight:700;font-size:14px">${s.material||'--'}</span>
             ${s.forma?`<span class="tag" style="color:var(--muted)">${s.forma}</span>`:''}
-            ${s.diametro?`<span class="tag" style="color:var(--accent)">Ø ${s.diametro}"${s.diametro_int?' / Øi '+s.diametro_int+'"':''}</span>`:''}
-            ${s.longitud_in?`<span class="tag" style="color:var(--muted)">${s.longitud_in}"</span>`:''}
+            ${s.diametro?`<span class="tag" style="color:var(--accent)">Ø ${parseFloat(s.diametro).toFixed(3)}"${s.diametro_int?' / Øi '+parseFloat(s.diametro_int+'"':''}</span>`:''}
+            ${s.longitud_in?`<span class="tag" style="color:var(--muted)">${parseFloat(s.longitud_in).toFixed(3)}"</span>`:''}
             <span class="tag" style="color:${sg.color}">${sg.label}</span>
             <span style="color:var(--green);font-size:13px;font-weight:700">Disponible: ${cantDisp}</span>
             ${cantApt>0?`<span style="color:var(--warn);font-size:11px">Apartado: ${cantApt}</span>`:''}
@@ -6969,7 +6983,7 @@ function renderRmtTransit(){
             ${alerta?'<span class="tag" style="color:var(--warn)">⚠ +7 días en tránsito</span>':''}
           </div>
           <div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
-            <span>${t.material||'--'} — ${t.forma||''} — Ø ${t.diametro||'--'}"</span>
+            <span>${t.material||'--'} — ${t.forma||''} — Ø ${t.diametro?parseFloat(t.diametro).toFixed(3):'--'}"</span>
             <span>Barras: <strong style="color:var(--text)">${t.cantidad_barras||0}</strong></span>
             <span>Kg reales: <strong style="color:var(--accent2)">${t.kg_real||0}</strong></span>
             <span>Días en tránsito: <strong style="color:${alerta?'var(--warn)':'var(--muted)'}">${dias}</strong></span>
@@ -7001,7 +7015,7 @@ function renderRmtProd(){
             <span class="tag" style="color:var(--green)">✅ EN PRODUCCIÓN</span>
           </div>
           <div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
-            <span>${t.material||'--'} — Ø ${t.diametro||'--'}"</span>
+            <span>${t.material||'--'} — Ø ${t.diametro?parseFloat(t.diametro).toFixed(3):'--'}"</span>
             <span>Barras: <strong>${t.cantidad_barras||0}</strong></span>
             <span>Kg: <strong style="color:var(--accent2)">${t.kg_real||0}</strong></span>
             <span>Liberado: ${t.released_at?new Date(t.released_at).toLocaleDateString('es-MX'):'--'}</span>
@@ -7021,7 +7035,7 @@ async function deleteMpStock(id){
   box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
   box.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:400px;width:90%;text-align:center">
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">¿Eliminar registro?</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${s.material||'--'} — Ø ${s.diametro||'--'}" — ${s.longitud_in||'--'}" — ${s.cantidad||0} barras</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${s.material||'--'} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" — ${s.cantidad||0} barras</div>
     <div style="display:flex;gap:10px;justify-content:center">
       <button id="del-yes" class="btn btn-danger" style="min-width:100px">Sí, eliminar</button>
       <button id="del-no" class="btn btn-ghost" style="min-width:100px">Cancelar</button>
@@ -7058,7 +7072,7 @@ async function deleteMpMaterial(id){
   box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
   box.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:400px;width:90%;text-align:center">
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">¿Eliminar material del catálogo?</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${m.name}${m.diametro?' — Ø '+m.diametro+'"':''}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px">${m.name}${m.diametro?' — Ø '+parseFloat(m.diametro).toFixed(3)+'"':''}</div>
     <div style="display:flex;gap:10px;justify-content:center">
       <button id="delm-yes" class="btn btn-danger" style="min-width:100px">Sí, eliminar</button>
       <button id="delm-no" class="btn btn-ghost" style="min-width:100px">Cancelar</button>
@@ -7071,7 +7085,7 @@ async function deleteMpMaterial(id){
     try{
       await sbDelete('mp_materials',{id});
       mpMaterials=mpMaterials.filter(x=>x.id!==id);
-      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion}));
       renderMaterials();
     }catch(e){alert('Error: '+e.message);}
   };
