@@ -2142,7 +2142,7 @@ function renderProducts(){
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
             <span style="font-weight:700;font-size:15px">${(p.sort_number!==null&&p.sort_number!==undefined)?p.sort_number+'. ':''} ${p.name}</span>
-            <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>
+            <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>${p.familia?`<span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:#a855f7">${p.familia}</span>`:''}${(p.tipo_producto==='pedido')?'<span class="tag" style="background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.3);color:#fb923c">🔧 Bajo Pedido</span>':''}
             ${p.batch?`<span class="tag" style="background:rgba(124,58,237,.12);color:var(--accent2);border:1px solid rgba(124,58,237,.25)">Lote: ${p.batch}</span>`:''}
             ${p.stock_min?`<span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.25)">Min: ${p.stock_min} pzas</span>`:''}
           </div>
@@ -2438,9 +2438,22 @@ function showProductForm(id){
         <div class="field" style="grid-column:span 2"><label>Nombre del Producto</label><input id="pf-name" value="${p.name}" placeholder="Nombre descriptivo"></div>
         <div class="field"><label>Código</label><input id="pf-code" value="${p.code}" placeholder="ej. CBC-100" style="text-transform:uppercase"></div>
       </div>
-      <div class="g3" style="margin-bottom:12px">
-        <div class="field"><label>Lote de Fabricación</label><input id="pf-batch" value="${p.batch||''}" placeholder="ej. L-2025-01"></div>
-        <div class="field"><label>Stock Mínimo (pzas/45 días)</label><input type="number" id="pf-stock-min" value="${p.stock_min||''}" placeholder="ej. 164" oninput="calcStockDays()"></div>
+      <div class="g4" style="margin-bottom:12px">
+        <div class="field"><label>Familia</label><input id="pf-familia" value="${p.familia||''}" placeholder="ej. Perforadoras, Válvulas..." style="text-transform:uppercase"></div>
+        <div class="field"><label>Tipo de Producto</label>
+          <select id="pf-tipo-producto" onchange="onTipoProductoChange()">
+            <option value="stock" ${(p.tipo_producto||'stock')==='stock'?'selected':''}>📦 Producto de Stock</option>
+            <option value="pedido" ${p.tipo_producto==='pedido'?'selected':''}>🔧 Producto Bajo Pedido</option>
+          </select>
+        </div>
+        <div class="field" id="pf-batch-wrap" style="${(p.tipo_producto==='pedido')?'opacity:0.4':''}">
+          <label>Lote de Fabricación</label>
+          <input id="pf-batch" value="${p.batch||''}" placeholder="ej. 100">
+        </div>
+        <div class="field" id="pf-stock-min-wrap" style="${(p.tipo_producto==='pedido')?'opacity:0.4':''}">
+          <label>Stock Mínimo (pzas/45 días)</label>
+          <input type="number" id="pf-stock-min" value="${p.stock_min||''}" placeholder="ej. 164" oninput="calcStockDays()">
+        </div>
       </div>
 
       <!-- Photo -->
@@ -3073,6 +3086,8 @@ async function saveProduct(id,isNew){
   const materialsData=readBomRows(id);
 
   const prodData={id,name,code,
+    familia:(document.getElementById('pf-familia')?.value.trim().toUpperCase())||null,
+    tipo_producto:document.getElementById('pf-tipo-producto')?.value||'stock',
     batch:document.getElementById('pf-batch')?.value.trim()||null,
     photo_url:document.getElementById('pf-photo-url-final')?.value.trim()||document.getElementById('pf-photo')?.value.trim()||null,
     steel_type:document.getElementById('pf-steel')?.value.trim()||null,
@@ -3404,6 +3419,16 @@ async function uploadDrawingFile(input){
   }
 }
 window.uploadDrawingFile = uploadDrawingFile;
+
+function onTipoProductoChange(){
+  const tipo=document.getElementById('pf-tipo-producto')?.value;
+  const batchWrap=document.getElementById('pf-batch-wrap');
+  const stockWrap=document.getElementById('pf-stock-min-wrap');
+  const isPedido=tipo==='pedido';
+  if(batchWrap) batchWrap.style.opacity=isPedido?'0.4':'1';
+  if(stockWrap) stockWrap.style.opacity=isPedido?'0.4':'1';
+}
+window.onTipoProductoChange=onTipoProductoChange;
 
 // ── Subida de dibujo para Catálogo de Materiales ──
 async function uploadMaterialDrawing(input){
@@ -4940,7 +4965,7 @@ function renderConsulta(){
             <div style="flex:1">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
                 <span style="font-weight:700;font-size:15px">${(p.sort_number!==null&&p.sort_number!==undefined)?p.sort_number+'. ':''} ${p.name}</span>
-                <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>
+                <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>${p.familia?`<span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:#a855f7">${p.familia}</span>`:''}${(p.tipo_producto==='pedido')?'<span class="tag" style="background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.3);color:#fb923c">🔧 Bajo Pedido</span>':''}
                 ${p.batch?`<span class="tag" style="background:rgba(124,58,237,.12);color:var(--accent2);border:1px solid rgba(124,58,237,.25)">Lote: ${p.batch}</span>`:''}
                 ${p.stock_min?`<span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.25)">Min: ${p.stock_min} pzas</span>`:''}
               </div>
