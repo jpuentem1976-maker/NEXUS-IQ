@@ -6323,11 +6323,9 @@ const MAT_DENSIDADES={
   'Aluminio':0.0975,'Nylamid':0.0423,'Pieza Comprada':0.2836
 };
 
-// Categorías donde los diámetros van en MILÍMETROS (resto en pulgadas)
-const CATS_MM=['Acero','Acero Inoxidable','Aluminio'];
-
-function matfUnidad(cat){
-  return CATS_MM.includes(cat)?'mm':'"';
+// mm SOLO cuando categoría=Acero Y forma=Barra Hueca. Todo lo demás en pulgadas.
+function matfUnidad(cat,forma){
+  return (cat==='Acero'&&forma==='Barra Hueca')?'mm':'"';
 }
 
 function renderMaterials(){
@@ -6362,7 +6360,7 @@ function renderMaterials(){
 
   function fmtMedidas(m){
     const cat=m.categoria||'Acero';
-    const u=matfUnidad(cat);
+    const u=matfUnidad(cat,m.forma);
     const fo=MAT_FORMAS.find(f=>f.val===m.forma);
     if(!fo||fo.campos.length===0) return '';
     const parts=[];
@@ -6497,7 +6495,7 @@ window.onMatfCatChange=onMatfCatChange;
 function onMatfFormaChange(){
   const cat=document.getElementById('matf-cat')?.value||'Acero';
   const forma=document.getElementById('matf-forma')?.value||'Redondo';
-  const u=matfUnidad(cat);
+  const u=matfUnidad(cat,forma);
   const fo=MAT_FORMAS.find(f=>f.val===forma)||{campos:[]};
   const m=window._matfEditing||null;
   const wrap=document.getElementById('matf-medidas');
