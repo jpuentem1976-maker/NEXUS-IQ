@@ -1341,7 +1341,7 @@ async function loadAllData(){
   // Catálogo de materiales dinámico
   mpMaterials=mpMatsData||[];
   if(mpMaterials.length){
-    MAT_TYPES=mpMaterials.map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836}));
+    MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
     window._mpMaterialsRaw=mpMaterials;
   }
 }
@@ -6286,19 +6286,61 @@ window.renderAlmReport=renderAlmReport;
 //  CATÁLOGO DE MATERIALES — Ingeniería
 // ═══════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════
+//  CATÁLOGO DE MATERIALES v2 — Grupos por material real
+// ═══════════════════════════════════════════════════════
+
+// Orden oficial de categorías
+const MAT_CATEGORIAS=[
+  {val:'Acero',           color:'#60a5fa', icon:'🔩'},
+  {val:'Acero Inoxidable',color:'#93c5fd', icon:'✨'},
+  {val:'Bronce',          color:'#f59e0b', icon:'🔶'},
+  {val:'Latón',           color:'#fcd34d', icon:'🟡'},
+  {val:'Aluminio',        color:'#a3e635', icon:'⬜'},
+  {val:'Nylamid',         color:'#34d399', icon:'🟢'},
+  {val:'Pieza Comprada',  color:'#c084fc', icon:'📦'},
+];
+const MAT_CAT_VALS=MAT_CATEGORIAS.map(c=>c.val);
+
+// Formas disponibles y sus campos de medida
+const MAT_FORMAS=[
+  {val:'Redondo',             label:'Redondo',               campos:['diam']},
+  {val:'Hexagonal',           label:'Hexagonal',             campos:['entre_caras']},
+  {val:'Barra Hueca',         label:'Barra Hueca',           campos:['diam_ext','diam_int']},
+  {val:'Cuadrado/Solera',     label:'Cuadrado / Solera',     campos:['lado_a','lado_b']},
+  {val:'Tubo',                label:'Tubo',                  campos:['diam_ext','diam_int']},
+  {val:'Corte en Pantógrafo', label:'Corte en Pantógrafo',   campos:[]},
+  {val:'Corte Láser',         label:'Corte Láser',           campos:[]},
+  {val:'Forja',               label:'Forja',                 campos:[]},
+  {val:'Fundición',           label:'Fundición',             campos:[]},
+  {val:'N/A',                 label:'N/A',                   campos:[]},
+];
+
+// Densidades por defecto según categoría
+const MAT_DENSIDADES={
+  'Acero':0.2836,'Acero Inoxidable':0.2898,
+  'Bronce':0.295,'Latón':0.3075,
+  'Aluminio':0.0975,'Nylamid':0.0423,'Pieza Comprada':0.2836
+};
+
+// Categorías donde los diámetros van en MILÍMETROS (resto en pulgadas)
+const CATS_MM=['Acero','Acero Inoxidable','Aluminio'];
+
+function matfUnidad(cat){
+  return CATS_MM.includes(cat)?'mm':'"';
+}
+
 function renderMaterials(){
   const list=document.getElementById('materials-list');
   if(!list) return;
   const search=(document.getElementById('mat-search')?.value||'').toLowerCase();
-  const GRUPO_LABEL={barra:'Barra metálica',tubing:'Tubing/Tubo',pieza:'Pieza'};
-  const GRUPO_COLOR={barra:'var(--accent)',tubing:'var(--accent2)',pieza:'var(--warn)'};
 
-  // Filtrar por búsqueda
   const filtered=mpMaterials.filter(m=>
     !search||
-    m.name.toLowerCase().includes(search)||
-    String(m.diametro||'').includes(search)||
-    (m.forma||'').toLowerCase().includes(search)
+    (m.name||'').toLowerCase().includes(search)||
+    (m.categoria||'').toLowerCase().includes(search)||
+    (m.forma||'').toLowerCase().includes(search)||
+    String(m.diametro||'').includes(search)
   );
 
   const counter=document.getElementById('materials-counter');
@@ -6309,54 +6351,82 @@ function renderMaterials(){
     return;
   }
 
-  // Agrupar por nombre base (todo antes del primer ' — ' o diámetro)
-  const groups={};
+  // Agrupar por CATEGORÍA (orden oficial) luego por NOMBRE
+  const byCat={};
   filtered.forEach(m=>{
-    // Agrupar por nombre exacto del material
-    const key=m.name;
-    if(!groups[key]) groups[key]=[];
-    groups[key].push(m);
+    const cat=m.categoria||'Acero';
+    if(!byCat[cat]) byCat[cat]=[];
+    byCat[cat].push(m);
   });
+  const catKeys=[...MAT_CAT_VALS.filter(c=>byCat[c]),...Object.keys(byCat).filter(c=>!MAT_CAT_VALS.includes(c))];
 
-  // Ordenar artículos dentro de cada grupo por diámetro
-  Object.values(groups).forEach(arr=>arr.sort((a,b)=>(parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0)));
+  function fmtMedidas(m){
+    const cat=m.categoria||'Acero';
+    const u=matfUnidad(cat);
+    const fo=MAT_FORMAS.find(f=>f.val===m.forma);
+    if(!fo||fo.campos.length===0) return '';
+    const parts=[];
+    if(fo.campos.includes('diam')&&m.diametro)        parts.push('Ø '+m.diametro+u);
+    if(fo.campos.includes('entre_caras')&&m.diametro) parts.push('⬡ '+m.diametro+u);
+    if(fo.campos.includes('diam_ext')&&m.diametro)    parts.push('Øext '+m.diametro+u);
+    if(fo.campos.includes('diam_int')&&m.diametro_int)parts.push('Øint '+m.diametro_int+u);
+    if(fo.campos.includes('lado_a')&&m.diametro)      parts.push('A: '+m.diametro+u);
+    if(fo.campos.includes('lado_b')&&m.diametro_int)  parts.push('B: '+m.diametro_int+u);
+    return parts.join(' · ');
+  }
 
-  list.innerHTML=Object.entries(groups).map(([groupName,items])=>{
-    const isOpen=search||items.length===1;
-    const gid='matg-'+groupName.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
-    const totalMin=items.reduce((a,m)=>a+(m.cantidad_min||0),0);
-    return `<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
-      <!-- Cabecera del grupo -->
-      <div onclick="toggleMatGroup('${gid}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;background:var(--bg2);border-radius:var(--r)">
-        <span id="${gid}-icon" style="font-size:12px;color:var(--muted);transition:transform .2s">${isOpen?'▼':'►'}</span>
-        <span style="font-weight:700;font-size:14px;color:var(--text);flex:1">${groupName}</span>
-        <span class="tag" style="color:${GRUPO_COLOR[items[0].grupo]||'var(--muted)'}">${GRUPO_LABEL[items[0].grupo]||items[0].grupo}</span>
-        <span class="tag" style="color:var(--muted)">${items.length} medida${items.length!==1?'s':''}</span>
-        ${totalMin?`<span class="tag" style="color:var(--green)">Mín total: ${totalMin}</span>`:''}
-      </div>
-      <!-- Artículos del grupo -->
-      <div id="${gid}" style="display:${isOpen?'block':'none'};padding:8px 12px;border-top:1px solid var(--border)">
-        ${items.map(m=>`
-          <div style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border);last-child:border-bottom:none">
-            <div style="flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              ${m.diametro?`<span style="font-family:'DM Mono',monospace;color:var(--accent);font-weight:700">Ø ${m.diametro}"${m.diametro_int?' / Øi '+m.diametro_int+'"':''}</span>`:''}
-              ${m.forma?`<span class="tag" style="color:var(--muted);font-size:10px">${m.forma}</span>`:''}
-              ${m.cantidad_min?`<span class="tag" style="color:var(--green);font-size:10px">Mín: ${m.cantidad_min}</span>`:''}
-              <span style="font-size:10px;color:var(--muted)">Densidad: ${m.densidad} lb/in³</span>
-              ${m.notas?`<span style="font-size:10px;color:var(--muted)">📝 ${m.notas}</span>`:''}
-              ${!m.active?'<span class="tag" style="color:var(--danger);font-size:10px">Inactivo</span>':''}
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn btn-sm btn-accent" onclick="showMaterialForm('${m.id}')">✏</button>
-              <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.2);font-size:11px" onclick="toggleMaterialActive('${m.id}',${m.active})">${m.active?'Desact.':'Activar'}</button>
-              <button class="btn btn-sm btn-danger" onclick="deleteMpMaterial('${m.id}')" style="font-size:11px">🗑</button>
-            </div>
-          </div>`).join('')}
-        <div style="padding:8px 6px">
-          <button class="btn btn-sm btn-accent" onclick="showMaterialForm(null)" style="font-size:11px">+ Agregar medida a ${groupName}</button>
-        </div>
-      </div>
-    </div>`;
+  list.innerHTML=catKeys.map(cat=>{
+    const items=byCat[cat];
+    const catDef=MAT_CATEGORIAS.find(c=>c.val===cat)||{color:'var(--muted)',icon:'•'};
+    const byName={};
+    items.forEach(m=>{ const k=m.name||'Sin nombre'; if(!byName[k])byName[k]=[]; byName[k].push(m); });
+    const nameKeys=Object.keys(byName).sort();
+    const catId='catg-'+cat.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+    const isOpenCat=!!search;
+    return '<div style="margin-bottom:16px">'
+      +'<div onclick="toggleMatGroup(\''+catId+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:var(--bg2);border-radius:10px 10px 0 0;border-bottom:2px solid '+catDef.color+'30;user-select:none">'
+        +'<span style="font-size:16px">'+catDef.icon+'</span>'
+        +'<span style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;color:'+catDef.color+';flex:1;letter-spacing:1px">'+cat+'</span>'
+        +'<span class="tag" style="background:'+catDef.color+'18;color:'+catDef.color+';border-color:'+catDef.color+'40">'+items.length+' material'+(items.length!==1?'es':'')+'</span>'
+        +'<span id="'+catId+'-icon" style="font-size:12px;color:var(--muted)">'+(isOpenCat?'▼':'►')+'</span>'
+      +'</div>'
+      +'<div id="'+catId+'" style="display:'+(isOpenCat?'block':'none')+';border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;overflow:hidden">'
+        +nameKeys.map((name,ni)=>{
+          const mItems=byName[name];
+          const ngid=catId+'-n'+ni;
+          const isOpenN=!!search||mItems.length===1;
+          return '<div style="border-bottom:1px solid var(--border)">'
+            +'<div onclick="toggleMatGroup(\''+ngid+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--bg3)">'
+              +'<span id="'+ngid+'-icon" style="font-size:11px;color:var(--muted)">'+(isOpenN?'▼':'►')+'</span>'
+              +'<span style="font-weight:700;font-size:13px;flex:1">'+name+'</span>'
+              +'<span style="font-size:11px;color:var(--muted)">'+mItems.length+' medida'+(mItems.length!==1?'s':'')+'</span>'
+            +'</div>'
+            +'<div id="'+ngid+'" style="display:'+(isOpenN?'block':'none')+';padding:6px 12px">'
+              +mItems.map(m=>{
+                const medStr=fmtMedidas(m);
+                return '<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border)">'
+                  +'<div style="flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+                    +(m.forma?'<span class="tag" style="color:'+catDef.color+';background:'+catDef.color+'15;border-color:'+catDef.color+'30;font-size:11px">'+m.forma+'</span>':'')
+                    +(medStr?'<span style="font-family:\'DM Mono\',monospace;color:var(--accent);font-weight:700;font-size:13px">'+medStr+'</span>':'')
+                    +'<span style="font-size:10px;color:var(--muted)">ρ '+m.densidad+' lb/in³</span>'
+                    +(m.cantidad_min?'<span class="tag" style="color:var(--green);font-size:10px">Mín: '+m.cantidad_min+'</span>':'')
+                    +(m.reposicion===false?'<span class="tag" style="color:var(--warn);font-size:10px">Sin reposición auto</span>':'')
+                    +(m.notas?'<span style="font-size:10px;color:var(--muted)">📝 '+m.notas+'</span>':'')
+                    +(!m.active?'<span class="tag" style="color:var(--danger);font-size:10px">Inactivo</span>':'')
+                  +'</div>'
+                  +'<div style="display:flex;gap:5px;flex-shrink:0">'
+                    +'<button class="btn btn-sm btn-accent" onclick="showMaterialForm(\''+m.id+'\')">✏</button>'
+                    +'<button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.2);font-size:11px" onclick="toggleMaterialActive(\''+m.id+'\','+m.active+')">'+(m.active?'Desact.':'Activar')+'</button>'
+                    +'<button class="btn btn-sm btn-danger" onclick="deleteMpMaterial(\''+m.id+'\')" style="font-size:11px">🗑</button>'
+                  +'</div>'
+                +'</div>';
+              }).join('')
+              +'<div style="padding:6px 4px"><button class="btn btn-sm btn-accent" onclick="showMaterialForm(null)" style="font-size:11px">+ Agregar medida</button></div>'
+            +'</div>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+    +'</div>';
   }).join('');
 }
 
@@ -6371,92 +6441,100 @@ function toggleMatGroup(gid){
 window.toggleMatGroup=toggleMatGroup;
 window.renderMaterials=renderMaterials;
 
+// ── Formulario Catálogo Materiales v2 ──
 function showMaterialForm(id){
   const m=id?mpMaterials.find(x=>x.id===id):null;
   const wrap=document.getElementById('material-form-wrap');
   if(!wrap) return;
-  const MAT_SHAPES_CAT=[{val:'redondo',label:'Redondo'},{val:'hexagonal',label:'Hexagonal'},{val:'barra_hueca',label:'Barra Hueca'},{val:'cuadrado',label:'Cuadrado/Solera'}];
-  wrap.innerHTML=`
-    <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${m?'EDITAR MATERIAL':'NUEVO MATERIAL EN CATÁLOGO'}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-        <div class="field"><label>NOMBRE / ESPECIFICACIÓN</label>
-          <input type="text" id="matf-name" value="${m?.name||''}" placeholder="ej. Acero SAE 8620">
-        </div>
-        <div class="field"><label>GRUPO</label>
-          <select id="matf-grupo" onchange="onMatfGrupoChange()">
-            <option value="barra" ${m?.grupo==='barra'?'selected':''}>Barra metálica</option>
-            <option value="tubing" ${m?.grupo==='tubing'?'selected':''}>Tubing / Tubo</option>
-            <option value="pieza" ${m?.grupo==='pieza'?'selected':''}>Pieza</option>
-          </select>
-        </div>
-        <div class="field"><label>DENSIDAD (lb/in³)</label>
-          <input type="number" step="0.0001" id="matf-dens" value="${m?.densidad||0.2836}" placeholder="0.2836">
-          <small style="color:var(--muted);font-size:10px">Acero=0.2836 · Latón=0.3075 · Aluminio=0.0975 · Bronce=0.295</small>
-        </div>
-        <div id="matf-forma-wrap" class="field"><label>FORMA</label>
-          <select id="matf-forma" onchange="onMatfFormaChange()">
-            ${MAT_SHAPES_CAT.map(s=>`<option value="${s.val}" ${m?.forma===s.val?'selected':''}>${s.label}</option>`).join('')}
-          </select>
-        </div>
-        <div id="matf-diam-wrap" class="field"><label>DIÁMETRO EXT. (")</label>
-          <input type="number" step="0.001" id="matf-diam" value="${m?.diametro||''}" placeholder="1.790">
-        </div>
-        <div id="matf-dint-wrap" class="field" style="${m?.forma==='barra_hueca'||m?.grupo==='tubing'?'':'display:none'}"><label>DIÁMETRO INT. (")</label>
-          <input type="number" step="0.001" id="matf-dint" value="${m?.diametro_int||''}" placeholder="0.500">
-        </div>
-        <div class="field"><label>STOCK MÍNIMO (barras/piezas)</label>
-          <input type="number" id="matf-min" value="${m?.cantidad_min||0}" placeholder="3">
-        </div>
-        <div class="field"><label>REPOSICIÓN AUTOMÁTICA</label>
-          <select id="matf-repos">
-            <option value="true" ${m?.reposicion!==false?'selected':''}>Sí — mantener en stock mínimo</option>
-            <option value="false" ${m?.reposicion===false?'selected':''}>No — compra bajo pedido especial</option>
-          </select>
-        </div>
-        <div class="field"><label>NOTAS</label>
-          <input type="text" id="matf-notas" value="${m?.notas||''}" placeholder="Opcional">
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn btn-accent" onclick="saveMaterial('${m?.id||''}')">💾 Guardar</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('material-form-wrap').innerHTML=''">Cancelar</button>
-      </div>
-    </div>`;
-  setTimeout(onMatfGrupoChange,50);
+  const catOpts=MAT_CATEGORIAS.map(c=>'<option value="'+c.val+'" '+(( m?.categoria||'Acero')===c.val?'selected':'')+'>'+c.icon+' '+c.val+'</option>').join('');
+  const formaOpts=MAT_FORMAS.map(f=>'<option value="'+f.val+'" '+((m?.forma||'Redondo')===f.val?'selected':'')+'>'+f.label+'</option>').join('');
+  const densDefault=m?.densidad||(MAT_DENSIDADES[m?.categoria||'Acero']||0.2836);
+  wrap.innerHTML=
+    '<div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">'
+      +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:18px;color:var(--accent);margin-bottom:14px">'+(m?'EDITAR MATERIAL':'NUEVO MATERIAL EN CATÁLOGO')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:12px">'
+        +'<div class="field"><label>GRUPO / CATEGORÍA</label><select id="matf-cat" onchange="onMatfCatChange()">'+catOpts+'</select></div>'
+        +'<div class="field"><label>NOMBRE / ESPECIFICACIÓN</label><input type="text" id="matf-name" value="'+(m?.name||'')+'" placeholder="ej. Acero SAE 8620"></div>'
+        +'<div class="field"><label>FORMA</label><select id="matf-forma" onchange="onMatfFormaChange()">'+formaOpts+'</select></div>'
+        +'<div class="field"><label>DENSIDAD (lb/in³)</label>'
+          +'<input type="number" step="0.0001" id="matf-dens" value="'+densDefault+'" placeholder="0.2836">'
+          +'<small style="color:var(--muted);font-size:10px">Acero=0.2836 · Inox=0.2898 · Latón=0.3075 · Bronce=0.295 · Al=0.0975 · Nyl=0.0423</small>'
+        +'</div>'
+      +'</div>'
+      +'<div id="matf-medidas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:12px"></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px">'
+        +'<div class="field"><label>STOCK MÍNIMO (barras/piezas)</label><input type="number" id="matf-min" value="'+(m?.cantidad_min||0)+'" placeholder="3"></div>'
+        +'<div class="field"><label>REPOSICIÓN AUTOMÁTICA</label>'
+          +'<select id="matf-repos">'
+            +'<option value="true" '+(m?.reposicion!==false?'selected':'')+'>Sí — mantener en stock mínimo</option>'
+            +'<option value="false" '+(m?.reposicion===false?'selected':'')+'>No — compra bajo pedido especial</option>'
+          +'</select>'
+        +'</div>'
+        +'<div class="field" style="grid-column:span 2"><label>NOTAS</label><input type="text" id="matf-notas" value="'+(m?.notas||'')+'" placeholder="Opcional"></div>'
+      +'</div>'
+      +'<div style="display:flex;gap:10px;margin-top:14px">'
+        +'<button class="btn btn-accent" onclick="saveMaterial(\''+(m?.id||'')+'\')">💾 Guardar</button>'
+        +'<button class="btn btn-ghost" onclick="document.getElementById(\'material-form-wrap\').innerHTML=\'\'">Cancelar</button>'
+      +'</div>'
+    +'</div>';
+  window._matfEditing=m;
+  setTimeout(function(){ onMatfCatChange(); onMatfFormaChange(); },30);
 }
 window.showMaterialForm=showMaterialForm;
 
-function onMatfGrupoChange(){
-  const grupo=document.getElementById('matf-grupo')?.value||'barra';
-  const formaWrap=document.getElementById('matf-forma-wrap');
-  const diamWrap=document.getElementById('matf-diam-wrap');
-  const dintWrap=document.getElementById('matf-dint-wrap');
-  if(formaWrap) formaWrap.style.display=grupo==='pieza'?'none':'';
-  if(diamWrap)  diamWrap.style.display=grupo==='pieza'?'none':'';
-  if(dintWrap)  dintWrap.style.display=grupo==='tubing'?'':'none';
+function onMatfCatChange(){
+  const cat=document.getElementById('matf-cat')?.value||'Acero';
+  const densEl=document.getElementById('matf-dens');
+  if(densEl&&MAT_DENSIDADES[cat]){
+    const cur=parseFloat(densEl.value)||0;
+    const isDefault=Object.values(MAT_DENSIDADES).some(d=>Math.abs(d-cur)<0.0001);
+    if(isDefault) densEl.value=MAT_DENSIDADES[cat];
+  }
+  onMatfFormaChange();
 }
-window.onMatfGrupoChange=onMatfGrupoChange;
+window.onMatfCatChange=onMatfCatChange;
 
 function onMatfFormaChange(){
-  const forma=document.getElementById('matf-forma')?.value;
-  const dintWrap=document.getElementById('matf-dint-wrap');
-  if(dintWrap) dintWrap.style.display=forma==='barra_hueca'?'':'none';
+  const cat=document.getElementById('matf-cat')?.value||'Acero';
+  const forma=document.getElementById('matf-forma')?.value||'Redondo';
+  const u=matfUnidad(cat);
+  const fo=MAT_FORMAS.find(f=>f.val===forma)||{campos:[]};
+  const m=window._matfEditing||null;
+  const wrap=document.getElementById('matf-medidas');
+  if(!wrap) return;
+  let html='';
+  if(fo.campos.includes('diam'))
+    html+='<div class="field"><label>DIÁMETRO ('+u+')</label><input type="number" step="0.001" id="matf-diam" value="'+(m?.diametro||'')+'" placeholder="'+(u==='"'?'1.750':'44.45')+'"></div>';
+  if(fo.campos.includes('entre_caras'))
+    html+='<div class="field"><label>MEDIDA ENTRE CARAS ('+u+')</label><input type="number" step="0.001" id="matf-diam" value="'+(m?.diametro||'')+'" placeholder="'+(u==='"'?'1.500':'38.10')+'"></div>';
+  if(fo.campos.includes('diam_ext'))
+    html+='<div class="field"><label>DIÁMETRO EXT. ('+u+')</label><input type="number" step="0.001" id="matf-diam" value="'+(m?.diametro||'')+'" placeholder="'+(u==='"'?'2.375':'60.0')+'"></div>';
+  if(fo.campos.includes('diam_int'))
+    html+='<div class="field"><label>DIÁMETRO INT. ('+u+')</label><input type="number" step="0.001" id="matf-dint" value="'+(m?.diametro_int||'')+'" placeholder="'+(u==='"'?'2.067':'52.5')+'"></div>';
+  if(fo.campos.includes('lado_a'))
+    html+='<div class="field"><label>LADO A ('+u+')</label><input type="number" step="0.001" id="matf-diam" value="'+(m?.diametro||'')+'" placeholder="'+(u==='"'?'2.000':'50.0')+'"></div>';
+  if(fo.campos.includes('lado_b'))
+    html+='<div class="field"><label>LADO B ('+u+')</label><input type="number" step="0.001" id="matf-dint" value="'+(m?.diametro_int||'')+'" placeholder="'+(u==='"'?'1.000':'25.0')+'"></div>';
+  if(fo.campos.length===0)
+    html='<div style="grid-column:1/-1;font-size:12px;color:var(--muted);padding:6px 0">Esta forma no requiere dimensiones específicas.</div>';
+  wrap.innerHTML=html;
 }
 window.onMatfFormaChange=onMatfFormaChange;
 
 async function saveMaterial(id){
-  const name=document.getElementById('matf-name').value.trim();
-  const grupo=document.getElementById('matf-grupo').value;
-  const densidad=parseFloat(document.getElementById('matf-dens').value)||0.2836;
-  const forma=document.getElementById('matf-forma')?.value||null;
+  const name=(document.getElementById('matf-name')?.value||'').trim();
+  const categoria=document.getElementById('matf-cat')?.value||'Acero';
+  const forma=document.getElementById('matf-forma')?.value||'N/A';
+  const densidad=parseFloat(document.getElementById('matf-dens')?.value)||0.2836;
   const diametro=parseFloat(document.getElementById('matf-diam')?.value)||null;
   const diametro_int=parseFloat(document.getElementById('matf-dint')?.value)||null;
   const cantidad_min=parseInt(document.getElementById('matf-min')?.value)||0;
-  const notas=document.getElementById('matf-notas')?.value||null;
+  const notas=(document.getElementById('matf-notas')?.value||'')||null;
   const reposicion=document.getElementById('matf-repos')?.value!=='false';
-  if(!name){alert('El nombre es requerido');return;}
-  const rec={name,grupo,densidad,forma,diametro,diametro_int,cantidad_min,notas,reposicion,active:true};
+  if(!name){alert('El nombre / especificación es requerido');return;}
+  const fo=MAT_FORMAS.find(f=>f.val===forma)||{campos:[]};
+  const grupoLegacy=fo.val==='Tubo'?'tubing':(fo.campos.length===0?'pieza':'barra');
+  const rec={name,categoria,grupo:grupoLegacy,densidad,forma,diametro,diametro_int,cantidad_min,notas,reposicion,active:true};
   try{
     if(id){
       await sbUpdate('mp_materials',{id},rec);
@@ -6467,11 +6545,15 @@ async function saveMaterial(id){
       await sbInsert('mp_materials',rec);
       mpMaterials.push(rec);
     }
-    // Actualizar MAT_TYPES dinámico
-    MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+    MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({
+      val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,
+      densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,
+      diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min
+    }));
     document.getElementById('material-form-wrap').innerHTML='';
+    window._matfEditing=null;
     renderMaterials();
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){alert('Error al guardar: '+e.message);}
 }
 window.saveMaterial=saveMaterial;
 
@@ -6479,10 +6561,11 @@ async function toggleMaterialActive(id,active){
   await sbUpdate('mp_materials',{id},{active:!active});
   const idx=mpMaterials.findIndex(m=>m.id===id);
   if(idx>=0) mpMaterials[idx].active=!active;
-  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836}));
+  MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
   renderMaterials();
 }
 window.toggleMaterialActive=toggleMaterialActive;
+
 
 // ═══════════════════════════════════════════════════════
 //  FORMULARIO DINÁMICO ALMACÉN — nueva entrada con PPP
@@ -6990,7 +7073,7 @@ async function deleteMpMaterial(id){
     try{
       await sbDelete('mp_materials',{id});
       mpMaterials=mpMaterials.filter(x=>x.id!==id);
-      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
+      MAT_TYPES=mpMaterials.filter(m=>m.active).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min}));
       renderMaterials();
     }catch(e){alert('Error: '+e.message);}
   };
