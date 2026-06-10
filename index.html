@@ -6478,17 +6478,6 @@ function showMaterialForm(id){
             +'<option value="false" '+(m?.reposicion===false?'selected':'')+'>No — compra bajo pedido especial</option>'
           +'</select>'
         +'</div>'
-        +'<div class="field" id="matf-longstd-wrap" style="'+(m?.reposicion===false?'display:none':'')+'">'  
-          +'<label>LONGITUD ESTÁNDAR DE COMPRA</label>'
-          +'<div style="display:flex;gap:8px;align-items:center">'
-            +'<input type="number" step="0.001" id="matf-longstd" style="flex:1" value="'+(m?.longitud_reposicion||'')+'" placeholder="236.220">'
-            +'<select id="matf-longstd-unit" style="width:90px">'
-              +'<option value="in" '+((m?.longitud_reposicion_unidad||'in')==='in'?'selected':'')+'>" pulg.</option>'
-              +'<option value="m" '+(m?.longitud_reposicion_unidad==='m'?'selected':'')+'>m metros</option>'
-            +'</select>'
-          +'</div>'
-          +'<small style="color:var(--muted);font-size:10px">Longitud a la que normalmente se compra este material</small>'
-        +'</div>'
         +'<div class="field" style="grid-column:span 2"><label>NOTAS</label><input type="text" id="matf-notas" value="'+(m?.notas||'')+'" placeholder="Opcional"></div>'
       +'</div>'
       +'<div style="display:flex;gap:10px;margin-top:14px">'
@@ -6536,14 +6525,29 @@ function onMatfFormaChange(){
     html+='<div class="field"><label>LADO B ('+u+')</label><input type="number" step="0.001" id="matf-dint" value="'+(m?.diametro_int||'')+'" placeholder="'+(u==='"'?'1.000':'25.0')+'"></div>';
   if(fo.campos.length===0)
     html='<div style="grid-column:1/-1;font-size:12px;color:var(--muted);padding:6px 0">Esta forma no requiere dimensiones específicas.</div>';
+  // Agregar campo Longitud Estándar de Compra al mismo nivel que las dimensiones
+  const reposVal=document.getElementById('matf-repos')?.value;
+  const longVal=m?.longitud_reposicion||'';
+  const unitVal=m?.longitud_reposicion_unidad||'in';
+  const longDisplay=reposVal==='false'?'display:none':'';
+  html+='<div class="field" id="matf-longstd-wrap" style="'+longDisplay+'">'
+    +'<label>LONGITUD ESTÁNDAR DE COMPRA</label>'
+    +'<div style="display:flex;gap:8px;align-items:center">'
+      +'<input type="number" step="0.001" id="matf-longstd" style="flex:1" value="'+longVal+'" placeholder="236.220">'
+      +'<select id="matf-longstd-unit" style="width:90px">'
+        +'<option value="in" '+(unitVal==='in'?'selected':'')+'>" pulg.</option>'
+        +'<option value="m" '+(unitVal==='m'?'selected':'')+'>m metros</option>'
+      +'</select>'
+    +'</div>'
+    +'<small style="color:var(--muted);font-size:10px">Longitud a la que normalmente se compra este material</small>'
+  +'</div>';
   wrap.innerHTML=html;
 }
 window.onMatfFormaChange=onMatfFormaChange;
 
 function onMatfReposChange(){
-  const repos=document.getElementById('matf-repos')?.value;
-  const wrap=document.getElementById('matf-longstd-wrap');
-  if(wrap) wrap.style.display=repos==='false'?'none':'';
+  // Re-render el bloque de medidas para mostrar/ocultar longitud estándar
+  onMatfFormaChange();
 }
 window.onMatfReposChange=onMatfReposChange;
 
