@@ -2396,8 +2396,12 @@ function readBomRows(prodId){
   const rows=[];
   container.querySelectorAll('[id^="bom-row-"]').forEach(row=>{
     const mid=row.id.replace('bom-row-','');
-    const tipo=document.getElementById('bom-tipo-'+mid)?.value||'acero';
-    const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
+    const tipo=document.getElementById('bom-tipo-'+mid)?.value||'';
+    // Resolver si es barra/tubing desde MAT_TYPES (tipo es UUID del catálogo)
+    const matCat=MAT_TYPES.find(x=>x.val===tipo);
+    const isBarra=matCat
+      ?(matCat.grupo==='barra'||matCat.grupo==='tubing')
+      :['acero','laton','aluminio','bronce'].includes(tipo); // fallback legacy
     rows.push({
       id:mid,
       tipo,
@@ -2407,8 +2411,7 @@ function readBomRows(prodId){
       diametro_int:isBarra?parseFloat(document.getElementById('bom-dint-'+mid)?.value)||null:null,
       longitud:isBarra?parseFloat(document.getElementById('bom-long-'+mid)?.value)||null:null,
       cantidad:(function(){
-        const isBarra=['acero','laton','aluminio','bronce'].includes(tipo);
-        const el = isBarra ? document.getElementById('bom-cant-'+mid) : document.getElementById('bom-cant2-'+mid);
+        const el=isBarra?document.getElementById('bom-cant-'+mid):document.getElementById('bom-cant2-'+mid);
         return parseInt(el?.value)||0;
       })(),
       unidad:isBarra?'kg':(document.getElementById('bom-unidad-'+mid)?.value||'piezas'),
