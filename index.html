@@ -2066,7 +2066,10 @@ function renderProducts(){
     const mats = p.materials||[];
     const mat  = mats[0]||null; // primer material del BOM
 
-    // Etiquetas de tipo y forma
+    // Resolver material desde catálogo MAT_TYPES (tipo guarda el UUID del catálogo)
+    const matCatEntry = MAT_TYPES.find(x=>x.val===mat?.tipo);
+
+    // Etiquetas legacy (para registros viejos que aún usen texto plano)
     const TIPO_LABEL = {
       acero:'Acero', laton:'Latón', aluminio:'Aluminio', bronce:'Bronce',
       nylamid:'Nylamid/Plástico', fundicion:'Fundición', forja:'Forja',
@@ -2076,32 +2079,48 @@ function renderProducts(){
       redondo:'Redondo', hexagonal:'Hexagonal', barra_hueca:'Barra Hueca', cuadrado:'Cuadrado/Solera'
     };
 
-    // Grupo A: con dimensiones de barra
-    const GRUPO_A = ['acero','laton','aluminio','bronce'];
-    // Grupo B: solo tipo + forma + trat. térmico
-    const GRUPO_B = ['nylamid','fundicion','forja','pieza_unitaria','pieza_comprada','corte_externo'];
+    // Grupo A: materiales con dimensiones (barra/tubo)
+    const GRUPO_A = ['acero','laton','aluminio','bronce','barra','tubing'];
+    const sinDimFormas = ['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
 
     let matInfo = '';
     if(mat){
-      const tipoLabel  = TIPO_LABEL[mat.tipo]  || mat.tipo  || '';
-      const formaLabel = FORMA_LABEL[mat.forma] || mat.forma || '';
-      const esGrupoA   = GRUPO_A.includes(mat.tipo);
+      // Si el tipo es UUID del catálogo, usar datos del catálogo directamente
+      if(matCatEntry){
+        const u=(matCatEntry.categoria==='Acero'&&matCatEntry.forma==='Barra Hueca')?'mm':'"';
+        const hasDim=!sinDimFormas.includes(matCatEntry.forma);
+        // Nombre del material
+        matInfo += `<span>Mat: <strong style="color:var(--text)">${matCatEntry.label}</strong></span>`;
+        // Forma
+        if(matCatEntry.forma&&matCatEntry.forma!=='N/A')
+          matInfo += `<span>Forma: <strong style="color:var(--text)">${matCatEntry.forma}</strong></span>`;
+        // Dimensiones
+        if(hasDim&&matCatEntry.diametro){
+          if(matCatEntry.forma==='Cuadrado/Solera'){
+            matInfo += `<span>A: <strong style="color:var(--accent)">${parseFloat(matCatEntry.diametro).toFixed(3)}${u}</strong></span>`;
+            if(matCatEntry.diametro_int) matInfo += `<span>B: <strong style="color:var(--accent)">${parseFloat(matCatEntry.diametro_int).toFixed(3)}${u}</strong></span>`;
+          } else {
+            matInfo += `<span>Ø: <strong style="color:var(--accent)">${parseFloat(matCatEntry.diametro).toFixed(3)}${u}</strong></span>`;
+            if(matCatEntry.diametro_int) matInfo += `<span>Øi: <strong style="color:var(--accent)">${parseFloat(matCatEntry.diametro_int).toFixed(3)}${u}</strong></span>`;
+          }
+        }
+        // Código especial
+        if(matCatEntry.codigo_especial) matInfo += `<span>Ref: <strong style="color:var(--accent2)">${matCatEntry.codigo_especial}</strong></span>`;
+      } else {
+        // Fallback legacy para registros viejos
+        const tipoLabel  = TIPO_LABEL[mat.tipo] || mat.tipo || '';
+        const formaLabel = FORMA_LABEL[mat.forma]|| mat.forma|| '';
+        const esGrupoA   = GRUPO_A.includes(mat.tipo);
+        if(tipoLabel)  matInfo += `<span>Tipo: <strong style="color:var(--text)">${tipoLabel}</strong></span>`;
+        if(formaLabel) matInfo += `<span>Forma: <strong style="color:var(--text)">${formaLabel}</strong></span>`;
 
-      // Tipo
-      if(tipoLabel)  matInfo += `<span>Tipo: <strong style="color:var(--text)">${tipoLabel}</strong></span>`;
-      // Forma
-      if(formaLabel) matInfo += `<span>Forma: <strong style="color:var(--text)">${formaLabel}</strong></span>`;
-
-      if(esGrupoA){
-        // Diámetro Exterior
-        if(mat.diametro) matInfo += `<span>Ø Ext: <strong style="color:var(--accent)">${parseFloat(mat.diametro).toFixed(3)}"</strong></span>`;
-        // Diámetro Interior (solo barra hueca)
-        if(mat.forma==='barra_hueca'&&mat.diametro_int) matInfo += `<span>Ø Int: <strong style="color:var(--accent)">${parseFloat(mat.diametro_int).toFixed(3)}"</strong></span>`;
-        // Longitud
-        if(mat.longitud) matInfo += `<span>Long: <strong style="color:var(--accent)">${parseFloat(mat.longitud).toFixed(3)}"</strong></span>`;
-        // Barras
-        if(mat.cantidad) matInfo += `<span>Barras: <strong style="color:var(--warn)">${mat.cantidad}</strong></span>`;
-      }
+        if(esGrupoA){
+          if(mat.diametro) matInfo += `<span>Ø Ext: <strong style="color:var(--accent)">${parseFloat(mat.diametro).toFixed(3)}"</strong></span>`;
+          if(mat.forma==='barra_hueca'&&mat.diametro_int) matInfo += `<span>Ø Int: <strong style="color:var(--accent)">${parseFloat(mat.diametro_int).toFixed(3)}"</strong></span>`;
+          if(mat.longitud) matInfo += `<span>Long: <strong style="color:var(--accent)">${parseFloat(mat.longitud).toFixed(3)}"</strong></span>`;
+          if(mat.cantidad) matInfo += `<span>Barras: <strong style="color:var(--warn)">${mat.cantidad}</strong></span>`;
+        }
+      } // end else legacy
       // Si hay más de un material en el BOM, indicarlo
       if(mats.length>1) matInfo += `<span style="color:var(--muted)">(+${mats.length-1} mat.)</span>`;
     }
@@ -6600,8 +6619,8 @@ function onMatfFormaChange(){
     const lblMap={'Forja':'CÓDIGO DE FORJA','Fundición':'CÓDIGO DE FUNDICIÓN',
       'Corte en Pantógrafo':'CÓDIGO DE CORTE EN PANTÓGRAFO','Corte Láser':'CÓDIGO DE CORTE LÁSER'};
     const lbl=lblMap[forma]||'CÓDIGO';
-    const phMap={'Forja':'ej. FRJ-083','Fundición':'ej. FND-041',
-      'Corte en Pantógrafo':'ej. PNT-120','Corte Láser':'ej. LSR-055'};
+    const phMap={'Forja':'ej. CABEZA RP-S63F-2','Fundición':'ej. PALOMETA RP-S58F-12E',
+      'Corte en Pantógrafo':'ej. PLACA BASE S83F-1','Corte Láser':'ej. TAPA S58F-7'};
     html+='<div class="field"><label>'+lbl+'</label>'
       +'<input type="text" id="matf-codigo-especial" value="'+(m?.codigo_especial||'')+'" placeholder="'+phMap[forma]+'">'
     +'</div>';
