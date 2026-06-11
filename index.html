@@ -6849,14 +6849,16 @@ function renderAlmHabilitar(){
   const list=document.getElementById('alm-habilitar-list');
   if(!list) return;
 
-  // OTs con reservaciones en estado 'apartado' o 'parcial'
+  // Inicializar mapa de datos
+  window._habData={};
+
   const resActivas=mpReservations.filter(r=>r.status==='apartado'||r.status==='parcial');
   if(!resActivas.length){
     list.innerHTML='<div class="card" style="color:var(--green);text-align:center;padding:40px">✅ No hay OTs pendientes de habilitar.</div>';
     return;
   }
 
-  // Agrupar reservaciones por OT
+  // Agrupar por OT
   const byOT={};
   resActivas.forEach(r=>{
     const k=r.ot_id||r.ot_number||'sin-ot';
@@ -6864,21 +6866,20 @@ function renderAlmHabilitar(){
     byOT[k].reservas.push(r);
   });
 
-  // Enriquecer con datos de OT y producto
   const rows=Object.values(byOT).map(g=>{
     const ot=workOrders.find(o=>o.id===g.ot_id)||{};
     const prod=products.find(p=>p.id===ot.product_id)||{};
     return {...g,ot,prod};
   }).sort((a,b)=>(a.ot_number||'').localeCompare(b.ot_number||''));
 
-  list.innerHTML=rows.map(g=>{
-    const ot=g.ot; const prod=g.prod;
+  // Limpiar y construir con createElement para evitar problemas de escapado
+  list.innerHTML='';
 
-    return g.reservas.map(r=>{
+  rows.forEach(g=>{
+    const ot=g.ot; const prod=g.prod;
+    g.reservas.forEach(r=>{
       const stock=mpStock.find(s=>s.id===r.mp_stock_id)||{};
       const matCat=mpMaterials.find(m=>m.id===stock.material_id||m.name===stock.material)||{};
-
-      // Formatear dimensiones según forma (igual que catálogo)
       const cat=matCat.categoria||'';
       const forma=stock.forma||matCat.forma||'';
       const u=(cat==='Acero'&&forma==='Barra Hueca')?'mm':'"';
@@ -6892,53 +6893,41 @@ function renderAlmHabilitar(){
         dimStr=(stock.diametro?'A: '+parseFloat(stock.diametro).toFixed(3)+u:'')
               +(stock.diametro_int?' B: '+parseFloat(stock.diametro_int).toFixed(3)+u:'');
       }
-
       const longSol=parseFloat(r.longitud_solicitada||stock.longitud_in||0);
       const cantSol=parseInt(r.cantidad||1);
       const totalLong=(longSol*cantSol).toFixed(3);
 
-      return '<div class="card" style="margin-bottom:12px">'
-        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+      // Guardar datos en mapa global (sin pasar por HTML)
+      window._habData[r.id]={stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol};
+
+      const card=document.createElement('div');
+      card.className='card';
+      card.style.marginBottom='12px';
+      card.innerHTML=
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
           +'<div style="flex:1;min-width:0">'
-            // OT + Producto
             +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
-              +'<span style="font-family:var(--font-display,sans-serif);font-size:16px;color:var(--accent)">OT-'+( r.ot_number||'--')+'</span>'
+              +'<span style="font-family:var(--font-display,sans-serif);font-size:16px;color:var(--accent)">OT-'+(r.ot_number||'--')+'</span>'
               +(prod.name?'<span style="font-weight:700">'+prod.name.toUpperCase()+'</span>':'')
               +(prod.code?'<span class="tag" style="color:var(--accent);font-family:monospace">'+prod.code+'</span>':'')
             +'</div>'
-            // Material
             +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:8px">'
-              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Material</div>'
-                +'<div style="font-size:12px;font-weight:700">'+(stock.material||'--').toUpperCase()+'</div>'
-              +'</div>'
-              +(forma?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Forma</div>'
-                +'<div style="font-size:12px;font-weight:700">'+forma+'</div>'
-              +'</div>':'')
-              +(dimStr?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Dimensiones</div>'
-                +'<div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+dimStr+'</div>'
-              +'</div>':'')
-              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Longitud solicitada</div>'
-                +'<div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent2)">'+longSol.toFixed(3)+'"</div>'
-              +'</div>'
-              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Cantidad</div>'
-                +'<div style="font-size:12px;font-weight:700">'+cantSol+' barras</div>'
-              +'</div>'
-              +'<div style="background:var(--bg2);border:1px solid var(--accent)30;border-radius:6px;padding:6px 10px">'
-                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Total longitud</div>'
-                +'<div style="font-size:13px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+totalLong+'"</div>'
-              +'</div>'
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">MATERIAL</div><div style="font-size:12px;font-weight:700">'+(stock.material||'--').toUpperCase()+'</div></div>'
+              +(forma?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">FORMA</div><div style="font-size:12px;font-weight:700">'+forma+'</div></div>':'')
+              +(dimStr?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">DIMENSIONES</div><div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+dimStr+'</div></div>':'')
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">LONGITUD SOL.</div><div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent2)">'+longSol.toFixed(3)+'"</div></div>'
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">CANTIDAD</div><div style="font-size:12px;font-weight:700">'+cantSol+' barras</div></div>'
+              +'<div style="background:var(--bg2);border:1px solid rgba(0,212,255,.2);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">TOTAL LONGITUD</div><div style="font-size:13px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+totalLong+'"</div></div>'
             +'</div>'
           +'</div>'
-          +(()=>{ window._habData=window._habData||{}; window._habData[r.id]={stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}; return '<button class="btn btn-accent" onclick="showHabilitarModal(\''+r.id+'\')" >✅ Confirmar Habilitado</button>'; })()
-        +'</div>'
-      +'</div>';
-    }).join('');
-  }).join('');
+          +'<button class="btn btn-accent hab-btn" data-resid="'+r.id+'">✅ Confirmar Habilitado</button>'
+        +'</div>';
+
+      // Agregar evento con referencia directa (sin pasar datos por HTML)
+      card.querySelector('.hab-btn').addEventListener('click',()=>showHabilitarModal(r.id));
+      list.appendChild(card);
+    });
+  });
 }
 window.renderAlmHabilitar=renderAlmHabilitar;
 
