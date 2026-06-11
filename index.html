@@ -6933,17 +6933,19 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
     await sbInsert('mp_transit',{
       id:uid(),
       mp_stock_id:stockId,
-      material_id:materialId,
       ot_id:res.ot_id,
       ot_number:res.ot_number,
+      product_name:res.product_name||'',
+      product_code:res.product_code||'',
       material:stock?.material,
       forma:stock?.forma||forma,
       diametro:stock?.diametro,
       diametro_int:stock?.diametro_int,
       longitud_in:totalLong,
-      cantidad:cant,
-      kg:totalKg,
+      cantidad_barras:cant,
+      kg_real:totalKg,
       status:'listo',
+      moved_by:'Almacenista',
       moved_at:new Date().toISOString()
     });
     // 4. Registrar movimiento
