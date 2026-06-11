@@ -1525,7 +1525,11 @@ function populateSelects(){
   selOt.innerHTML='<option value="">-- Selecciona O.T. --</option>';
   workOrders.filter(o=>o.status==='released').forEach(o=>{
     const p=getProduct(o.product_id);
-    selOt.innerHTML+=`<option value="${o.id}">${o.number} — ${p?p.name:'?'}${p&&p.code?' ('+p.code+')':''}</option>`;
+    const resOp=mpReservations.filter(r=>r.ot_id===o.id);
+    const enTransitoOp=resOp.some(r=>r.status==='en_transito');
+    const apartadoOp=resOp.some(r=>r.status==='apartado'||r.status==='parcial');
+    const badgeOp=enTransitoOp?' ⏳':apartadoOp?' 🟢':resOp.length?' 🔴':'';
+    selOt.innerHTML+=`<option value="${o.id}">${o.number}${badgeOp} — ${p?p.name:'?'}${p&&p.code?' ('+p.code+')':''}</option>`;
   });
   const selOper=document.getElementById('sel-operator');
   selOper.innerHTML='<option value="">-- Selecciona operador --</option>';
@@ -4122,7 +4126,7 @@ function renderProgrammingList(){
   const list=document.getElementById('programming-list');
   if(!pending.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin órdenes en programación</div>`; return; }
   list.innerHTML=`<div class="card" style="padding:0;overflow:hidden"><table class="tbl">
-    <thead><tr><th>O.T.</th><th>Producto</th><th>Lote</th><th>Cantidad</th><th>Existencia</th><th>Mat. Prima</th><th>Acciones</th></tr></thead>
+    <thead><tr><th>O.T.</th><th>Producto</th><th>Lote</th><th>Cantidad</th><th>Existencia</th><th>Mat. Prima</th><th>Material MP</th><th>Acciones</th></tr></thead>
     <tbody>
       ${pending.map(o=>{
         const p=getProduct(o.product_id);
@@ -4141,6 +4145,15 @@ function renderProgrammingList(){
             return em+' '+sc+'<br><small>'+days+' dias</small>';
           })()}</td>
           <td><span class="tag" style="${o.raw_material_ok?'background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)':'background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.25)'}">${o.raw_material_ok?'✓ LISTA':'⚠ PENDIENTE'}</span></td>
+          <td>${(()=>{
+            const res=mpReservations.filter(r=>r.ot_id===o.id);
+            if(!res.length) return '<span class="tag" style="color:var(--danger);font-size:10px">🔴 Sin apartar</span>';
+            const enTransito=res.some(r=>r.status==='en_transito');
+            const apartado=res.some(r=>r.status==='apartado'||r.status==='parcial');
+            if(enTransito) return '<span class="tag" style="color:var(--warn);font-size:10px">⏳ En Habilitado</span>';
+            if(apartado) return '<span class="tag" style="color:var(--green);font-size:10px">🟢 Apartado</span>';
+            return '<span class="tag" style="color:var(--muted);font-size:10px">Sin apartar</span>';
+          })()}</td>
           <td>
             <div style="display:flex;gap:4px;flex-wrap:wrap">
               <button class="btn btn-ghost btn-sm" onclick="editProgrammingOT('${o.id}')">✏</button>
@@ -4176,6 +4189,17 @@ function showNewOTForm(){
         <div class="field"><label>Lote</label><input id="otf-batch-show" placeholder="--" readonly style="color:var(--accent2);font-family:'DM Mono',monospace"></div>
       </div>
 
+      <!-- Material disponible en inventario -->
+      <div id="otf-material-info" style="margin-bottom:12px"></div>
+      <!-- Opción de apartar -->
+      <div id="otf-apartar-wrap" style="display:none;margin-bottom:12px">
+        <div class="card" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2);padding:12px 16px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="otf-apartar-check" style="width:16px;height:16px">
+            <span style="font-size:13px;font-weight:700">Apartar material disponible al crear la OT</span>
+          </label>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-ghost" onclick="document.getElementById('new-ot-form-wrap').innerHTML=''">Cancelar</button>
         <button class="btn btn-accent" onclick="saveNewOT()">💾 Crear O.T.</button>
@@ -4195,15 +4219,67 @@ function onOTFormProdChange(){
     if(minEl){ minEl.value=p.stock_min||''; }
     const batchEl=document.getElementById('otf-batch-show');
     if(batchEl){ batchEl.value=p.batch||''; }
+    // Mostrar existencia de materiales del BOM en inventario
+    checkOTMaterialDisponible(p);
   } else {
     if(loteEl) loteEl.textContent='';
     document.getElementById('otf-qty').value='';
     const existEl=document.getElementById('otf-exist'); if(existEl) existEl.value='';
     const minEl=document.getElementById('otf-stock-min'); if(minEl) minEl.value='';
     const batchEl=document.getElementById('otf-batch-show'); if(batchEl) batchEl.value='';
+    document.getElementById('otf-material-info').innerHTML='';
+    document.getElementById('otf-apartar-wrap').style.display='none';
   }
 }
 window.onOTFormProdChange = onOTFormProdChange;
+
+function checkOTMaterialDisponible(p){
+  const infoEl=document.getElementById('otf-material-info');
+  const apartarWrap=document.getElementById('otf-apartar-wrap');
+  if(!infoEl||!p) return;
+  const mats=p.materials||[];
+  const barras=mats.filter(m=>{
+    const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
+    return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+  });
+  if(!barras.length){
+    infoEl.innerHTML='';
+    if(apartarWrap) apartarWrap.style.display='none';
+    return;
+  }
+  let html='<div class="card" style="padding:12px 16px;margin-bottom:0;border-color:rgba(0,212,255,.2)">';
+  html+='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">📦 Material requerido vs. inventario disponible</div>';
+  let hayDisponible=false;
+  barras.forEach(m=>{
+    const matCat=MAT_TYPES.find(t=>t.val===m.tipo)||{};
+    const u=(matCat.categoria==='Acero'&&matCat.forma==='Barra Hueca')?'mm':'"'
+    const longReq=parseFloat(m.longitud)||0;
+    const cantReq=parseInt(m.cantidad)||1;
+    const totalReq=(longReq*cantReq).toFixed(3);
+    // Buscar en inventario por material_id
+    const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+    const totalDisp=stockItems.reduce((a,s)=>{
+      const longBarra=parseFloat(s.longitud_in)||0;
+      const cantBarra=parseInt(s.cantidad)||1;
+      return a+(longBarra*cantBarra);
+    },0);
+    const hay=totalDisp>=parseFloat(totalReq);
+    if(hay) hayDisponible=true;
+    const color=hay?'var(--green)':'var(--danger)';
+    const icon=hay?'✅':'❌';
+    const dimStr=matCat.diametro?'Ø '+parseFloat(matCat.diametro).toFixed(3)+u:'';
+    html+='<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">';
+    html+=icon+' <strong>'+(matCat.label||'')+(dimStr?' '+dimStr:'')+'</strong>';
+    html+='<span style="color:var(--muted)">Req: <strong style="color:var(--text)">'+totalReq+'"</strong></span>';
+    html+='<span style="color:'+color+'">Disp: <strong>'+totalDisp.toFixed(3)+'"</strong></span>';
+    html+='</div>';
+  });
+  html+='</div>';
+  infoEl.innerHTML=html;
+  // Mostrar opción de apartar solo si hay material disponible
+  if(apartarWrap) apartarWrap.style.display=hayDisponible?'':' none';
+}
+window.checkOTMaterialDisponible=checkOTMaterialDisponible;
 
 async function saveNewOT(){
   const number=document.getElementById('otf-num').value.trim();
@@ -4216,8 +4292,43 @@ async function saveNewOT(){
   const p=getProduct(product_id);
   showLoading('CREANDO O.T...');
   const stockCurrent=parseInt(document.getElementById('otf-exist')?.value)||0;
+  const apartar=document.getElementById('otf-apartar-check')?.checked||false;
   const rec={id:uid(),number,product_id,qty,batch:p?.batch||null,status:'programming',raw_material_ok:false,priority:0,total_ops:p?.operations?.length||0,completed_ops:0,progress_pct:0,stock_current:stockCurrent};
-  try{ await sbInsert('work_orders',rec); await loadAllData(); renderProgrammingList(); document.getElementById('new-ot-form-wrap').innerHTML=''; }
+  try{
+    await sbInsert('work_orders',rec);
+    // Apartar material si se solicitó
+    if(apartar&&p?.materials?.length){
+      const barras=(p.materials||[]).filter(m=>{
+        const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
+        return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+      });
+      for(const m of barras){
+        const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+        if(stockDisp.length){
+          // Tomar el primer lote disponible
+          const s=stockDisp[0];
+          const resRec={
+            id:uid(),
+            mp_stock_id:s.id,
+            material_id:m.tipo,
+            ot_id:rec.id,
+            ot_number:number,
+            longitud_solicitada:parseFloat(m.longitud)||0,
+            cantidad:parseInt(m.cantidad)||1,
+            status:'apartado',
+            created_at:new Date().toISOString()
+          };
+          await sbInsert('mp_reservations',resRec);
+          // Actualizar estado del stock
+          await sbUpdate('mp_stock',{id:s.id},{status:'apartado'});
+        }
+      }
+    }
+    await loadAllData();
+    renderProgrammingList();
+    document.getElementById('new-ot-form-wrap').innerHTML='';
+    if(apartar) alert('✅ OT creada y material apartado.');
+  }
   catch(e){ alert('Error al crear O.T.: '+e.message); }
   hideLoading();
 }
@@ -6343,7 +6454,6 @@ async function saveMpStock(id){
   const supId=supEl?.value||null;
   const supName=supId?mpSuppliers.find(s=>s.id===supId)?.name||'':'';
   const precioNuevo=parseFloat(document.getElementById('mpf-precio')?.value)||0;
-  const min=parseInt(document.getElementById('mpf-min')?.value)||0;
   const ubic=document.getElementById('mpf-ubic')?.value||null;
   const lote=document.getElementById('mpf-lote')?.value||null;
   const esEspecial=document.getElementById('mpf-especial')?.value==='true';
@@ -6428,7 +6538,7 @@ async function saveMpStock(id){
     material_id:matId,material:matName,grupo,es_especial:esEspecial,
     forma,diametro:diam,diametro_int:dint,
     longitud_m:longM,longitud_in:longIn,
-    cantidad:cant,cantidad_min:min,
+    cantidad:cant,
     kg_barra:kgUnit,kg_total:kgTotal,
     precio_kg:precioPPP,valor_total:valorTotal,
     supplier_id:supId,supplier_name:supName,
@@ -7634,7 +7744,26 @@ function showMpStockForm(id){
         <div class="field" style="grid-column:1/-1"><label>ARTÍCULO DEL CATÁLOGO</label>
           <select id="mpf-mat" onchange="onAlmMatChange()" style="font-size:13px">
             <option value="">-- Selecciona material --</option>
-            ${MAT_TYPES.map(m=>`<option value="${m.val}" data-grupo="${m.grupo}" data-dens="${m.densidad}" data-diam="${m.diametro||''}" data-dint="${m.diametro_int||''}" data-forma="${m.forma||''}">${m.label}${m.diametro?' — Ø '+m.diametro+'"':''}${m.forma?' '+m.forma:''}</option>`).join('')}
+            ${[...MAT_TYPES].sort((a,b)=>{
+              const CAT_ORDER=['Acero','Acero Inoxidable','Bronce','Latón','Aluminio','Nylamid','Pieza Comprada'];
+              const ci=CAT_ORDER.indexOf(a.categoria||'')-CAT_ORDER.indexOf(b.categoria||'');
+              if(ci!==0) return ci;
+              const ni=(a.label||'').localeCompare(b.label||'');
+              if(ni!==0) return ni;
+              const fi=(a.forma||'').localeCompare(b.forma||'');
+              if(fi!==0) return fi;
+              return (parseFloat(a.diametro)||0)-(parseFloat(b.diametro)||0);
+            }).map(m=>{
+              const u=(m.categoria==='Acero'&&m.forma==='Barra Hueca')?'mm':'"';
+              const sinDim=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
+              let dim='';
+              if(sinDim.includes(m.forma)) dim=' — '+m.forma+(m.codigo_especial?' ['+m.codigo_especial+']':'');
+              else if(m.forma==='Barra Hueca'||m.forma==='Tubo') dim=' — '+m.forma+' Ø'+(m.diametro?parseFloat(m.diametro).toFixed(3)+u:'?')+(m.diametro_int?' / Øi'+parseFloat(m.diametro_int).toFixed(3)+u:'');
+              else if(m.forma==='Cuadrado/Solera') dim=' — '+m.forma+(m.diametro?' '+parseFloat(m.diametro).toFixed(3)+u:'')+(m.diametro_int?' x '+parseFloat(m.diametro_int).toFixed(3)+u:'');
+              else if(m.diametro) dim=' — '+(m.forma||'')+ ' Ø'+parseFloat(m.diametro).toFixed(3)+u;
+              else if(m.forma&&m.forma!=='N/A') dim=' — '+m.forma;
+              return `<option value="${m.val}" data-grupo="${m.grupo}" data-dens="${m.densidad}" data-diam="${m.diametro||''}" data-dint="${m.diametro_int||''}" data-forma="${m.forma||''}">${m.label}${dim}</option>`;
+            }).join('')}
           </select>
         </div>
 
@@ -7697,9 +7826,6 @@ function showMpStockForm(id){
         </div>
 
         <!-- Campos comunes -->
-        <div class="field"><label>STOCK MÍNIMO</label>
-          <input type="number" id="mpf-min" value="${s?.cantidad_min||''}" placeholder="3">
-        </div>
         <div class="field"><label>PRECIO/KG ($)</label>
           <input type="number" step="0.01" id="mpf-precio" value="${s?.precio_kg||''}" placeholder="0.00" oninput="calcAlmKg()">
         </div>
