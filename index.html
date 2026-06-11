@@ -6197,7 +6197,7 @@ function renderAlmGeneral(){
 
   list.innerHTML=Object.entries(groups).map(([key,g])=>{
     const gid='sg-'+btoa(key).replace(/[^a-zA-Z0-9]/g,'').substring(0,12);
-    const isOpen=!!search||g.items.length===1;
+    const isOpen=true; // Siempre abierto para ver botones de editar/eliminar
     const totalBarras=g.items.reduce((a,s)=>a+(parseInt(s.cantidad)||1),0);
     const totalKg=g.items.reduce((a,s)=>a+(parseFloat(s.kg_total)||parseFloat((calcKgBarra(s)*(parseInt(s.cantidad)||1)).toFixed(2))),0);
     const totalValor=g.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
