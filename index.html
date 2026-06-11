@@ -6923,8 +6923,7 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
       // Descontar: reducir cantidad proporcional o registrar como consumo total
       const newCant=Math.max(0,(parseInt(stock.cantidad)||1)-Math.round(cant));
       await sbUpdate('mp_stock',{id:stockId},{
-        cantidad:newCant,
-        longitud_consumida_in:(parseFloat(stock.longitud_consumida_in)||0)+totalLong
+        cantidad:newCant
       });
     }
     // 2. Actualizar reservación → en_transito
