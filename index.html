@@ -6182,6 +6182,7 @@ function renderAlmGeneral(){
       (s.forma||'').toLowerCase().includes(search))
   );
 
+  list.innerHTML='';
   if(!items.length){
     list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin registros. Agrega la primera entrada de material.</div>';
     return;
@@ -6195,9 +6196,8 @@ function renderAlmGeneral(){
     groups[key].items.push(s);
   });
 
-  list.innerHTML=Object.entries(groups).map(([key,g])=>{
-    const gid='sg-'+btoa(key).replace(/[^a-zA-Z0-9]/g,'').substring(0,12);
-    const isOpen=true; // Siempre abierto para ver botones de editar/eliminar
+  Object.entries(groups).forEach(([key,g])=>{
+    const gid='sg-'+btoa(unescape(encodeURIComponent(key))).replace(/[^a-zA-Z0-9]/g,'').substring(0,12);
     const totalBarras=g.items.reduce((a,s)=>a+(parseInt(s.cantidad)||1),0);
     const totalKg=g.items.reduce((a,s)=>a+(parseFloat(s.kg_total)||parseFloat((calcKgBarra(s)*(parseInt(s.cantidad)||1)).toFixed(2))),0);
     const totalValor=g.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
@@ -6206,62 +6206,115 @@ function renderAlmGeneral(){
     const minCat=matCat?.cantidad_min||0;
     const reposicion=matCat?.reposicion!==false;
     const sem=semaforo(totalBarras,minCat);
-    return '<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">'+
-      '<div onclick="toggleAlmGroup(\"+gid+\")" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;background:var(--bg2)">'+
-        '<span id="'+gid+'-icon" style="font-size:12px;color:var(--muted)">'+(isOpen?'▼':'►')+'</span>'+
+
+    // ── Tarjeta del grupo ──
+    const card=document.createElement('div');
+    card.className='card';
+    card.style.cssText='margin-bottom:10px;padding:0;overflow:hidden';
+
+    // Cabecera colapsable
+    const header=document.createElement('div');
+    header.style.cssText='display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;background:var(--bg2)';
+    header.innerHTML=
+      '<span id="'+gid+'-icon" style="font-size:12px;color:var(--muted)">▼</span>'+
+      '<div style="flex:1">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<span style="font-weight:700;font-size:14px;color:var(--text)">'+(g.material||'--').toUpperCase()+'</span>'+
+          (g.forma?'<span class="tag" style="color:var(--muted)">'+g.forma+'</span>':'')+
+          (g.diametro?'<span class="tag" style="color:var(--accent)">Ø '+parseFloat(g.diametro).toFixed(3)+'"'+(g.diametro_int?' / Øi '+parseFloat(g.diametro_int).toFixed(3)+'"':'')+'</span>':'')+
+          (g.es_especial?'<span class="tag" style="color:var(--accent2);background:rgba(124,58,237,.1)">🟣 ESPECIAL</span>':'')+
+          (reposicion&&minCat>0?'<span class="tag" style="color:'+sem.color+'">'+sem.label+'</span>':'')+
+          (!reposicion?'<span class="tag" style="color:var(--muted)">Sin reposición</span>':'')+
+        '</div>'+
+        '<div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">'+
+          '<span>Total: <strong style="color:var(--text)">'+totalBarras+' barras</strong></span>'+
+          (minCat&&reposicion?'<span>Mín: <strong>'+minCat+'</strong></span>':'')+
+          '<span>Kg: <strong style="color:var(--accent2)">'+totalKg.toFixed(1)+'</strong></span>'+
+          '<span>PPP: <strong>$'+pppAvg+'/kg</strong></span>'+
+          '<span>Valor: <strong style="color:var(--green)">$'+totalValor.toFixed(2)+'</strong></span>'+
+          '<span style="color:var(--muted)">'+g.items.length+' lote'+(g.items.length!==1?'s':'')+'</span>'+
+        '</div>'+
+      '</div>';
+
+    // Botón entrada
+    const btnEntrada=document.createElement('button');
+    btnEntrada.className='btn btn-sm btn-accent';
+    btnEntrada.style.flexShrink='0';
+    btnEntrada.textContent='+ Entrada';
+    btnEntrada.addEventListener('click',e=>{e.stopPropagation();showMpStockForm(null);});
+    header.appendChild(btnEntrada);
+
+    // Toggle acordeón
+    const body=document.createElement('div');
+    body.id=gid;
+    body.style.cssText='display:block;border-top:1px solid var(--border)';
+    header.addEventListener('click',()=>{
+      const open=body.style.display==='block';
+      body.style.display=open?'none':'block';
+      const icon=document.getElementById(gid+'-icon');
+      if(icon) icon.textContent=open?'►':'▼';
+    });
+
+    // ── Lotes ──
+    g.items.forEach(s=>{
+      const kgB=parseFloat(calcKgBarra({...s,cantidad:1}).toFixed(3));
+      const stColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':s.status==='parcial'?'var(--warn)':'var(--muted)';
+      const reservas=mpReservations.filter(r=>r.mp_stock_id===s.id&&(r.status==='apartado'||r.status==='parcial'||r.status==='en_transito'));
+
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)';
+      row.innerHTML=
         '<div style="flex:1">'+
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-            '<span style="font-weight:700;font-size:14px;color:var(--text)">'+(g.material||'--').toUpperCase()+'</span>'+
-            (g.forma?'<span class="tag" style="color:var(--muted)">'+g.forma+'</span>':'')+
-            (g.diametro?'<span class="tag" style="color:var(--accent)">Ø '+parseFloat(g.diametro).toFixed(3)+'"'+(g.diametro_int?' / Øi '+parseFloat(g.diametro_int).toFixed(3)+'"':'')+'</span>':'')+
-            (g.es_especial?'<span class="tag" style="color:var(--accent2);background:rgba(124,58,237,.1)">🟣 ESPECIAL</span>':'')+
-            (reposicion&&minCat>0?'<span class="tag" style="color:'+sem.color+'">'+sem.label+'</span>':'')+
-            (!reposicion?'<span class="tag" style="color:var(--muted)">Sin reposición</span>':'')+
+            '<span style="font-family:DM Mono,monospace;font-size:13px;color:var(--text);font-weight:700">'+(s.longitud_in?parseFloat(s.longitud_in).toFixed(3)+'"':'--')+'</span>'+
+            '<span style="font-size:12px;color:var(--muted)">'+(s.cantidad||1)+' barra'+((s.cantidad||1)!==1?'s':'')+'</span>'+
+            '<span class="tag" style="color:'+stColor+';font-size:10px">'+(s.status||'disponible')+'</span>'+
+            (s.lote?'<span style="font-size:10px;color:var(--muted)">Lote: '+s.lote+'</span>':'')+
+            (reservas.length>0?'<span style="font-size:10px;color:var(--warn)">📌 '+reservas.map(r=>r.ot_number).join(', ')+'</span>':'')+
           '</div>'+
-          '<div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">'+
-            '<span>Total: <strong style="color:var(--text)">'+totalBarras+' barras</strong></span>'+
-            (minCat&&reposicion?'<span>Mín: <strong style="color:var(--muted)">'+minCat+'</strong></span>':'')+
-            '<span>Kg: <strong style="color:var(--accent2)">'+totalKg.toFixed(1)+'</strong></span>'+
-            '<span>PPP: <strong style="color:var(--text)">$'+pppAvg+'/kg</strong></span>'+
-            '<span>Valor: <strong style="color:var(--green)">$'+totalValor.toFixed(2)+'</strong></span>'+
-            '<span style="color:var(--muted)">'+g.items.length+' lote'+(g.items.length!==1?'s':'')+'</span>'+
+          '<div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'+
+            '<span>Kg/barra: '+kgB+'</span>'+
+            '<span>Kg total: '+(kgB*(s.cantidad||1)).toFixed(1)+'</span>'+
+            '<span>PPP: $'+(s.precio_kg||0)+'/kg</span>'+
+            '<span>Valor: $'+(s.valor_total||0)+'</span>'+
+            (s.ubicacion?'<span>📍 '+s.ubicacion+'</span>':'')+
+            (s.supplier_name?'<span>🏭 '+s.supplier_name+'</span>':'')+
           '</div>'+
-        '</div>'+
-        '<button class="btn btn-sm btn-accent" onclick="event.stopPropagation();showMpStockForm(null)" style="flex-shrink:0">+ Entrada</button>'+
-      '</div>'+
-      '<div id="'+gid+'" style="display:'+(isOpen?'block':'none')+';border-top:1px solid var(--border)">'+
-        g.items.map(s=>{
-          const kgB=parseFloat(calcKgBarra({...s,cantidad:1}).toFixed(3));
-          const stColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':s.status==='parcial'?'var(--warn)':'var(--muted)';
-          const reservas=mpReservations.filter(r=>r.mp_stock_id===s.id&&(r.status==='apartado'||r.status==='parcial'||r.status==='en_transito'));
-          return '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)">'+
-            '<div style="flex:1">'+
-              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-                '<span style="font-family:DM Mono,monospace;font-size:13px;color:var(--text);font-weight:700">'+(s.longitud_in?s.longitud_in+'"':'--')+'</span>'+
-                '<span style="font-size:12px;color:var(--muted)">'+(s.cantidad||1)+' barra'+((s.cantidad||1)!==1?'s':'')+'</span>'+
-                '<span class="tag" style="color:'+stColor+';font-size:10px">'+(s.status||'disponible')+'</span>'+
-                (s.lote?'<span style="font-size:10px;color:var(--muted)">Lote: '+s.lote+'</span>':'')+
-                (reservas.length>0?'<span style="font-size:10px;color:var(--warn)">📌 '+reservas.map(r=>r.ot_number).join(', ')+'</span>':'')+
-              '</div>'+
-              '<div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'+
-                '<span>Kg/barra: '+kgB+'</span>'+
-                '<span>Kg total: '+(kgB*(s.cantidad||1)).toFixed(1)+'</span>'+
-                '<span>PPP: $'+(s.precio_kg||0)+'/kg</span>'+
-                '<span>Valor: $'+(s.valor_total||0)+'</span>'+
-                (s.ubicacion?'<span>📍 '+s.ubicacion+'</span>':'')+
-                (s.supplier_name?'<span>🏭 '+s.supplier_name+'</span>':'')+
-              '</div>'+
-            '</div>'+
-            '<div style="display:flex;gap:4px;flex-shrink:0">'+
-              '<button class="btn btn-sm btn-accent" onclick="showMpStockForm(\"'+s.id+'\")" style="font-size:11px">✏</button>'+
-              '<button class="btn btn-sm" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);font-size:11px" onclick="showTransitForm(\"'+s.id+'\")">>→</button>'+
-              '<button class="btn btn-sm btn-danger" onclick="deleteMpStock(\"'+s.id+'\")" style="font-size:11px">🗑</button>'+
-            '</div>'+
-          '</div>';
-        }).join('')+
-      '</div>'+
-    '</div>';
-  }).join('');
+        '</div>';
+
+      // Botones de acción con addEventListener
+      const btnWrap=document.createElement('div');
+      btnWrap.style.cssText='display:flex;gap:4px;flex-shrink:0';
+
+      const btnEdit=document.createElement('button');
+      btnEdit.className='btn btn-sm btn-accent';
+      btnEdit.style.fontSize='11px';
+      btnEdit.textContent='✏';
+      btnEdit.addEventListener('click',()=>showMpStockForm(s.id));
+
+      const btnTransit=document.createElement('button');
+      btnTransit.className='btn btn-sm';
+      btnTransit.style.cssText='background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2);font-size:11px';
+      btnTransit.textContent='→';
+      btnTransit.addEventListener('click',()=>showTransitForm(s.id));
+
+      const btnDel=document.createElement('button');
+      btnDel.className='btn btn-sm btn-danger';
+      btnDel.style.fontSize='11px';
+      btnDel.textContent='🗑';
+      btnDel.addEventListener('click',()=>deleteMpStock(s.id));
+
+      btnWrap.appendChild(btnEdit);
+      btnWrap.appendChild(btnTransit);
+      btnWrap.appendChild(btnDel);
+      row.appendChild(btnWrap);
+      body.appendChild(row);
+    });
+
+    card.appendChild(header);
+    card.appendChild(body);
+    list.appendChild(card);
+  });
 }
 
 function toggleAlmGroup(gid){
