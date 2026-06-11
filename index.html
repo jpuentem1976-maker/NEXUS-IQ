@@ -3856,6 +3856,31 @@ window.ejecutarApartarOT=ejecutarApartarOT;
 //  MÓDULO PROGRAMACIÓN — funciones reconstruidas
 // ═══════════════════════════════════════════════════════
 
+/* Entrada principal al módulo — llamada desde goPage('programming') */
+function renderProgramming(){
+  renderProgrammingList();
+  renderReleasedOTs();
+  renderClosedOTs();
+  renderMachineLoad();
+}
+window.renderProgramming = renderProgramming;
+
+/* Calcula el siguiente número de OT disponible */
+function getNextOTNumber(){
+  const startNum = parseInt(localStorage.getItem('niq2_ot_start')) || 1;
+  const allNums = workOrders.map(o => parseInt((o.number||'').replace(/\D/g,''))||0);
+  return Math.max(startNum, ...(allNums.length ? allNums : [0])) + 1;
+}
+window.getNextOTNumber = getNextOTNumber;
+
+/* Actualiza el badge con el próximo número de OT en el encabezado */
+function updateNextOTDisplay(){
+  const el = document.getElementById('next-ot-number');
+  if(!el) return;
+  el.textContent = 'OT-' + String(getNextOTNumber()).padStart(5,'0');
+}
+window.updateNextOTDisplay = updateNextOTDisplay;
+
 function renderProgrammingList(){
   updateNextOTDisplay();
   const pending=workOrders.filter(o=>o.status==='programming');
