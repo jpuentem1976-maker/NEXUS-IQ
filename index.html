@@ -6934,7 +6934,7 @@ function renderAlmHabilitar(){
               +'</div>'
             +'</div>'
           +'</div>'
-          +'<button class="btn btn-accent" onclick="showHabilitarModal(\''+r.id+'\',\''+encodeURIComponent(JSON.stringify({stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}))+'\')">✅ Confirmar Habilitado</button>'
+          +(()=>{ window._habData=window._habData||{}; window._habData[r.id]={stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}; return '<button class="btn btn-accent" onclick="showHabilitarModal(\''+r.id+'\')" >✅ Confirmar Habilitado</button>'; })()
         +'</div>'
       +'</div>';
     }).join('');
@@ -6942,8 +6942,9 @@ function renderAlmHabilitar(){
 }
 window.renderAlmHabilitar=renderAlmHabilitar;
 
-function showHabilitarModal(resId,dataEnc){
-  const d=JSON.parse(decodeURIComponent(dataEnc));
+function showHabilitarModal(resId){
+  const d=(window._habData||{})[resId];
+  if(!d){alert('Error: datos no encontrados. Recarga la pestaña.');return;}
   const {stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}=d;
 
   const wrap=document.getElementById('alm-habilitar-form');
