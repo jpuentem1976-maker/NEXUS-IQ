@@ -50,7 +50,7 @@ button{cursor:pointer;font-family:'Barlow',sans-serif;border:none;outline:none;t
 .spinning{animation:spin .8s linear infinite;display:inline-block}
 /* NAV */
 nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;height:54px;gap:3px;position:sticky;top:0;z-index:200;flex-wrap:nowrap;overflow-x:auto}
-.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;margin-right:4px;text-shadow:0 0 20px rgba(0,212,255,.4);white-space:nowrap;flex-shrink:0}
+.logo{font-family:var(--font-display,sans-serif);font-size:22px;color:var(--accent);letter-spacing:2px;margin-right:4px;text-shadow:0 0 20px rgba(0,212,255,.4);white-space:nowrap;flex-shrink:0}
 .logo-sub{font-size:9px;color:var(--muted);margin-right:auto;letter-spacing:.5px;text-transform:uppercase;border-left:1px solid var(--border);padding-left:10px;margin-left:4px;white-space:nowrap;flex-shrink:0}
 .nav-btn{background:transparent;border:1px solid transparent;color:var(--muted);padding:6px 12px;border-radius:var(--r);font-weight:600;font-size:12px;white-space:nowrap;flex-shrink:0}
 .nav-btn:hover{color:var(--text);border-color:var(--border)}
@@ -84,9 +84,9 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 /* STAT */
 .stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 10px;text-align:center}
 .stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
-.stat-val{font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1}
+.stat-val{font-family:var(--font-display,sans-serif);font-size:32px;line-height:1}
 /* BIG EFF */
-.eff-huge{font-family:'Bebas Neue',sans-serif;font-size:100px;line-height:1;text-align:center;transition:color .4s}
+.eff-huge{font-family:var(--font-display,sans-serif);font-size:100px;line-height:1;text-align:center;transition:color .4s}
 .eff-label{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:4px;text-align:center;margin-top:4px}
 .timer-live{font-family:'DM Mono',monospace;font-size:48px;text-align:center;letter-spacing:3px;transition:color .3s}
 .timer-std{font-family:'DM Mono',monospace;font-size:44px;text-align:center;color:var(--warn);letter-spacing:3px}
@@ -107,7 +107,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 /* DRAG */
 .drag-item{cursor:grab}.drag-item:active{cursor:grabbing;opacity:.7}
 /* SECTION */
-.sec-h{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin-bottom:4px}
+.sec-h{font-family:var(--font-display,sans-serif);font-size:26px;letter-spacing:1px;margin-bottom:4px}
 .sec-sub{color:var(--muted);font-size:13px;margin-bottom:18px}
 /* COLLAPSIBLE */
 .collapse-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0;border-bottom:1px solid var(--border)}
@@ -538,6 +538,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setEngTab('e-drawings-mp',this)">🗂 Dibujos Materia Prima</button>
     <button class="ptab" onclick="setEngTab('e-cnc',this)">💾 Programas CNC</button>
     <button class="ptab" onclick="setEngTab('e-materials',this)">🧱 Catálogo Materiales</button>
+    <button class="ptab" onclick="setEngTab('e-recursos',this)">⚙ Recursos de Producción</button>
   </div>
 
   <!-- MATERIALS CATALOG -->
@@ -598,6 +599,23 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <div style="font-size:15px;font-weight:700;margin-bottom:4px">Programas CNC</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Programas por producto y operacion. Los puedes subir directamente desde cada operacion en Productos.</div>
     <div id="cnc-body"></div>
+  </div>
+
+  <!-- RECURSOS DE PRODUCCIÓN -->
+  <div id="e-recursos" class="subpage">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <div style="font-size:15px;font-weight:700">Catálogo de Recursos de Producción</div>
+        <div style="font-size:12px;color:var(--muted)">Herramienta, consumibles, EPP, papelería y más.</div>
+      </div>
+      <button class="btn btn-accent" onclick="showRecursoForm(null)">+ Nuevo Artículo</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <input id="rec-search" type="text" placeholder="🔍 Buscar artículo..." style="flex:1;min-width:200px" oninput="renderRecursos()">
+      <span id="rec-counter" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div id="rec-form-wrap"></div>
+    <div id="rec-list"></div>
   </div>
 
   <!-- MACHINE TIMES -->
@@ -719,7 +737,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="reports-modal" class="overlay hidden">
   <div class="card modal card-accent" style="text-align:center">
     <div style="font-size:32px;margin-bottom:12px">📊</div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent)">ACCESO A REPORTES</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A REPORTES</div>
     <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
     <div class="field" style="text-align:left;margin-bottom:6px">
       <label>Contraseña</label>
@@ -736,7 +754,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="eng-modal" class="overlay hidden">
   <div class="card modal card-accent" style="text-align:center">
     <div style="font-size:32px;margin-bottom:12px">⚙</div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent)">ACCESO A INGENIERÍA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A INGENIERÍA</div>
     <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
     <div class="field" style="text-align:left;margin-bottom:6px">
       <label>Contraseña</label>
@@ -753,7 +771,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="prog-modal" class="overlay hidden">
   <div class="card modal card-accent" style="text-align:center">
     <div style="font-size:32px;margin-bottom:12px">📋</div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent)">ACCESO A PROGRAMACIÓN</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A PROGRAMACIÓN</div>
     <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
     <div class="field" style="text-align:left;margin-bottom:6px">
       <label>Contraseña</label>
@@ -770,7 +788,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <!-- RAW MATERIAL CONFIRMATION MODAL -->
 <div id="rawmat-modal" class="overlay hidden">
   <div class="card modal card-accent" style="width:640px;max-width:100%">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);margin-bottom:4px">CONFIRMACION DE MATERIA PRIMA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:22px;color:var(--accent);margin-bottom:4px">CONFIRMACION DE MATERIA PRIMA</div>
     <div id="rawmat-modal-sub" style="color:var(--muted);font-size:13px;margin-bottom:4px"></div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
       Lote OT: <input type="number" id="rm-lote-display" min="1" style="display:inline-block;width:100px;font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:var(--warn);background:var(--bg2);border:1px solid rgba(245,158,11,.4);border-radius:6px;padding:3px 8px;text-align:center">
@@ -805,7 +823,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="almacen-modal" class="overlay hidden">
   <div class="card modal card-accent" style="text-align:center">
     <div style="font-size:32px;margin-bottom:12px">📦</div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--accent)">ACCESO A ALMACÉN</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A ALMACÉN</div>
     <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
     <div class="field" style="text-align:left;margin-bottom:6px">
       <label>Contraseña</label>
@@ -822,7 +840,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <!-- PAGE ALMACÉN -->
 <div id="page-almacen" class="page" style="padding:20px;max-width:1200px;margin:0 auto">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--accent2)">ALMACÉN DE MATERIA PRIMA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--accent2)">ALMACÉN DE MATERIA PRIMA</div>
     <div id="alm-pending-badge" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700">🔴 <span id="alm-pending-count">0</span> solicitudes pendientes</div>
   </div>
 
@@ -893,7 +911,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <!-- MODAL BAJA MERMA -->
 <div id="baja-modal" class="modal hidden">
   <div class="modal-box" style="max-width:420px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--danger);margin-bottom:14px">SOLICITAR BAJA DE MERMA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:20px;color:var(--danger);margin-bottom:14px">SOLICITAR BAJA DE MERMA</div>
     <div id="baja-list-preview" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
     <div class="field"><label>Contraseña Almacenista (4340)</label>
       <input type="password" id="baja-pass1" placeholder="••••">
@@ -909,7 +927,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <!-- MODAL AUTORIZAR BAJA -->
 <div id="autorizar-modal" class="modal hidden">
   <div class="modal-box" style="max-width:420px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--warn);margin-bottom:14px">AUTORIZAR BAJA DE MERMA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:20px;color:var(--warn);margin-bottom:14px">AUTORIZAR BAJA DE MERMA</div>
     <div id="autorizar-list" style="max-height:200px;overflow-y:auto;margin-bottom:14px"></div>
     <div class="field"><label>Contraseña Responsable de Inventarios (52100)</label>
       <input type="password" id="autorizar-pass" placeholder="••••">
@@ -926,7 +944,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="loading-overlay" class="hidden">
   <div style="text-align:center">
     <div style="font-size:36px;margin-bottom:14px" class="spinning">⚙</div>
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px" id="loading-msg">CARGANDO...</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:22px;color:var(--accent);letter-spacing:2px" id="loading-msg">CARGANDO...</div>
   </div>
 </div>
 
@@ -946,6 +964,7 @@ const OT_START_KEY = 'niq2_ot_start';
 
 let SB_URL = '', SB_KEY = '';
 let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[];
+let recursosProduccion=[];
 let reportsAuth=false, engAuth=false, progAuth=false;
 
 function getConfig(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||null; }catch{ return null; } }
@@ -1315,7 +1334,7 @@ async function loadAlmDataSilent(){
 }
 
 async function loadAllData(){
-  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats,mpMatsData]=await Promise.all([
+  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats,mpMatsData,recursosProdData]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
     sbSelect('operations','select=*&order=sort_order'),
     sbSelect('work_orders','select=*&order=created_at.desc'),
@@ -1330,6 +1349,7 @@ async function loadAllData(){
     sbSelect('ot_scrap','select=*&order=recorded_at.desc'),
     sbSelect('product_materials','select=*'),
     sbSelect('mp_materials','select=*&active=eq.true&order=name.asc'),
+    sbSelect('recursos_produccion','select=*&order=familia.asc,subfamilia.asc,nombre.asc'),
   ]);
   products=prods.map(p=>({...p,operations:(ops||[]).filter(o=>o.product_id===p.id).sort((a,b)=>a.sort_order-b.sort_order),materials:(prodMats||[]).filter(m=>m.product_id===p.id)}));
   operators=(opsList||[]);
@@ -1352,6 +1372,7 @@ async function loadAllData(){
     MAT_TYPES=mpMaterials.filter(m=>m.active!==false).map(m=>({val:m.id,label:m.name,grupo:m.grupo,categoria:m.categoria,densidad:parseFloat(m.densidad)||0.2836,forma:m.forma,diametro:m.diametro,diametro_int:m.diametro_int,cantidad_min:m.cantidad_min,cantidad_max:m.cantidad_max,cantidad_max_tipo:m.cantidad_max_tipo,reposicion:m.reposicion,longitud_reposicion:m.longitud_reposicion,longitud_reposicion_unidad:m.longitud_reposicion_unidad,codigo_especial:m.codigo_especial}));
     window._mpMaterialsRaw=mpMaterials;
   }
+  recursosProduccion=recursosProdData||[];
 }
 
 function showLoading(m){ document.getElementById('loading-msg').textContent=m||'CARGANDO...'; document.getElementById('loading-overlay').classList.remove('hidden'); }
@@ -1453,6 +1474,7 @@ window.setEngTab = function setEngTab(id,btn){
     if(id==='e-drawings-mp') renderDrawingsMp();
     if(id==='e-cnc') renderCNCPrograms();
   if(id==='e-materials') renderMaterials();
+    if(id==='e-recursos') renderRecursos();
   });
 }
 
@@ -2439,7 +2461,7 @@ function showProductForm(id){
 
   document.getElementById('product-form-wrap').innerHTML=`
     <div class="card card-accent fade" style="margin-bottom:14px">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:14px">${isNew?'NUEVO PRODUCTO':'EDITAR PRODUCTO'}</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">${isNew?'NUEVO PRODUCTO':'EDITAR PRODUCTO'}</div>
 
       <!-- Basic info -->
       <div class="g4" style="margin-bottom:12px">
@@ -3214,7 +3236,7 @@ function showOperatorForm(id){
   const o=isNew?{id:uid(),name:'',code:'',area:''}:{...operators.find(x=>x.id===id)};
   document.getElementById('operator-form-wrap').innerHTML=`
     <div class="card card-accent fade" style="margin-bottom:14px">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${isNew?'NUEVO OPERADOR':'EDITAR OPERADOR'}</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:12px">${isNew?'NUEVO OPERADOR':'EDITAR OPERADOR'}</div>
       <div class="g3" style="margin-bottom:12px">
         <div class="field"><label>Nombre Completo</label><input id="of-name" value="${o.name}" placeholder="Nombre del operador"></div>
         <div class="field"><label>Código / No. Empleado</label><input id="of-code" value="${o.code}" placeholder="ej. OP-01"></div>
@@ -3620,6 +3642,258 @@ function renderDrawingsMp(){
 }
 window.renderDrawingsMp=renderDrawingsMp;
 
+// ═══════════════════════════════════════════════════════
+//  CATÁLOGO DE RECURSOS DE PRODUCCIÓN
+// ═══════════════════════════════════════════════════════
+
+function renderRecursos(){
+  const list=document.getElementById('rec-list');
+  if(!list) return;
+  const search=(document.getElementById('rec-search')?.value||'').toLowerCase();
+  const filtered=recursosProduccion.filter(r=>!search||
+    (r.familia||'').toLowerCase().includes(search)||
+    (r.subfamilia||'').toLowerCase().includes(search)||
+    (r.nombre||'').toLowerCase().includes(search)||
+    (r.codigo||'').toLowerCase().includes(search)||
+    (r.proveedor_sugerido||'').toLowerCase().includes(search)
+  );
+  const counter=document.getElementById('rec-counter');
+  if(counter) counter.textContent=filtered.length+'/'+recursosProduccion.length+' artículo'+(recursosProduccion.length!==1?'s':'');
+  if(!filtered.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">'+(search?'Sin resultados para "'+search+'"':'Sin artículos. Agrega el primero.')+'</div>';
+    return;
+  }
+  // Agrupar: Familia → Subfamilia → artículos
+  const byFam={};
+  filtered.forEach(r=>{
+    const f=r.familia||'Sin Familia';
+    const s=r.subfamilia||'__NONE__';
+    if(!byFam[f]) byFam[f]={};
+    if(!byFam[f][s]) byFam[f][s]=[];
+    byFam[f][s].push(r);
+  });
+  const famKeys=Object.keys(byFam).sort();
+  list.innerHTML=famKeys.map(fam=>{
+    const famId='recfam-'+fam.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9-]/g,'');
+    const subGroups=byFam[fam];
+    const subKeys=Object.keys(subGroups).sort();
+    const totalItems=Object.values(subGroups).reduce((a,b)=>a+b.length,0);
+    const isOpen=!!search;
+    return '<div style="margin-bottom:16px">'
+      +'<div onclick="toggleRecGroup(\''+famId+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;background:var(--bg2);border-radius:10px 10px 0 0;border-bottom:2px solid var(--accent)30;user-select:none">'
+        +'<span style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);flex:1;letter-spacing:1px">⚙ '+fam+'</span>'
+        +'<span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border-color:rgba(0,212,255,.3)">'+totalItems+' artículo'+(totalItems!==1?'s':'')+'</span>'
+        +'<span id="'+famId+'-icon" style="font-size:12px;color:var(--muted)">'+(isOpen?'▼':'►')+'</span>'
+      +'</div>'
+      +'<div id="'+famId+'" style="display:'+(isOpen?'block':'none')+';border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;overflow:hidden">'
+        +subKeys.map((sub,si)=>{
+          const items=subGroups[sub];
+          const hasSub=sub!=='__NONE__';
+          const sgid=famId+'-s'+si;
+          const isOpenS=!!search||!hasSub;
+          return (hasSub
+            ?'<div style="border-bottom:1px solid var(--border)">'
+              +'<div onclick="toggleRecGroup(\''+sgid+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;background:var(--bg3)">'
+                +'<span id="'+sgid+'-icon" style="font-size:11px;color:var(--muted)">'+(isOpenS?'▼':'►')+'</span>'
+                +'<span style="font-weight:700;font-size:13px;flex:1">'+sub+'</span>'
+                +'<span style="font-size:11px;color:var(--muted)">'+items.length+' artículo'+(items.length!==1?'s':'')+'</span>'
+              +'</div>'
+              +'<div id="'+sgid+'" style="display:'+(isOpenS?'block':'none')+'">'+renderRecItems(items)+'</div>'
+            +'</div>'
+            :'<div>'+renderRecItems(items)+'</div>'
+          );
+        }).join('')
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+window.renderRecursos=renderRecursos;
+
+function renderRecItems(items){
+  return items.map(r=>'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">'
+    +(r.foto_url?'<img src="'+r.foto_url+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border);flex-shrink:0">'
+      :'<div style="width:40px;height:40px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">⚙</div>')
+    +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:700;font-size:13px">'+r.nombre+'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">'
+        +(r.codigo?'<span class="tag" style="color:var(--accent2);font-size:10px">'+r.codigo+'</span>':'')
+        +(r.proveedor_sugerido?'<span class="tag" style="color:var(--muted);font-size:10px">🏭 '+r.proveedor_sugerido+'</span>':'')
+        +(r.stock_min?'<span class="tag" style="color:var(--green);font-size:10px">Mín: '+r.stock_min+'</span>':'')
+        +(r.stock_max?'<span class="tag" style="color:var(--accent2);font-size:10px">'+(r.stock_max_tipo==='lote'?'🔄 Lote:':'📦 Máx:')+' '+r.stock_max+'</span>':'')
+        +(r.notas?'<span style="font-size:10px;color:var(--muted)">📝 '+r.notas+'</span>':'')
+      +'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:5px;flex-shrink:0">'
+      +'<button class="btn btn-sm btn-accent" onclick="showRecursoForm(\''+r.id+'\')" >✏</button>'
+      +'<button class="btn btn-sm btn-danger" onclick="deleteRecurso(\''+r.id+'\',\''+encodeURIComponent(r.nombre)+'\',\''+( r.foto_url||'')+'\')" >🗑</button>'
+    +'</div>'
+  +'</div>').join('');
+}
+
+function toggleRecGroup(gid){
+  const el=document.getElementById(gid);
+  const icon=document.getElementById(gid+'-icon');
+  if(!el) return;
+  const open=el.style.display==='block';
+  el.style.display=open?'none':'block';
+  if(icon) icon.textContent=open?'►':'▼';
+}
+window.toggleRecGroup=toggleRecGroup;
+
+function showRecursoForm(id){
+  const r=id?recursosProduccion.find(x=>x.id===id):null;
+  const wrap=document.getElementById('rec-form-wrap');
+  if(!wrap) return;
+  window._recEditing=r;
+  wrap.innerHTML=
+    '<div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">'
+      +'<div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">'+(r?'EDITAR ARTÍCULO':'NUEVO ARTÍCULO')+'</div>'
+      // Fila 1: Familia | Subfamilia | Nombre
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:12px">'
+        +'<div class="field"><label>FAMILIA <span style="color:var(--danger)">*</span></label>'
+          +'<input type="text" id="rec-familia" value="'+(r?.familia||'')+'" placeholder="ej. Herramienta de Corte" style="text-transform:uppercase"></div>'
+        +'<div class="field"><label>SUBFAMILIA <span style="color:var(--muted);font-size:10px">(opcional)</span></label>'
+          +'<input type="text" id="rec-subfamilia" value="'+(r?.subfamilia||'')+'" placeholder="ej. Insertos" style="text-transform:uppercase"></div>'
+        +'<div class="field" style="grid-column:span 2"><label>NOMBRE / ESPECIFICACIÓN <span style="color:var(--danger)">*</span></label>'
+          +'<input type="text" id="rec-nombre" value="'+(r?.nombre||'')+'" placeholder="ej. Inserto CNMG 432 MC6025 o Broca HSS 1/4&quot; x 6&quot;"></div>'
+      +'</div>'
+      // Fila 2: Código | Proveedor | Stock min | Stock max
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:12px">'
+        +'<div class="field"><label>CÓDIGO <span style="color:var(--muted);font-size:10px">(opcional)</span></label>'
+          +'<input type="text" id="rec-codigo" value="'+(r?.codigo||'')+'" placeholder="Solo si aplica"></div>'
+        +'<div class="field"><label>PROVEEDOR SUGERIDO <span style="color:var(--muted);font-size:10px">(opcional)</span></label>'
+          +'<input type="text" id="rec-proveedor" value="'+(r?.proveedor_sugerido||'')+'" placeholder="ej. Sandvik, Kennametal..."></div>'
+        +'<div class="field"><label>STOCK MÍNIMO</label>'
+          +'<input type="number" id="rec-min" value="'+(r?.stock_min||0)+'" placeholder="0"></div>'
+        +'<div class="field"><label>CANTIDAD MÁXIMA</label>'
+          +'<input type="number" id="rec-max" value="'+(r?.stock_max||0)+'" placeholder="0">'
+          +'<select id="rec-max-tipo" style="width:100%;margin-top:5px">'
+            +'<option value="maximo" '+((r?.stock_max_tipo||'maximo')==='maximo'?'selected':'')+'>📦 Stock máximo</option>'
+            +'<option value="lote" '+(r?.stock_max_tipo==='lote'?'selected':'')+'>🔄 Lote de compra</option>'
+          +'</select></div>'
+      +'</div>'
+      // Fila 3: Foto | Notas
+      +'<div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:14px">'
+        +'<div class="field"><label>FOTO</label>'
+          +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+            +(r?.foto_url?'<img src="'+r.foto_url+'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">':'')
+            +'<div>'
+              +'<input type="file" id="rec-foto-file" accept="image/jpeg,image/jpg,image/png,image/webp" style="display:none" onchange="uploadRecursoFoto(this)">'
+              +'<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'rec-foto-file\').click()">📁 Subir foto</button>'
+              +'<div id="rec-foto-status" style="font-size:11px;margin-top:4px">'+(r?.foto_url?'<button onclick="deleteRecursoFoto()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar foto</button>':'Sin foto')+'</div>'
+            +'</div>'
+          +'</div>'
+          +'<input type="hidden" id="rec-foto-url" value="'+(r?.foto_url||'')+'"></div>'
+        +'<div class="field"><label>NOTAS TÉCNICAS <span style="color:var(--muted);font-size:10px">(opcional)</span></label>'
+          +'<textarea id="rec-notas" rows="3" style="width:100%;resize:vertical" placeholder="Especificaciones, restricciones, notas de uso...">'+(r?.notas||'')+'</textarea></div>'
+      +'</div>'
+      +'<div style="display:flex;gap:10px">'
+        +'<button class="btn btn-accent" onclick="saveRecurso(\''+( r?.id||'')+'\')" >💾 Guardar</button>'
+        +'<button class="btn btn-ghost" onclick="document.getElementById(\'rec-form-wrap\').innerHTML=\'\'" >Cancelar</button>'
+      +'</div>'
+    +'</div>';
+  wrap.scrollIntoView({behavior:'smooth',block:'start'});
+}
+window.showRecursoForm=showRecursoForm;
+
+async function uploadRecursoFoto(input){
+  const file=input.files[0]; if(!file) return;
+  const statusEl=document.getElementById('rec-foto-status');
+  if(statusEl) statusEl.textContent='⏳ Subiendo...';
+  try{
+    const prevUrl=document.getElementById('rec-foto-url')?.value;
+    if(prevUrl) await deleteNexusImage(prevUrl);
+    const ext=file.name.split('.').pop().toLowerCase();
+    const filename='recursos/'+uid()+'.'+ext;
+    const res=await fetch(SB_URL+'/storage/v1/object/nexusiq-images/'+filename,{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':file.type,'x-upsert':'true'},
+      body:file
+    });
+    if(!res.ok){const t=await res.text();throw new Error(t);}
+    const url=SB_URL+'/storage/v1/object/public/nexusiq-images/'+filename;
+    const hidden=document.getElementById('rec-foto-url');
+    if(hidden) hidden.value=url;
+    if(statusEl) statusEl.innerHTML='<button onclick="deleteRecursoFoto()" class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 7px">🗑 Eliminar foto</button>';
+    // Mostrar preview
+    const previewArea=document.querySelector('#rec-form-wrap img');
+    if(!previewArea){
+      const btn=document.getElementById('rec-foto-file');
+      if(btn&&btn.parentElement){
+        const img=document.createElement('img');
+        img.src=url; img.style.cssText='width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--border)';
+        btn.parentElement.parentElement.insertBefore(img,btn.parentElement);
+      }
+    } else { previewArea.src=url; }
+  }catch(e){
+    if(statusEl) statusEl.textContent='Error: '+e.message;
+  }
+}
+window.uploadRecursoFoto=uploadRecursoFoto;
+
+async function deleteRecursoFoto(){
+  const urlEl=document.getElementById('rec-foto-url');
+  if(urlEl?.value) await deleteNexusImage(urlEl.value);
+  if(urlEl) urlEl.value='';
+  const statusEl=document.getElementById('rec-foto-status');
+  if(statusEl) statusEl.textContent='Sin foto';
+  const img=document.querySelector('#rec-form-wrap img');
+  if(img) img.remove();
+}
+window.deleteRecursoFoto=deleteRecursoFoto;
+
+async function saveRecurso(id){
+  const familia=(document.getElementById('rec-familia')?.value||'').trim().toUpperCase();
+  const subfamilia=(document.getElementById('rec-subfamilia')?.value||'').trim().toUpperCase()||null;
+  const nombre=(document.getElementById('rec-nombre')?.value||'').trim();
+  const codigo=(document.getElementById('rec-codigo')?.value||'').trim()||null;
+  const proveedor_sugerido=(document.getElementById('rec-proveedor')?.value||'').trim()||null;
+  const stock_min=parseInt(document.getElementById('rec-min')?.value)||0;
+  const stock_max=parseInt(document.getElementById('rec-max')?.value)||0;
+  const stock_max_tipo=document.getElementById('rec-max-tipo')?.value||'maximo';
+  const notas=(document.getElementById('rec-notas')?.value||'').trim()||null;
+  const foto_url=document.getElementById('rec-foto-url')?.value||null;
+  if(!familia){alert('La familia es requerida');return;}
+  if(!nombre){alert('El nombre es requerido');return;}
+  const rec={familia,subfamilia,nombre,codigo,proveedor_sugerido,stock_min,stock_max,stock_max_tipo,notas,foto_url,active:true};
+  try{
+    if(id){
+      await sbUpdate('recursos_produccion',{id},rec);
+      const idx=recursosProduccion.findIndex(x=>x.id===id);
+      if(idx>=0) recursosProduccion[idx]={...recursosProduccion[idx],...rec};
+    } else {
+      rec.id=uid();
+      await sbInsert('recursos_produccion',rec);
+      recursosProduccion.push(rec);
+    }
+    // Re-sort
+    recursosProduccion.sort((a,b)=>{
+      const fc=(a.familia||'').localeCompare(b.familia||'');
+      if(fc!==0) return fc;
+      const sc=(a.subfamilia||'').localeCompare(b.subfamilia||'');
+      if(sc!==0) return sc;
+      return (a.nombre||'').localeCompare(b.nombre||'');
+    });
+    document.getElementById('rec-form-wrap').innerHTML='';
+    window._recEditing=null;
+    renderRecursos();
+  }catch(e){alert('Error al guardar: '+e.message);}
+}
+window.saveRecurso=saveRecurso;
+
+async function deleteRecurso(id,nombreEnc,fotoUrl){
+  const nombre=decodeURIComponent(nombreEnc);
+  if(!confirm('¿Eliminar "'+nombre+'"? Esta acción no se puede deshacer.')) return;
+  try{
+    if(fotoUrl) await deleteNexusImage(fotoUrl);
+    await sbDelete('recursos_produccion',{id});
+    recursosProduccion=recursosProduccion.filter(x=>x.id!==id);
+    renderRecursos();
+  }catch(e){alert('Error al eliminar: '+e.message);}
+}
+window.deleteRecurso=deleteRecurso;
+
+
 async function uploadCNCFile(input){
   const file = input.files[0]; if(!file) return;
   const prodId = input.dataset.prod;
@@ -3871,7 +4145,7 @@ function showNewOTForm(){
   const nextNum='OT-'+String(getNextOTNumber()).padStart(5,'0');
   document.getElementById('new-ot-form-wrap').innerHTML=`
     <div class="card card-accent fade" style="margin-bottom:14px">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">NUEVA ORDEN DE TRABAJO</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:12px">NUEVA ORDEN DE TRABAJO</div>
       <div class="g4" style="margin-bottom:12px">
         <div class="field"><label>No. O.T. (Auto)</label><input id="otf-num" value="${nextNum}" style="color:var(--accent);font-family:'DM Mono',monospace;font-weight:700"></div>
         <div class="field" style="grid-column:span 2"><label>Producto (por código)</label>
@@ -4261,9 +4535,9 @@ function renderReleasedOTs(){
             </div>
           </div>
           <div style="display:flex;gap:10px;text-align:center;flex-shrink:0">
-            <div><div style="font-size:10px;color:var(--muted)">ENTREGADAS</div><div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--green)">${dels}</div></div>
-            <div><div style="font-size:10px;color:var(--muted)">SCRAP</div><div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--danger)">${scraps}</div></div>
-            <div><div style="font-size:10px;color:var(--muted)">PENDIENTES</div><div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--warn)">${Math.max(0,o.qty-dels-scraps)}</div></div>
+            <div><div style="font-size:10px;color:var(--muted)">ENTREGADAS</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--green)">${dels}</div></div>
+            <div><div style="font-size:10px;color:var(--muted)">SCRAP</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--danger)">${scraps}</div></div>
+            <div><div style="font-size:10px;color:var(--muted)">PENDIENTES</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--warn)">${Math.max(0,o.qty-dels-scraps)}</div></div>
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
@@ -4425,7 +4699,7 @@ function renderRawMaterial(){
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div style="font-weight:700;font-size:15px;color:var(--accent2)">${(grp.steelType||grp.matType).toUpperCase()} <span style="color:var(--muted);font-weight:400;font-size:12px">${grp.shape}</span> Ø${parseFloat(grp.diam).toFixed(3)}"</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--warn)">${grp.totalKg.toFixed(2)} kg total</div>
+        <div style="font-family:var(--font-display,sans-serif);font-size:26px;color:var(--warn)">${grp.totalKg.toFixed(2)} kg total</div>
       </div>
       <table class="tbl">
         <thead><tr><th>O.T.</th><th>Producto</th><th>Código</th><th>Forma</th><th>Cant.</th><th>Kg/Barra</th><th>Total Kg</th></tr></thead>
@@ -4617,7 +4891,7 @@ function renderMachineLoad(){
 
     html2+=`<div class="card" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent2)">${machine}</span>
+        <span style="font-family:var(--font-display,sans-serif);font-size:20px;color:var(--accent2)">${machine}</span>
       </div>
       <table class="tbl"><thead>${thead}</thead><tbody>${rows}</tbody></table>
     </div>`;
@@ -5509,7 +5783,7 @@ function renderOpReport(){
 
     html+=`<div class="card" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent2)">${op.name}</span>
+        <span style="font-family:var(--font-display,sans-serif);font-size:22px;color:var(--accent2)">${op.name}</span>
         <span class="tag" style="background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)">${totalPcs} piezas</span>
         <span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)">Ef.Prod: ${effBadge(avgEff)}</span>
         ${avgSetupEff!==null?`<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)">Ef.Mont: ${effBadge(avgSetupEff)}</span>`:''}
@@ -5645,7 +5919,7 @@ function renderDowntimeReport(){
   const sorted=Object.values(byCat).sort((a,b)=>b.totalSec-a.totalSec);
 
   let html=`<div class="card" style="margin-bottom:14px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">RESUMEN POR CATEGORÍA</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">RESUMEN POR CATEGORÍA</div>
     <div style="margin-bottom:10px;color:var(--muted);font-size:12px">Total tiempo en paros: <strong style="color:var(--danger)">${fmtSec(totalSec)}</strong> | Total eventos: <strong style="color:var(--text)">${allDowntimes.length}</strong></div>
     ${tbl(['Categoría','Eventos','Tiempo Total','% del Total'],
       sorted.map(d=>{
@@ -5668,7 +5942,7 @@ function renderDowntimeReport(){
     )}
   </div>
   <div class="card">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">DETALLE DE PAROS</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">DETALLE DE PAROS</div>
     ${tbl(['Fecha','Operador','O.T.','Producto','Operación','Categoría','Duración'],
       allDowntimes.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`<tr>
         <td style="font-size:11px;color:var(--muted)">${d.date}</td>
@@ -5714,7 +5988,7 @@ function renderLearning(){
     const std=parseFloat(g.pieces[0]?.std_time||0)*60;
     html+=`<div class="card" style="margin-bottom:14px">
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2)">${g.operator}</span>
+        <span style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2)">${g.operator}</span>
         <span class="tag" style="color:var(--muted)">${g.operation}</span>
         <span style="font-size:11px;color:var(--muted)">Std: ${fmtSec(std)} | ${g.pieces.length} piezas</span>
       </div>
@@ -5761,7 +6035,7 @@ function renderCompare(){
 
   const rows=Object.values(byOp).sort((a,b)=>(b.effSum/b.pieces)-(a.effSum/a.pieces));
   const html=`<div class="card">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">COMPARATIVO POR OPERADOR</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">COMPARATIVO POR OPERADOR</div>
     ${tbl(['Operador','Piezas','Ef. Promedio','T.Neto Prom/Pza','Total Neto'],
       rows.map(r=>`<tr>
         <td style="font-weight:700">${r.name}</td>
@@ -6123,7 +6397,7 @@ function showApartarForm(stockId){
     .map(o=>{const p=products.find(pr=>pr.id===o.product_id);return `<option value="${o.id}">${o.number} — ${p?.name||'?'} (${p?.code||''})</option>`;}).join('');
   document.getElementById('alm-general-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(245,158,11,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--warn);margin-bottom:12px">📌 APARTAR MATERIAL</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--warn);margin-bottom:12px">📌 APARTAR MATERIAL</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
         ${s.material?.toUpperCase()} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" — 
         Disponible: <strong style="color:var(--green)">${s.cantidad||0} barras</strong>
@@ -6200,7 +6474,7 @@ function showTransitForm(stockId){
   const resOpts=resItems.map(r=>`<option value="${r.id}">${r.ot_number} — ${r.product_name}</option>`).join('');
   document.getElementById('alm-general-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(16,185,129,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--green);margin-bottom:12px">→ MOVER A TRÁNSITO PRODUCCIÓN</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--green);margin-bottom:12px">→ MOVER A TRÁNSITO PRODUCCIÓN</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
         ${s.material?.toUpperCase()} — Ø ${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}" — ${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}"
       </div>
@@ -6479,7 +6753,7 @@ function showSupplierForm(id){
   const s=id?mpSuppliers.find(x=>x.id===id):null;
   document.getElementById('alm-suppliers-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR PROVEEDOR':'NUEVO PROVEEDOR'}</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR PROVEEDOR':'NUEVO PROVEEDOR'}</div>
       <div class="field" style="max-width:400px">
         <label>NOMBRE DEL PROVEEDOR</label>
         <input type="text" id="spf-name" value="${s?.name||''}" placeholder="Nombre del proveedor">
@@ -6527,7 +6801,7 @@ function renderAlmReport(){
   });
   if(!sorted.length){ body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin materiales registrados</div>'; return; }
   body.innerHTML=`<div class="card">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent2);margin-bottom:12px">REPORTE DE EXISTENCIAS VS MÍNIMOS</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">REPORTE DE EXISTENCIAS VS MÍNIMOS</div>
     <table class="tbl"><thead><tr>
       <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th>
     </tr></thead><tbody>${sorted.map(s=>{
@@ -6931,7 +7205,7 @@ function showMpStockForm(id){
 
   document.getElementById('alm-general-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
+      <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
 
         <div class="field" style="grid-column:1/-1"><label>ARTÍCULO DEL CATÁLOGO</label>
