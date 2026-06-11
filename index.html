@@ -175,7 +175,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <button class="nav-btn" id="nb-eng-logout" onclick="engLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" id="nb-programming" onclick="programmingClick()" style="display:flex;align-items:center;gap:4px"><span id="prog-lock">🔒</span> Programación</button>
   <button class="nav-btn" id="nb-prog-logout" onclick="progLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
-  <button class="nav-btn" id="nb-almacen" onclick="almacenClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-lock">🔒</span> Almacén</button>
+  <button class="nav-btn" id="nb-almacen" onclick="almacenClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-lock">🔒</span> Almacén MP</button>
   <button class="nav-btn" id="nb-alm-logout" onclick="almLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" onclick="reconectar()" style="font-size:11px;margin-left:4px">🔄</button>
   <div style="margin-left:6px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px;white-space:nowrap"><div class="live-dot"></div>EN LÍNEA</div>
@@ -823,7 +823,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 <div id="almacen-modal" class="overlay hidden">
   <div class="card modal card-accent" style="text-align:center">
     <div style="font-size:32px;margin-bottom:12px">📦</div>
-    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A ALMACÉN</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A ALMACÉN MP</div>
     <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
     <div class="field" style="text-align:left;margin-bottom:6px">
       <label>Contraseña</label>
@@ -846,11 +846,12 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 
   <!-- PESTAÑAS -->
   <div class="ptabs" style="margin-bottom:16px">
-    <button class="ptab active" onclick="setAlmTab('alm-general',this)">📦 Almacén General</button>
+    <button class="ptab active" onclick="setAlmTab('alm-general',this)">📦 Existencias</button>
     <button class="ptab" onclick="setAlmTab('alm-transit',this)">🔄 Tránsito Producción</button>
     <button class="ptab" onclick="setAlmTab('alm-scrap',this)">♻ Merma</button>
     <button class="ptab" onclick="setAlmTab('alm-movements',this)">📋 Movimientos</button>
     <button class="ptab" onclick="setAlmTab('alm-suppliers',this)">🏭 Proveedores</button>
+    <button class="ptab" onclick="setAlmTab('alm-habilitar',this)">🔧 OT por Habilitar</button>
     <button class="ptab" onclick="setAlmTab('alm-report',this)">📊 Reporte Mínimos</button>
   </div>
 
@@ -900,6 +901,19 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     </div>
     <div id="alm-suppliers-form"></div>
     <div id="alm-suppliers-list"></div>
+  </div>
+
+  <!-- OT POR HABILITAR -->
+  <div id="alm-habilitar" class="subpage">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:15px;font-weight:700">🔧 OT por Habilitar / Preparar</div>
+        <div style="font-size:12px;color:var(--muted)">OTs con material apartado pendiente de habilitar.</div>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="loadAlmData().then(renderAlmHabilitar)">↻ Actualizar</button>
+    </div>
+    <div id="alm-habilitar-form"></div>
+    <div id="alm-habilitar-list"></div>
   </div>
 
   <!-- REPORTE MÍNIMOS -->
@@ -6098,6 +6112,7 @@ function setAlmTab(id,btn){
   if(id==='alm-scrap')     renderAlmScrap();
   if(id==='alm-movements') renderAlmMovements();
   if(id==='alm-suppliers') renderAlmSuppliers();
+  if(id==='alm-habilitar') renderAlmHabilitar();
   if(id==='alm-report')    renderAlmReport();
 }
 window.setAlmTab=setAlmTab;
@@ -6793,13 +6808,18 @@ window.saveSupplier=saveSupplier;
 function renderAlmReport(){
   const body=document.getElementById('alm-report-body');
   if(!body) return;
-  const sorted=[...mpStock].sort((a,b)=>{
+  // Solo mostrar materiales en mínimo o por debajo
+  const filtered=mpStock.filter(s=>{
+    const sem=semaforo(s.cantidad,s.cantidad_min);
+    return sem.label==='SIN STOCK'||sem.label==='BAJO MÍNIMO'||sem.label==='EN MÍNIMO';
+  });
+  const sorted=[...filtered].sort((a,b)=>{
     const sa=semaforo(a.cantidad,a.cantidad_min);
     const sb=semaforo(b.cantidad,b.cantidad_min);
     const order={'SIN STOCK':0,'BAJO MÍNIMO':1,'EN MÍNIMO':2,'OK':3};
     return (order[sa.label]||3)-(order[sb.label]||3);
   });
-  if(!sorted.length){ body.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin materiales registrados</div>'; return; }
+  if(!sorted.length){ body.innerHTML='<div class="card" style="color:var(--green);text-align:center;padding:40px">✅ Todos los materiales están sobre el mínimo. Sin alertas.</div>'; return; }
   body.innerHTML=`<div class="card">
     <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">REPORTE DE EXISTENCIAS VS MÍNIMOS</div>
     <table class="tbl"><thead><tr>
@@ -6821,6 +6841,366 @@ function renderAlmReport(){
   </div>`;
 }
 window.renderAlmReport=renderAlmReport;
+// ═══════════════════════════════════════════════════════
+//  OT POR HABILITAR / PREPARAR
+// ═══════════════════════════════════════════════════════
+
+function renderAlmHabilitar(){
+  const list=document.getElementById('alm-habilitar-list');
+  if(!list) return;
+
+  // OTs con reservaciones en estado 'apartado' o 'parcial'
+  const resActivas=mpReservations.filter(r=>r.status==='apartado'||r.status==='parcial');
+  if(!resActivas.length){
+    list.innerHTML='<div class="card" style="color:var(--green);text-align:center;padding:40px">✅ No hay OTs pendientes de habilitar.</div>';
+    return;
+  }
+
+  // Agrupar reservaciones por OT
+  const byOT={};
+  resActivas.forEach(r=>{
+    const k=r.ot_id||r.ot_number||'sin-ot';
+    if(!byOT[k]) byOT[k]={ot_id:r.ot_id,ot_number:r.ot_number,reservas:[]};
+    byOT[k].reservas.push(r);
+  });
+
+  // Enriquecer con datos de OT y producto
+  const rows=Object.values(byOT).map(g=>{
+    const ot=workOrders.find(o=>o.id===g.ot_id)||{};
+    const prod=products.find(p=>p.id===ot.product_id)||{};
+    return {...g,ot,prod};
+  }).sort((a,b)=>(a.ot_number||'').localeCompare(b.ot_number||''));
+
+  list.innerHTML=rows.map(g=>{
+    const ot=g.ot; const prod=g.prod;
+
+    return g.reservas.map(r=>{
+      const stock=mpStock.find(s=>s.id===r.mp_stock_id)||{};
+      const matCat=mpMaterials.find(m=>m.id===stock.material_id||m.name===stock.material)||{};
+
+      // Formatear dimensiones según forma (igual que catálogo)
+      const cat=matCat.categoria||'';
+      const forma=stock.forma||matCat.forma||'';
+      const u=(cat==='Acero'&&forma==='Barra Hueca')?'mm':'"';
+      let dimStr='';
+      if(forma==='Redondo'||forma==='Hexagonal'){
+        dimStr=stock.diametro?'Ø '+parseFloat(stock.diametro).toFixed(3)+u:'';
+      } else if(forma==='Barra Hueca'||forma==='Tubo'){
+        dimStr=(stock.diametro?'Øext '+parseFloat(stock.diametro).toFixed(3)+u:'')
+              +(stock.diametro_int?' / Øint '+parseFloat(stock.diametro_int).toFixed(3)+u:'');
+      } else if(forma==='Cuadrado/Solera'){
+        dimStr=(stock.diametro?'A: '+parseFloat(stock.diametro).toFixed(3)+u:'')
+              +(stock.diametro_int?' B: '+parseFloat(stock.diametro_int).toFixed(3)+u:'');
+      }
+
+      const longSol=parseFloat(r.longitud_solicitada||stock.longitud_in||0);
+      const cantSol=parseInt(r.cantidad||1);
+      const totalLong=(longSol*cantSol).toFixed(3);
+
+      return '<div class="card" style="margin-bottom:12px">'
+        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+          +'<div style="flex:1;min-width:0">'
+            // OT + Producto
+            +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+              +'<span style="font-family:var(--font-display,sans-serif);font-size:16px;color:var(--accent)">OT-'+( r.ot_number||'--')+'</span>'
+              +(prod.name?'<span style="font-weight:700">'+prod.name.toUpperCase()+'</span>':'')
+              +(prod.code?'<span class="tag" style="color:var(--accent);font-family:monospace">'+prod.code+'</span>':'')
+            +'</div>'
+            // Material
+            +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:8px">'
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Material</div>'
+                +'<div style="font-size:12px;font-weight:700">'+(stock.material||'--').toUpperCase()+'</div>'
+              +'</div>'
+              +(forma?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Forma</div>'
+                +'<div style="font-size:12px;font-weight:700">'+forma+'</div>'
+              +'</div>':'')
+              +(dimStr?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Dimensiones</div>'
+                +'<div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+dimStr+'</div>'
+              +'</div>':'')
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Longitud solicitada</div>'
+                +'<div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent2)">'+longSol.toFixed(3)+'"</div>'
+              +'</div>'
+              +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Cantidad</div>'
+                +'<div style="font-size:12px;font-weight:700">'+cantSol+' barras</div>'
+              +'</div>'
+              +'<div style="background:var(--bg2);border:1px solid var(--accent)30;border-radius:6px;padding:6px 10px">'
+                +'<div style="font-size:9px;color:var(--muted);text-transform:uppercase">Total longitud</div>'
+                +'<div style="font-size:13px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+totalLong+'"</div>'
+              +'</div>'
+            +'</div>'
+          +'</div>'
+          +'<button class="btn btn-accent" onclick="showHabilitarModal(\''+r.id+'\',\''+encodeURIComponent(JSON.stringify({stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}))+'\')">✅ Confirmar Habilitado</button>'
+        +'</div>'
+      +'</div>';
+    }).join('');
+  }).join('');
+}
+window.renderAlmHabilitar=renderAlmHabilitar;
+
+function showHabilitarModal(resId,dataEnc){
+  const d=JSON.parse(decodeURIComponent(dataEnc));
+  const {stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol}=d;
+
+  const wrap=document.getElementById('alm-habilitar-form');
+  if(!wrap) return;
+
+  // Calcular kg por unidad de longitud usando densidad del catálogo
+  const densidad=parseFloat(matCat.densidad)||0.2836;
+  const diam=parseFloat(stock.diametro)||0;
+  const dint=parseFloat(stock.diametro_int)||0;
+
+  function kgPorPulgada(longIn){
+    let vol=0;
+    if(forma==='Barra Hueca'||forma==='Tubo'){
+      if(u==='mm'){ // convertir a pulgadas para cálculo
+        const de=diam/25.4; const di=dint/25.4;
+        vol=(Math.PI/4)*(de*de-di*di)*longIn;
+      } else {
+        vol=(Math.PI/4)*(diam*diam-dint*dint)*longIn;
+      }
+    } else if(forma==='Hexagonal'){
+      vol=(diam*diam*1.155*Math.PI/4)*longIn;
+    } else {
+      vol=(Math.PI/4)*diam*diam*longIn;
+    }
+    return parseFloat((vol*densidad*0.4536).toFixed(3));
+  }
+
+  wrap.innerHTML=
+    '<div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">'
+      +'<div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:4px">CONFIRMAR HABILITADO</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:14px">OT-'+r.ot_number+' — '+(prod.name||'')+(prod.code?' ('+prod.code+')':'')+'</div>'
+
+      // Info del material
+      +'<div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px">'
+        +'<strong>'+(stock.material||'').toUpperCase()+'</strong>'
+        +(forma?' — '+forma:'')+' '+(dimStr?'<span style="color:var(--accent);font-family:DM Mono,monospace">'+dimStr+'</span>':'')
+        +'<br><span style="color:var(--muted)">Solicitado: '+cantSol+' barras x '+longSol.toFixed(3)+'" = '+(cantSol*longSol).toFixed(3)+'" total</span>'
+      +'</div>'
+
+      // Selector: ¿misma longitud o diferente?
+      +'<div class="field" style="margin-bottom:14px">'
+        +'<label>¿CÓMO SE HABILITÓ?</label>'
+        +'<select id="hab-tipo" onchange="onHabTipoChange()" style="width:100%">'
+          +'<option value="exacto">✅ Misma longitud que lo solicitado</option>'
+          +'<option value="diferente">📏 Barras de diferente longitud</option>'
+        +'</select>'
+      +'</div>'
+
+      // Panel: misma longitud
+      +'<div id="hab-panel-exacto">'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">'
+          +'<div class="field"><label>CANTIDAD (barras)</label>'
+            +'<input type="number" id="hab-cant-exacto" value="'+cantSol+'" min="1" oninput="calcHabKg()">'
+          +'</div>'
+          +'<div class="field"><label>LONGITUD REAL (")</label>'
+            +'<input type="number" step="0.001" id="hab-long-exacto" value="'+longSol.toFixed(3)+'" oninput="calcHabKg()">'
+          +'</div>'
+          +'<div class="field"><label>TOTAL LONG. (")</label>'
+            +'<input type="number" id="hab-total-exacto" readonly style="opacity:0.6" value="'+(cantSol*longSol).toFixed(3)+'">'
+          +'</div>'
+        +'</div>'
+        +'<div class="field" style="margin-bottom:12px"><label>KG CALCULADOS (automático)</label>'
+          +'<input type="number" id="hab-kg-exacto" readonly style="opacity:0.6;color:var(--accent2)" placeholder="Se calcula al confirmar">'
+        +'</div>'
+      +'</div>'
+
+      // Panel: diferente longitud
+      +'<div id="hab-panel-diferente" style="display:none">'
+        +'<div id="hab-filas-wrap"></div>'
+        +'<button class="btn btn-ghost btn-sm" onclick="addHabFila()" style="margin-bottom:12px">+ Agregar fila</button>'
+        +'<div style="display:flex;gap:16px;margin-bottom:12px;font-size:12px">'
+          +'<span>Total longitud: <strong id="hab-total-dif" style="color:var(--accent);font-family:DM Mono,monospace">0.000"</strong></span>'
+          +'<span>Kg calculados: <strong id="hab-kg-dif" style="color:var(--accent2)">0.000 kg</strong></span>'
+        +'</div>'
+      +'</div>'
+
+      +'<div style="display:flex;gap:10px;margin-top:4px">'
+        +'<button class="btn btn-accent" onclick="confirmarHabilitado(\''+resId+'\',\''+stock.id+'\',\''+stock.material_id+'\','+densidad+','+diam+','+dint+',\''+forma+'\',\''+u+'\')">✅ Confirmar y mover a Tránsito</button>'
+        +'<button class="btn btn-ghost" onclick="document.getElementById(\'alm-habilitar-form\').innerHTML=\'\'">Cancelar</button>'
+      +'</div>'
+    +'</div>';
+
+  // Iniciar con una fila en panel diferente
+  window._habDensidad=densidad; window._habDiam=diam; window._habDint=dint;
+  window._habForma=forma; window._habU=u;
+  addHabFila();
+  calcHabKg();
+  wrap.scrollIntoView({behavior:'smooth',block:'start'});
+}
+window.showHabilitarModal=showHabilitarModal;
+
+let _habFilaCount=0;
+function addHabFila(){
+  _habFilaCount++;
+  const id='habfila-'+_habFilaCount;
+  const wrap=document.getElementById('hab-filas-wrap');
+  if(!wrap) return;
+  const div=document.createElement('div');
+  div.id=id;
+  div.style.cssText='display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end';
+  div.innerHTML=
+    '<div class="field" style="margin:0"><label style="font-size:10px">CANTIDAD (barras)</label>'
+      +'<input type="number" min="1" value="1" oninput="calcHabFilas()" style="font-size:12px">'
+    +'</div>'
+    +'<div class="field" style="margin:0"><label style="font-size:10px">LONGITUD (")</label>'
+      +'<input type="number" step="0.001" value="" placeholder="0.000" oninput="calcHabFilas()" style="font-size:12px">'
+    +'</div>'
+    +'<div class="field" style="margin:0"><label style="font-size:10px">SUBTOTAL (")</label>'
+      +'<input type="number" readonly style="opacity:0.6;font-size:12px" value="0.000">'
+    +'</div>'
+    +'<button class="btn btn-danger btn-sm" onclick="document.getElementById(\''+id+'\').remove();calcHabFilas()" style="margin-bottom:0">✕</button>';
+  wrap.appendChild(div);
+  calcHabFilas();
+}
+window.addHabFila=addHabFila;
+
+function calcHabFilas(){
+  const filas=document.querySelectorAll('#hab-filas-wrap > div');
+  let totalLong=0; let totalKg=0;
+  const d=window._habDensidad||0.2836;
+  const diam=window._habDiam||0;
+  const dint=window._habDint||0;
+  const forma=window._habForma||'Redondo';
+  const u=window._habU||'"';
+  filas.forEach(fila=>{
+    const inputs=fila.querySelectorAll('input');
+    const cant=parseFloat(inputs[0]?.value)||0;
+    const long=parseFloat(inputs[1]?.value)||0;
+    const sub=cant*long;
+    if(inputs[2]) inputs[2].value=sub.toFixed(3);
+    totalLong+=sub;
+    // Calcular kg
+    let vol=0; const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
+    if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*long*cant;
+    else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*long*cant;
+    else vol=(Math.PI/4)*de*de*long*cant;
+    totalKg+=vol*d*0.4536;
+  });
+  const totEl=document.getElementById('hab-total-dif');
+  const kgEl=document.getElementById('hab-kg-dif');
+  if(totEl) totEl.textContent=totalLong.toFixed(3)+'"';
+  if(kgEl) kgEl.textContent=totalKg.toFixed(3)+' kg';
+}
+window.calcHabFilas=calcHabFilas;
+
+function calcHabKg(){
+  const cant=parseFloat(document.getElementById('hab-cant-exacto')?.value)||0;
+  const long=parseFloat(document.getElementById('hab-long-exacto')?.value)||0;
+  const d=window._habDensidad||0.2836;
+  const diam=window._habDiam||0; const dint=window._habDint||0;
+  const forma=window._habForma||'Redondo'; const u=window._habU||'"';
+  const totalEl=document.getElementById('hab-total-exacto');
+  if(totalEl) totalEl.value=(cant*long).toFixed(3);
+  let vol=0;
+  const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
+  if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*long*cant;
+  else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*long*cant;
+  else vol=(Math.PI/4)*de*de*long*cant;
+  const kg=(vol*d*0.4536).toFixed(3);
+  const kgEl=document.getElementById('hab-kg-exacto');
+  if(kgEl) kgEl.value=kg+' kg';
+}
+window.calcHabKg=calcHabKg;
+
+function onHabTipoChange(){
+  const tipo=document.getElementById('hab-tipo')?.value;
+  document.getElementById('hab-panel-exacto').style.display=tipo==='exacto'?'':'none';
+  document.getElementById('hab-panel-diferente').style.display=tipo==='diferente'?'':'none';
+}
+window.onHabTipoChange=onHabTipoChange;
+
+async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,forma,u){
+  const tipo=document.getElementById('hab-tipo')?.value||'exacto';
+  let totalLong=0; let totalKg=0; let cant=0;
+
+  if(tipo==='exacto'){
+    cant=parseFloat(document.getElementById('hab-cant-exacto')?.value)||0;
+    const long=parseFloat(document.getElementById('hab-long-exacto')?.value)||0;
+    totalLong=cant*long;
+    let vol=0; const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
+    if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*long*cant;
+    else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*long*cant;
+    else vol=(Math.PI/4)*de*de*long*cant;
+    totalKg=parseFloat((vol*densidad*0.4536).toFixed(3));
+  } else {
+    const filas=document.querySelectorAll('#hab-filas-wrap > div');
+    filas.forEach(fila=>{
+      const inputs=fila.querySelectorAll('input');
+      const c=parseFloat(inputs[0]?.value)||0;
+      const l=parseFloat(inputs[1]?.value)||0;
+      cant+=c; totalLong+=c*l;
+      let vol=0; const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
+      if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*l*c;
+      else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*l*c;
+      else vol=(Math.PI/4)*de*de*l*c;
+      totalKg+=vol*densidad*0.4536;
+    });
+    totalKg=parseFloat(totalKg.toFixed(3));
+  }
+
+  if(!totalLong||!cant){alert('Ingresa cantidad y longitud');return;}
+
+  try{
+    // 1. Descontar longitud del inventario (mp_stock)
+    const stock=mpStock.find(s=>s.id===stockId);
+    if(stock){
+      const longActual=parseFloat(stock.longitud_in)||0;
+      // Descontar: reducir cantidad proporcional o registrar como consumo total
+      const newCant=Math.max(0,(parseInt(stock.cantidad)||1)-Math.round(cant));
+      await sbUpdate('mp_stock',{id:stockId},{
+        cantidad:newCant,
+        longitud_consumida_in:(parseFloat(stock.longitud_consumida_in)||0)+totalLong
+      });
+    }
+    // 2. Actualizar reservación → en_transito
+    await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
+    // 3. Registrar en mp_transit
+    const res=mpReservations.find(r=>r.id===resId)||{};
+    await sbInsert('mp_transit',{
+      id:uid(),
+      mp_stock_id:stockId,
+      material_id:materialId,
+      ot_id:res.ot_id,
+      ot_number:res.ot_number,
+      material:stock?.material,
+      forma:stock?.forma||forma,
+      diametro:stock?.diametro,
+      diametro_int:stock?.diametro_int,
+      longitud_in:totalLong,
+      cantidad:cant,
+      kg:totalKg,
+      status:'listo',
+      moved_at:new Date().toISOString()
+    });
+    // 4. Registrar movimiento
+    await sbInsert('mp_movements',{
+      id:uid(),
+      mp_stock_id:stockId,
+      tipo:'habilitado',
+      cantidad:cant,
+      longitud_in:totalLong,
+      kg:totalKg,
+      origen:'Existencias',
+      destino:'Tránsito Producción',
+      ot_id:res.ot_id,
+      ot_number:res.ot_number,
+      recorded_at:new Date().toISOString()
+    });
+    document.getElementById('alm-habilitar-form').innerHTML='';
+    await loadAlmData();
+    renderAlmHabilitar();
+    alert('✅ Material habilitado y movido a Tránsito Producción.');
+  }catch(e){alert('Error: '+e.message);}
+}
+window.confirmarHabilitado=confirmarHabilitado;
+
+
 
 
 // ═══════════════════════════════════════════════════════
