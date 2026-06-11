@@ -6492,6 +6492,9 @@ async function saveMpStock(id){
   const kgNuevo=parseFloat((kgUnit*cant).toFixed(2));
 
   // ── PRECIO PROMEDIO PONDERADO (PPP) ──
+  let kgTotal=kgNuevo;
+  let precioPPP=precioNuevo;
+  let valorTotal=parseFloat((kgNuevo*precioNuevo).toFixed(2));
 
   if(!id){
     // Nueva entrada — verificar si ya existe stock del mismo material/forma/diámetro/longitud
@@ -6516,7 +6519,6 @@ async function saveMpStock(id){
       await sbUpdate('mp_stock',{id:existing.id},{
         cantidad:newCant,kg_barra:kgUnit,kg_total:kgTotal,
         precio_kg:precioPPP,valor_total:valorTotal,
-        cantidad_min:min||existing.cantidad_min,
         updated_at:new Date().toISOString()
       });
       const idx=mpStock.findIndex(s=>s.id===existing.id);
