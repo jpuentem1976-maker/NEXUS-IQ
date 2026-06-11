@@ -4161,6 +4161,14 @@ window.saveNewOT=saveNewOT;
 async function deleteOT(id){
   if(!confirm('¿Eliminar esta O.T.? Esta acción no se puede deshacer.')) return;
   try{
+    // Borrar dependencias antes de eliminar la OT (FK constraints)
+    const resIds=mpReservations.filter(r=>r.ot_id===id).map(r=>r.id);
+    for(const rid of resIds) await sbDelete('mp_reservations',{id:rid});
+    mpReservations=mpReservations.filter(r=>r.ot_id!==id);
+    // Borrar machine_load entries
+    const mlIds=(machineLoad||[]).filter(m=>m.ot_id===id).map(m=>m.id);
+    for(const mid of mlIds) await sbDelete('machine_load',{id:mid});
+    // Borrar la OT
     await sbDelete('work_orders',{id});
     workOrders=workOrders.filter(o=>o.id!==id);
     renderProgrammingList();
@@ -6091,7 +6099,6 @@ async function saveMpStock(id){
       await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:existing.id,
         material:matName,forma,diametro:diam,longitud_in:longIn,
         cantidad:cant,kg:kgNuevo,valor:parseFloat((kgNuevo*precioNuevo).toFixed(2)),
-        notes:'PPP recalculado: $'+precioPPP+'/kg',
         origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
         recorded_at:new Date().toISOString()});
       document.getElementById('alm-general-form').innerHTML='';
