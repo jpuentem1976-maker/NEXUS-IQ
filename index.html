@@ -3851,6 +3851,307 @@ async function ejecutarApartarOT(otId,materialId,longReq,cantReq){
 }
 window.ejecutarApartarOT=ejecutarApartarOT;
 
+
+// ═══════════════════════════════════════════════════════
+//  MÓDULO PROGRAMACIÓN — funciones reconstruidas
+// ═══════════════════════════════════════════════════════
+
+function renderProgrammingList(){
+  updateNextOTDisplay();
+  const pending=workOrders.filter(o=>o.status==='programming');
+  const list=document.getElementById('programming-list');
+  if(!list) return;
+
+  if(!pending.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin órdenes en programación.</div>';
+    return;
+  }
+
+  list.innerHTML='';
+  const table=document.createElement('div');
+  table.className='card';
+  table.style.cssText='padding:0;overflow:hidden';
+
+  const thead='<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
+    '<th>O.T.</th><th>Producto</th><th>Lote/Cant</th><th>Existencia</th><th>Mat. Prima</th><th>Material MP</th><th>Acciones</th>'+
+    '</tr></thead><tbody id="prog-tbody"></tbody></table></div>';
+  table.innerHTML=thead;
+  list.appendChild(table);
+
+  const tbody=document.getElementById('prog-tbody');
+  pending.sort((a,b)=>(a.number||'').localeCompare(b.number||'')).forEach(o=>{
+    const p=getProduct(o.product_id);
+    const sc=(o.stock_current??p?.stock_current??0);
+    const sm=p?.stock_min||0;
+    const days=sm?Math.round((sc*45)/sm):null;
+    const dc=days===null?'var(--muted)':days>=22?'var(--green)':days>=11?'var(--warn)':'var(--danger)';
+    const em=days===null?'':days>=22?'🟢':days>=11?'🟡':'🔴';
+
+    // Badge material MP
+    const resO=mpReservations.filter(r=>r.ot_id===o.id);
+    const enTransitoO=resO.some(r=>r.status==='en_transito');
+    const apartadoO=resO.some(r=>r.status==='apartado'||r.status==='parcial');
+    let badgeMP='<span class="tag" style="color:var(--muted);font-size:10px">🔴 Sin apartar</span>';
+    if(enTransitoO) badgeMP='<span class="tag" style="color:var(--warn);font-size:10px">⏳ En Habilitado</span>';
+    else if(apartadoO) badgeMP='<span class="tag" style="color:var(--green);font-size:10px">🟢 Apartado</span>';
+
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      '<td style="font-family:monospace;font-weight:700;color:var(--accent)">'+o.number+'</td>'+
+      '<td><div style="font-weight:600">'+(p?.name||'--')+'</div><div style="font-size:10px;color:var(--muted)">'+(p?.code||'')+'</div></td>'+
+      '<td><div>'+(p?.batch||'--')+'</div><div style="font-size:11px;color:var(--muted)">'+o.qty+' pzas</div></td>'+
+      '<td style="font-weight:700;color:'+dc+'">'+em+' '+sc+(sm?'<br><small style="color:'+dc+'">'+(days)+' días</small>':'')+'</td>'+
+      '<td><span class="tag" style="'+(o.raw_material_ok?'background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3)':'background:rgba(239,68,68,.1);color:var(--danger);border:1px solid rgba(239,68,68,.25)')+'font-size:10px">'+(o.raw_material_ok?'✓ LISTA':'⚠ PENDIENTE')+'</span></td>'+
+      '<td>'+badgeMP+'</td>'+
+      '<td></td>';
+
+    // Botones de acción
+    const tdAcc=tr.querySelector('td:last-child');
+
+    const btnEdit=document.createElement('button');
+    btnEdit.className='btn btn-ghost btn-sm';
+    btnEdit.textContent='✏';
+    btnEdit.addEventListener('click',()=>editProgrammingOT(o.id));
+
+    if(!enTransitoO&&!apartadoO){
+      const btnApt=document.createElement('button');
+      btnApt.className='btn btn-sm';
+      btnApt.style.cssText='background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.3);font-size:11px';
+      btnApt.textContent='📌 Apartar';
+      btnApt.addEventListener('click',()=>showApartarOTPanel(o.id));
+      tdAcc.appendChild(btnApt);
+    }
+
+    const btnRM=document.createElement('button');
+    btnRM.className='btn btn-sm';
+    btnRM.style.cssText='font-size:10px;padding:2px 7px';
+    btnRM.textContent=o.raw_material_ok?'✓ MP OK':'○ MP';
+    btnRM.addEventListener('click',()=>toggleRawMaterialOK(o.id,o.raw_material_ok));
+
+    const btnRel=document.createElement('button');
+    btnRel.className='btn btn-sm btn-accent';
+    btnRel.style.fontSize='11px';
+    btnRel.textContent='▶ Liberar';
+    btnRel.addEventListener('click',()=>releaseOT(o.id));
+
+    const btnDel=document.createElement('button');
+    btnDel.className='btn btn-sm btn-danger';
+    btnDel.style.fontSize='11px';
+    btnDel.textContent='🗑';
+    btnDel.addEventListener('click',()=>deleteOT(o.id));
+
+    tdAcc.appendChild(btnEdit);
+    tdAcc.appendChild(btnRM);
+    tdAcc.appendChild(btnRel);
+    tdAcc.appendChild(btnDel);
+
+    tbody.appendChild(tr);
+  });
+}
+window.renderProgrammingList=renderProgrammingList;
+
+function showNewOTForm(){
+  const wrap=document.getElementById('new-ot-form-wrap');
+  if(!wrap) return;
+  const nextNum='OT-'+String(getNextOTNumber()).padStart(5,'0');
+  const prodOpts=products.map(p=>'<option value="'+p.id+'">'+p.name+(p.code?' ('+p.code+')':'')+'</option>').join('');
+
+  const div=document.createElement('div');
+  div.className='card';
+  div.style.cssText='margin-bottom:14px;border-color:rgba(0,212,255,.3)';
+  div.innerHTML=
+    '<div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">NUEVA ORDEN DE TRABAJO</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:12px">'+
+      '<div class="field"><label>NÚMERO DE O.T.</label><input id="otf-num" value="'+nextNum+'"></div>'+
+      '<div class="field"><label>PRODUCTO</label><select id="otf-prod"><option value="">-- Selecciona --</option>'+prodOpts+'</select></div>'+
+      '<div class="field"><label>CANTIDAD (pzas)</label><input type="number" id="otf-qty" placeholder="100"></div>'+
+      '<div class="field"><label>EXISTENCIA ACTUAL (pzas)</label><input type="number" id="otf-exist" placeholder="0"></div>'+
+    '</div>'+
+    '<div id="otf-material-info" style="margin-bottom:12px"></div>'+
+    '<div id="otf-apartar-wrap" style="display:none;margin-bottom:12px">'+
+      '<div class="card" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2);padding:12px 16px">'+
+        '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'+
+          '<input type="checkbox" id="otf-apartar-check" style="width:16px;height:16px">'+
+          '<span style="font-size:13px;font-weight:700">Apartar material disponible al crear la OT</span>'+
+        '</label>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn btn-ghost" id="otf-cancel">Cancelar</button>'+
+      '<button class="btn btn-accent" id="otf-save">💾 Crear O.T.</button>'+
+    '</div>';
+
+  div.querySelector('#otf-cancel').addEventListener('click',()=>{wrap.innerHTML='';});
+  div.querySelector('#otf-save').addEventListener('click',saveNewOT);
+  div.querySelector('#otf-prod').addEventListener('change',onOTFormProdChange);
+  wrap.innerHTML='';
+  wrap.appendChild(div);
+}
+window.showNewOTForm=showNewOTForm;
+
+
+function onOTFormProdChange(){
+  const prodId=document.getElementById('otf-prod')?.value;
+  const p=getProduct(prodId);
+  if(p){
+    checkOTMaterialDisponible(p);
+  } else {
+    const infoEl=document.getElementById('otf-material-info');
+    const aptWrap=document.getElementById('otf-apartar-wrap');
+    if(infoEl) infoEl.innerHTML='';
+    if(aptWrap) aptWrap.style.display='none';
+  }
+}
+window.onOTFormProdChange=onOTFormProdChange;
+
+function checkOTMaterialDisponible(p){
+  const infoEl=document.getElementById('otf-material-info');
+  const apartarWrap=document.getElementById('otf-apartar-wrap');
+  if(!infoEl||!p) return;
+  const mats=(p.materials||[]).filter(m=>{
+    const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
+    return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+  });
+  if(!mats.length){
+    infoEl.innerHTML='';
+    if(apartarWrap) apartarWrap.style.display='none';
+    return;
+  }
+  let html='<div class="card" style="padding:12px 16px;margin-bottom:0;border-color:rgba(0,212,255,.2)">';
+  html+='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📦 MATERIAL REQUERIDO VS. INVENTARIO DISPONIBLE</div>';
+  let hayDisponible=false;
+  mats.forEach(m=>{
+    const matCat=MAT_TYPES.find(t=>t.val===m.tipo)||{};
+    const u=(matCat.categoria==='Acero'&&matCat.forma==='Barra Hueca')?'mm':'"';
+    const longReq=parseFloat(m.longitud)||0;
+    const cantReq=parseInt(m.cantidad)||1;
+    const totalReq=(longReq*cantReq).toFixed(3);
+    const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+    const totalDisp=stockItems.reduce((a,s)=>{
+      return a+(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||1);
+    },0);
+    // Calcular ya apartado
+    const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
+    const dispReal=Math.max(0,totalDisp-yaApartado);
+    const sobrara=dispReal-parseFloat(totalReq);
+    const colorReal=dispReal>=parseFloat(totalReq)?'var(--green)':'var(--danger)';
+    const icon=dispReal>=parseFloat(totalReq)?'✅':'❌';
+    const dimStr=matCat.diametro?'Ø '+parseFloat(matCat.diametro).toFixed(3)+u:'';
+    html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px">';
+    html+=icon+' <strong>'+(matCat.label||m.tipo)+(dimStr?' — '+dimStr:'')+'</strong><br>';
+    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;font-size:11px">';
+    html+='<div><div style="color:var(--muted)">Existencia total</div><strong>'+totalDisp.toFixed(3)+'"</strong></div>';
+    html+='<div><div style="color:var(--muted)">Ya apartado</div><strong style="color:var(--warn)">'+yaApartado.toFixed(3)+'"</strong></div>';
+    html+='<div><div style="color:var(--muted)">Disponible real</div><strong style="color:'+colorReal+'">'+dispReal.toFixed(3)+'"</strong></div>';
+    html+='<div><div style="color:var(--muted)">Esta OT necesita</div><strong style="color:var(--accent2)">'+totalReq+'"</strong></div>';
+    html+='</div>';
+    if(sobrara>=0) html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Sobrará: '+sobrara.toFixed(3)+'"</div>';
+    else html+='<div style="font-size:11px;color:var(--danger);margin-top:4px">❌ Falta: '+Math.abs(sobrara).toFixed(3)+'"</div>';
+    html+='</div>';
+    if(dispReal>=parseFloat(totalReq)) hayDisponible=true;
+  });
+  html+='</div>';
+  infoEl.innerHTML=html;
+  if(apartarWrap) apartarWrap.style.display=hayDisponible?'':'none';
+}
+window.checkOTMaterialDisponible=checkOTMaterialDisponible;
+
+async function saveNewOT(){
+  const number=(document.getElementById('otf-num')?.value||'').trim();
+  const prodId=document.getElementById('otf-prod')?.value;
+  const qty=parseInt(document.getElementById('otf-qty')?.value)||0;
+  const stockCurrent=parseInt(document.getElementById('otf-exist')?.value)||0;
+  const apartar=document.getElementById('otf-apartar-check')?.checked||false;
+  const p=getProduct(prodId);
+
+  if(!number){alert('Ingresa el número de O.T.');return;}
+  if(!prodId){alert('Selecciona un producto.');return;}
+  if(!qty){alert('Ingresa la cantidad.');return;}
+
+  showLoading('CREANDO O.T...');
+
+  // Verificar duplicado con datos frescos
+  try{ await loadAllData(); }catch(e){}
+  if(workOrders.find(o=>o.number===number)){
+    hideLoading();
+    const newNum='OT-'+String(getNextOTNumber()).padStart(5,'0');
+    const numEl=document.getElementById('otf-num');
+    if(numEl) numEl.value=newNum;
+    alert('El número '+number+' ya existe. Número actualizado a '+newNum+'. Intenta de nuevo.');
+    return;
+  }
+
+  const rec={id:uid(),number,product_id:prodId,qty,batch:p?.batch||null,
+    status:'programming',raw_material_ok:false,priority:0,
+    total_ops:p?.operations?.length||0,completed_ops:0,progress_pct:0,
+    stock_current:stockCurrent};
+
+  try{
+    await sbInsert('work_orders',rec);
+    workOrders.push(rec);
+
+    if(apartar&&p?.materials?.length){
+      const barras=(p.materials||[]).filter(m=>{
+        const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
+        return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+      });
+      const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&s.status==='disponible'));
+      if(sinStock.length){
+        const matCats=sinStock.map(m=>MAT_TYPES.find(t=>t.val===m.tipo)?.label||m.tipo).join(', ');
+        alert('Sin existencia: '+matCats+'. OT creada sin apartar material.');
+      } else {
+        for(const m of barras){
+          const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+          if(stockDisp.length){
+            const s=stockDisp[0];
+            const resRec={id:uid(),mp_stock_id:s.id,material_id:m.tipo,
+              ot_id:rec.id,ot_number:number,
+              longitud_solicitada:parseFloat(m.longitud)||0,
+              cantidad:parseInt(m.cantidad)||1,
+              cantidad_req:parseInt(m.cantidad)||1,
+              cantidad_apt:parseInt(m.cantidad)||1,
+              cantidad_falta:0,material:s.material,
+              forma:s.forma,diametro:s.diametro,longitud_in:s.longitud_in,
+              status:'apartado',requested_by:'Programación',
+              requested_at:new Date().toISOString(),
+              created_at:new Date().toISOString()};
+            try{
+              await sbInsert('mp_reservations',resRec);
+              await sbUpdate('mp_stock',{id:s.id},{status:'apartado'});
+            }catch(eRes){console.warn('Reservación fallida:',eRes.message);}
+          }
+        }
+      }
+    }
+
+    await loadAllData();
+    renderProgrammingList();
+    document.getElementById('new-ot-form-wrap').innerHTML='';
+    if(!apartar) alert('✅ OT '+number+' creada correctamente.');
+  }catch(e){alert('Error al crear O.T.: '+e.message);}
+  hideLoading();
+}
+window.saveNewOT=saveNewOT;
+
+async function deleteOT(id){
+  if(!confirm('¿Eliminar esta O.T.? Esta acción no se puede deshacer.')) return;
+  try{
+    await sbDelete('work_orders',{id});
+    workOrders=workOrders.filter(o=>o.id!==id);
+    renderProgrammingList();
+  }catch(e){alert('Error al eliminar: '+e.message);}
+}
+window.deleteOT=deleteOT;
+
+function editProgrammingOT(id){
+  const o=workOrders.find(w=>w.id===id);
+  if(!o) return;
+  const p=getProduct(o.product_id);
+  alert('Editar OT — En construcción. OT: '+o.number+(p?' — '+p.name:''));
+}
+window.editProgrammingOT=editProgrammingOT;
+
+
 function renderReleasedOTs(){
   const released=workOrders.filter(o=>o.status==='released');
   console.log('renderReleasedOTs: total OTs='+workOrders.length+', released='+released.length, released.map(o=>o.number+':'+o.status));
@@ -6212,9 +6513,25 @@ window.saveSupplier=saveSupplier;
 function renderAlmReport(){
   const body=document.getElementById('alm-report-body');
   if(!body) return;
-  // Solo mostrar materiales en mínimo o por debajo
+  // Calcular stock REAL disponible (descontando apartados) por material
+  const apartadosPorMat={};
+  mpReservations.filter(r=>r.status==='apartado'||r.status==='parcial').forEach(r=>{
+    const s=mpStock.find(x=>x.id===r.mp_stock_id);
+    if(!s) return;
+    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
+    apartadosPorMat[key]=(apartadosPorMat[key]||0)+1;
+  });
+
+  // Solo mostrar materiales en mínimo o por debajo (incluyendo los apartados)
   const filtered=mpStock.filter(s=>{
-    const sem=semaforo(s.cantidad,s.cantidad_min);
+    const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
+    if(!matCat||matCat.reposicion===false) return false;
+    const minimo=matCat.cantidad_min||0;
+    if(!minimo) return false;
+    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
+    const cantApartada=apartadosPorMat[key]||0;
+    const cantReal=Math.max(0,(parseInt(s.cantidad)||0)-cantApartada);
+    const sem=semaforo(cantReal,minimo);
     return sem.label==='SIN STOCK'||sem.label==='BAJO MÍNIMO'||sem.label==='EN MÍNIMO';
   });
   const sorted=[...filtered].sort((a,b)=>{
@@ -6395,8 +6712,8 @@ function showHabilitarModal(resId){
           +'<div class="field"><label>LONGITUD REAL (")</label>'
             +'<input type="number" step="0.001" id="hab-long-exacto" value="'+longSol.toFixed(3)+'" oninput="calcHabKg()">'
           +'</div>'
-          +'<div class="field"><label>TOTAL LONG. (")</label>'
-            +'<input type="number" id="hab-total-exacto" readonly style="opacity:0.6" value="'+(cantSol*longSol).toFixed(3)+'">'
+          +'<div class="field"><label>TOTAL LONG. REAL (")<br><small style="color:var(--muted);font-size:10px;font-weight:400">Editable — descuenta sobrante y kerf</small></label>'
+            +'<input type="number" id="hab-total-exacto" step="0.001" value="'+(cantSol*longSol).toFixed(3)+'" title="Editable: mide barras cortadas y descuenta sobrante. El kerf se acumula aquí.">'
           +'</div>'
         +'</div>'
         +'<div class="field" style="margin-bottom:12px"><label>KG CALCULADOS (automático)</label>'
@@ -6415,14 +6732,30 @@ function showHabilitarModal(resId){
       +'</div>'
 
       +'<div style="display:flex;gap:10px;margin-top:4px">'
-        +'<button class="btn btn-accent" onclick="confirmarHabilitado(\''+resId+'\',\''+stock.id+'\',\''+stock.material_id+'\','+densidad+','+diam+','+dint+',\''+forma+'\',\''+u+'\')">✅ Confirmar y mover a Tránsito</button>'
-        +'<button class="btn btn-ghost" onclick="document.getElementById(\'alm-habilitar-form\').innerHTML=\'\'">Cancelar</button>'
+        +'<button class="btn btn-accent" id="hab-confirm-btn">✅ Confirmar y mover a Tránsito</button>'
+        +'<button class="btn btn-ghost" id="hab-cancel-btn">Cancelar</button>'
       +'</div>'
     +'</div>';
 
-  // Iniciar con una fila en panel diferente
+  // Agregar eventos con referencias directas (sin onclick en strings)
   window._habDensidad=densidad; window._habDiam=diam; window._habDint=dint;
   window._habForma=forma; window._habU=u;
+  window._habResId=resId; window._habStockId=stock.id; window._habMatId=stock.material_id;
+
+  const confirmBtn=wrap.querySelector('#hab-confirm-btn');
+  const cancelBtn=wrap.querySelector('#hab-cancel-btn');
+  if(confirmBtn) confirmBtn.addEventListener('click',()=>confirmarHabilitado(resId,stock.id,stock.material_id,densidad,diam,dint,forma,u));
+  if(cancelBtn) cancelBtn.addEventListener('click',()=>{wrap.innerHTML='';});
+
+  // Hacer campo Total Long editable y que recalcule kg
+  const totalEl=wrap.querySelector('#hab-total-exacto');
+  if(totalEl){
+    totalEl.removeAttribute('readonly');
+    totalEl.style.opacity='1';
+    totalEl.title='Editable: mide barras cortadas, descuenta sobrantes. El kerf de segueta se acumula aquí.';
+    totalEl.addEventListener('input',calcHabKgDesdeTotal);
+  }
+
   addHabFila();
   calcHabKg();
   wrap.scrollIntoView({behavior:'smooth',block:'start'});
@@ -6501,6 +6834,23 @@ function calcHabKg(){
   if(kgEl) kgEl.value=kg+' kg';
 }
 window.calcHabKg=calcHabKg;
+
+function calcHabKgDesdeTotal(){
+  // Calcular kg desde el total real editado (no desde cant x long)
+  const totalReal=parseFloat(document.getElementById('hab-total-exacto')?.value)||0;
+  const d=window._habDensidad||0.2836;
+  const diam=window._habDiam||0; const dint=window._habDint||0;
+  const forma=window._habForma||'Redondo'; const u=window._habU||'"';
+  const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
+  let vol=0;
+  if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*totalReal;
+  else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*totalReal;
+  else vol=(Math.PI/4)*de*de*totalReal;
+  const kg=parseFloat((vol*d*0.4536).toFixed(3));
+  const kgEl=document.getElementById('hab-kg-exacto');
+  if(kgEl) kgEl.value=kg+' kg';
+}
+window.calcHabKgDesdeTotal=calcHabKgDesdeTotal;
 
 function onHabTipoChange(){
   const tipo=document.getElementById('hab-tipo')?.value;
