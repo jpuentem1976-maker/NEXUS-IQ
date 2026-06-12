@@ -6937,17 +6937,18 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
     await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
     // 3. Registrar en mp_transit
     const res=mpReservations.find(r=>r.id===resId)||{};
+    const woForTransit=workOrders.find(o=>o.id===res.ot_id)||{};
+    const prodForTransit=getProduct(woForTransit.product_id)||{};
     await sbInsert('mp_transit',{
       id:uid(),
-      mp_stock_id:stockId,
       ot_id:res.ot_id,
       ot_number:res.ot_number,
-      product_name:res.product_name||'',
-      product_code:res.product_code||'',
+      product_id:woForTransit.product_id||null,
+      product_name:prodForTransit.name||res.product_name||'',
+      product_code:prodForTransit.code||res.product_code||'',
       material:stock?.material,
       forma:stock?.forma||forma,
       diametro:stock?.diametro,
-      diametro_int:stock?.diametro_int,
       longitud_in:totalLong,
       cantidad_barras:cant,
       kg_real:totalKg,
