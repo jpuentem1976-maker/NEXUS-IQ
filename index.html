@@ -4182,12 +4182,36 @@ async function releaseOT(id){
     if(!confirm('¿Liberar OT '+o.number+'? Se moverá a O.T. Liberadas y el material pasará a producción.')) return;
   }
   try{
-    await sbUpdate('work_orders',{id},{status:'released',released_at:new Date().toISOString()});
+    const now=new Date().toISOString();
+    await sbUpdate('work_orders',{id},{status:'released',released_at:now});
     const idx=workOrders.findIndex(w=>w.id===id);
-    if(idx>=0) workOrders[idx]={...workOrders[idx],status:'released',released_at:new Date().toISOString()};
+    if(idx>=0) workOrders[idx]={...workOrders[idx],status:'released',released_at:now};
+
+    // Crear entradas en machine_load por cada operación del producto
+    const prod=getProduct(o.product_id)||{};
+    const ops=(prod.operations||[]).filter(op=>op.machine_name);
+    const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'};
+    // Borrar machine_load previo de esta OT (si hay reintento)
+    await fetch(SB_URL+'/rest/v1/machine_load?ot_id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:H});
+    for(let i=0;i<ops.length;i++){
+      const op=ops[i];
+      const mlRec={
+        id:uid(), ot_id:id, ot_number:o.number,
+        product_id:o.product_id, product_name:prod.name||'', product_code:prod.code||'',
+        operation_id:op.id, op_number:op.op_number||String(i+1),
+        operation_name:op.name||'', machine_name:op.machine_name||'',
+        setup_time:op.setup_time||0, unit_time:op.unit_time||0,
+        total_time_min:((parseFloat(op.setup_time)||0)+(parseFloat(op.unit_time)||0)*(parseInt(o.qty)||1)),
+        qty:o.qty, priority:i+1, status:'pending',
+        created_at:now
+      };
+      await fetch(SB_URL+'/rest/v1/machine_load',{method:'POST',headers:H,body:JSON.stringify(mlRec)});
+    }
+    await loadAllData();
     renderProgrammingList();
     renderReleasedOTs();
-    alert('✅ OT '+o.number+' liberada correctamente.');
+    renderMachineLoad();
+    alert('✅ OT '+o.number+' liberada. '+ops.length+' operación(es) agregadas a Carga de Máquinas.');
   }catch(e){alert('Error al liberar: '+e.message);}
 }
 window.releaseOT=releaseOT;
@@ -4320,9 +4344,11 @@ async function deleteReleasedOT(id, number){
     await fetch(`${SB_URL}/rest/v1/machine_load?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/sessions?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/raw_material?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/mp_reservations?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/mp_transit?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/work_orders?id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await loadAllData();
-    renderReleasedOTs(); renderMachineLoad(); renderRawMaterial(); populateSelects();
+    renderReleasedOTs(); renderMachineLoad(); renderRawMaterial(); renderRmtProd(); populateSelects();
   }catch(e){ alert('Error: '+e.message); }
   hideLoading();
 }
@@ -6113,7 +6139,7 @@ async function saveMpStock(id){
       const idx=mpStock.findIndex(s=>s.id===existing.id);
       if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:kgTotal,precio_kg:precioPPP,valor_total:valorTotal};
       await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:existing.id,
-        material:matName,forma,diametro:diam,longitud_in:longIn,
+        material:matName,forma,diametro:diam,longitud_in:parseFloat((longIn*cant).toFixed(3)),
         cantidad:cant,kg:kgNuevo,valor:parseFloat((kgNuevo*precioNuevo).toFixed(2)),
         origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
         recorded_at:new Date().toISOString()});
@@ -6146,7 +6172,7 @@ async function saveMpStock(id){
       await sbInsert('mp_stock',rec);
       mpStock.unshift(rec);
       await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:rec.id,
-        material:matName,forma,diametro:diam,longitud_in:longIn,
+        material:matName,forma,diametro:diam,longitud_in:parseFloat((longIn*cant).toFixed(3)),
         cantidad:cant,kg:kgTotal,valor:valorTotal,
         origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
         recorded_at:new Date().toISOString()});
@@ -6344,7 +6370,10 @@ function renderAlmTransit(){
             ${t.notas_habilitado?`<span>📝 ${t.notas_habilitado}</span>`:''}
           </div>
         </div>
-        ${t.status==='listo'?`<button class="btn btn-sm btn-accent" onclick="moverScrapModal('${t.id}')">♻ Merma</button>`:''}
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${t.status==='listo'?`<button class="btn btn-sm btn-accent" onclick="moverScrapModal('${t.id}')">♻ Merma</button>`:''}
+          <button class="btn btn-sm btn-danger" onclick="deleteTransitRecord('${t.id}')">🗑</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -6370,7 +6399,10 @@ function renderAlmScrap(){
           ${s.origen_ot?`<span style="color:var(--muted);margin-left:8px">OT: ${s.origen_ot}</span>`:''}
           ${s.origen_producto?`<span style="color:var(--muted);margin-left:8px">${s.origen_producto}</span>`:''}
         </div>
-        <button class="btn btn-sm btn-danger" onclick="openAutorizarModal('${s.id}')">🔐 Autorizar baja</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-danger" onclick="openAutorizarModal('${s.id}')">🔐 Autorizar baja</button>
+          <button class="btn btn-sm btn-ghost" onclick="deleteMpScrap('${s.id}')" title="Eliminar registro">🗑</button>
+        </div>
       </div>
     </div>`).join('');
   }
@@ -6476,7 +6508,7 @@ function renderAlmMovements(){
   if(!items.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin movimientos</div>'; return; }
   const TIPO_COLOR={entrada:'var(--green)',apartado:'var(--warn)',transito:'var(--accent)',liberado:'var(--accent2)',merma:'var(--danger)'};
   list.innerHTML=`<table class="tbl"><thead><tr>
-    <th>Fecha</th><th>Tipo</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Cant.</th><th>Kg</th><th>OT</th><th>Producto</th><th>Origen→Destino</th>
+    <th>Fecha</th><th>Tipo</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.Total</th><th>Cant.</th><th>Kg</th><th>OT</th><th>Producto</th><th>Origen→Destino</th><th style="width:40px"></th>
   </tr></thead><tbody>${items.map(m=>`<tr>
     <td style="font-size:10px;color:var(--muted)">${new Date(m.recorded_at).toLocaleDateString('es-MX')}</td>
     <td><span style="font-size:10px;font-weight:700;color:${TIPO_COLOR[m.tipo]||'var(--text)'};text-transform:uppercase">${m.tipo||'--'}</span></td>
@@ -6489,6 +6521,7 @@ function renderAlmMovements(){
     <td style="font-size:11px;color:var(--accent)">${m.ot_number||'--'}</td>
     <td style="font-size:11px">${m.product_name||'--'}</td>
     <td style="font-size:10px;color:var(--muted)">${m.origen||''}→${m.destino||''}</td>
+    <td><button class="btn btn-sm btn-danger" style="padding:2px 6px" onclick="deleteMpMovement('${m.id}')">🗑</button></td>
   </tr>`).join('')}</tbody></table>`;
 }
 window.renderAlmMovements=renderAlmMovements;
@@ -6511,11 +6544,56 @@ function renderAlmSuppliers(){
           ${s.notes?`<span>📝 ${s.notes}</span>`:''}
         </div>
       </div>
-      <button class="btn btn-sm btn-accent" onclick="showSupplierForm('${s.id}')">✏</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-accent" onclick="showSupplierForm('${s.id}')">✏</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteSupplier('${s.id}')">🗑</button>
+      </div>
     </div>
   </div>`).join('');
 }
 window.renderAlmSuppliers=renderAlmSuppliers;
+
+// ── Funciones de eliminación ──
+async function deleteTransitRecord(id){
+  if(!confirm('¿Eliminar este registro de tránsito?')) return;
+  try{
+    await sbDelete('mp_transit',{id});
+    mpTransit=mpTransit.filter(t=>t.id!==id);
+    renderAlmTransit();
+  }catch(e){alert('Error: '+e.message);}
+}
+window.deleteTransitRecord=deleteTransitRecord;
+
+async function deleteMpScrap(id){
+  if(!confirm('¿Eliminar este registro de merma?')) return;
+  try{
+    await sbDelete('mp_scrap',{id});
+    mpScrap=mpScrap.filter(s=>s.id!==id);
+    renderAlmScrap();
+  }catch(e){alert('Error: '+e.message);}
+}
+window.deleteMpScrap=deleteMpScrap;
+
+async function deleteMpMovement(id){
+  if(!confirm('¿Eliminar este movimiento?')) return;
+  try{
+    await sbDelete('mp_movements',{id});
+    mpMovements=mpMovements.filter(m=>m.id!==id);
+    renderAlmMovements();
+  }catch(e){alert('Error: '+e.message);}
+}
+window.deleteMpMovement=deleteMpMovement;
+
+async function deleteSupplier(id){
+  const s=mpSuppliers.find(x=>x.id===id);
+  if(!confirm('¿Eliminar proveedor '+(s?.name||'')+' ?')) return;
+  try{
+    await sbDelete('mp_suppliers',{id});
+    mpSuppliers=mpSuppliers.filter(x=>x.id!==id);
+    renderAlmSuppliers();
+  }catch(e){alert('Error: '+e.message);}
+}
+window.deleteSupplier=deleteSupplier;
 
 function showSupplierForm(id){
   const s=id?mpSuppliers.find(x=>x.id===id):null;
@@ -7817,9 +7895,14 @@ window.renderRmtTransit=renderRmtTransit;
 
 // ── Vista 3: Inventario MP en Proceso ──
 // Muestra MP de OTs liberadas, agrupado por material, con descuento de scrap
-function renderRmtProd(){
+async function renderRmtProd(){
   const list=document.getElementById('rmt-prod-list');
   if(!list) return;
+  // Refrescar mpTransit desde Supabase para tener longitudes reales
+  try{
+    const fresh=await sbSelect('mp_transit','select=*&order=moved_at.desc');
+    if(fresh) mpTransit=fresh;
+  }catch(e){ console.warn('renderRmtProd: no se pudo refrescar mp_transit',e); }
 
   // OTs liberadas (status='released')
   const otsReleased=workOrders.filter(o=>o.status==='released');
