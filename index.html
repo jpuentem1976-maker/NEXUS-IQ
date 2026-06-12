@@ -655,7 +655,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab active" onclick="setProgTab('p-programming',this)">📋 Programación</button>
     <button class="ptab" onclick="setProgTab('p-released',this)">✅ O.T. Liberadas</button>
     <button class="ptab" onclick="setProgTab('p-closed',this)">🔒 O.T. Cerradas</button>
-    <button class="ptab" onclick="setProgTab('p-rawmat',this)">🔩 Inventario Mat. Prima</button>
+    <button class="ptab" onclick="setProgTab('p-rawmat',this)">🔩 MP en Proceso</button>
     <button class="ptab" onclick="setProgTab('p-machload',this)">⚙ Carga de Máquinas</button>
     <button class="ptab" onclick="setProgTab('p-existencias',this)">📊 Actualizar Existencias</button>
   </div>
@@ -688,28 +688,17 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <div id="closed-list"></div>
   </div>
 
-  <!-- RAW MATERIAL -->
+  <!-- INVENTARIO MP EN PROCESO -->
   <div id="p-rawmat" class="subpage">
-    <div style="font-size:15px;font-weight:700;margin-bottom:14px">Inventario de Materia Prima</div>
-    <!-- Sub-pestañas -->
-    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="ptab active" id="rmt-tab-stock" onclick="setRawmatTab('rmt-stock',this)">📦 Stock Disponible</button>
-      <button class="ptab" id="rmt-tab-transit" onclick="setRawmatTab('rmt-transit',this)">🔄 Tránsito Producción</button>
-      <button class="ptab" id="rmt-tab-prod" onclick="setRawmatTab('rmt-prod',this)">⚙ En Producción</button>
-    </div>
-    <!-- Stock disponible + apartado -->
-    <div id="rmt-stock" class="subpage active">
-      <div id="rmt-stock-list"></div>
-    </div>
-    <!-- Tránsito Producción -->
-    <div id="rmt-transit" class="subpage">
-      <div id="rmt-transit-list"></div>
-    </div>
-    <!-- En Producción -->
-    <div id="rmt-prod" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:14px">🔩 Inventario Mat. Prima en Proceso</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">MP de O.T. liberadas — agrupado por material. Se descuenta automáticamente con cada scrap y al cerrar la O.T.</div>
+    <!-- Vistas ocultas para compatibilidad -->
+    <div id="rmt-stock" style="display:none"><div id="rmt-stock-list"></div></div>
+    <div id="rmt-transit" style="display:none"><div id="rmt-transit-list"></div></div>
+    <!-- Vista principal -->
+    <div id="rmt-prod">
       <div id="rmt-prod-list"></div>
     </div>
-    <!-- Lista legacy (oculta) -->
     <div id="rawmat-list" style="display:none"></div>
   </div>
 
@@ -1503,7 +1492,7 @@ window.setProgTab = function setProgTab(id,btn){
     if(id==='p-programming') renderProgrammingList();
     if(id==='p-released') renderReleasedOTs();
     if(id==='p-closed') renderClosedOTs();
-    if(id==='p-rawmat'){ renderRawmatProg(); }
+    if(id==='p-rawmat'){ renderRawmatProg(); renderRmtProd(); }
     if(id==='p-machload') renderMachineLoad();
     if(id==='p-existencias') renderExistencias();
   });
@@ -4304,7 +4293,7 @@ function addScrap(otId){
   showLoading('REGISTRANDO...');
   sbInsert('ot_scrap',{id:uid(),ot_id:otId,qty:n,reason,recorded_at:new Date().toISOString()})
     .then(()=>loadAllData())
-    .then(()=>{ renderReleasedOTs(); hideLoading(); })
+    .then(()=>{ renderReleasedOTs(); renderRmtProd(); hideLoading(); })
     .catch(e=>{ alert('Error: '+e.message); hideLoading(); });
 }
 
@@ -4315,9 +4304,9 @@ async function closeOT(otId,qty,delivered,scrap){
   const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal','Content-Type':'application/json'};
   const now=new Date().toISOString();
   await fetch(SB_URL+'/rest/v1/work_orders?id=eq.'+encodeURIComponent(otId),{method:'PATCH',headers:H,body:JSON.stringify({status:'closed',closed_at:now})});
-  // Mark raw material as depleted
-  await fetch(SB_URL+'/rest/v1/raw_material?ot_id=eq.'+encodeURIComponent(otId),{method:'PATCH',headers:H,body:JSON.stringify({status:'depleted',remaining:0})});
-  await loadAllData(); renderReleasedOTs(); renderClosedOTs(); renderRawMaterial(); populateSelects(); hideLoading();
+  // Marcar mp_transit como consumido al cerrar la OT
+  await fetch(SB_URL+'/rest/v1/mp_transit?ot_id=eq.'+encodeURIComponent(otId),{method:'PATCH',headers:H,body:JSON.stringify({status:'consumido',released_at:now})});
+  await loadAllData(); renderReleasedOTs(); renderClosedOTs(); renderRmtProd(); populateSelects(); hideLoading();
 }
 
 /* CLOSED OTs */
@@ -7826,34 +7815,129 @@ function renderRmtTransit(){
 }
 window.renderRmtTransit=renderRmtTransit;
 
-// ── Vista 3: En Producción ──
+// ── Vista 3: Inventario MP en Proceso ──
+// Muestra MP de OTs liberadas, agrupado por material, con descuento de scrap
 function renderRmtProd(){
   const list=document.getElementById('rmt-prod-list');
   if(!list) return;
-  // Material en producción = tránsito liberado + OTs activas con material
-  const liberados=mpTransit.filter(t=>t.status==='liberado');
-  if(!liberados.length){
-    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin material en producción actualmente</div>';
+
+  // OTs liberadas (status='released')
+  const otsReleased=workOrders.filter(o=>o.status==='released');
+  if(!otsReleased.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin O.T. liberadas en proceso</div>';
     return;
   }
-  list.innerHTML=liberados.map(t=>`
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-            <span style="font-family:'DM Mono',monospace;color:var(--accent);font-weight:700">${t.ot_number||'--'}</span>
-            <span style="font-weight:700">${t.product_name||'--'}</span>
-            <span class="tag" style="color:var(--green)">✅ EN PRODUCCIÓN</span>
+
+  // Para cada OT liberada, buscar su material en mp_transit (status='liberado' o 'listo')
+  // Agrupar por material+forma+diametro
+  const grupos={};
+  for(const wo of otsReleased){
+    const prod=getProduct(wo.product_id)||{};
+    // Buscar registros de tránsito de esta OT
+    const transitos=mpTransit.filter(t=>t.ot_id===wo.id);
+    if(!transitos.length) continue;
+
+    // Calcular scrap total de la OT
+    const scrapsOT=(otScrap||[]).filter(s=>s.ot_id===wo.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0);
+    const totalPzas=parseInt(wo.qty)||1;
+
+    for(const t of transitos){
+      const longTotal=parseFloat(t.longitud_in)||0;
+      const kgTotal=parseFloat(t.kg_real)||0;
+      const longPorPza=totalPzas>0?(longTotal/totalPzas):0;
+      const kgPorPza=totalPzas>0?(kgTotal/totalPzas):0;
+      const longScrap=parseFloat((scrapsOT*longPorPza).toFixed(3));
+      const kgScrap=parseFloat((scrapsOT*kgPorPza).toFixed(3));
+      const longNeta=parseFloat(Math.max(0,longTotal-longScrap).toFixed(3));
+      const kgNeta=parseFloat(Math.max(0,kgTotal-kgScrap).toFixed(3));
+      const precioKg=parseFloat(t.precio_kg)||0;
+      const valorNeto=parseFloat((kgNeta*precioKg).toFixed(2));
+
+      // Clave de agrupación: material+forma+diametro
+      const key=(t.material||'')+'|'+(t.forma||'')+'|'+(t.diametro||'');
+      if(!grupos[key]){
+        grupos[key]={
+          material:t.material||'--',
+          forma:t.forma||'--',
+          diametro:t.diametro||'',
+          grupo:t.grupo||'',
+          longTotal:0,kgTotal:0,valorTotal:0,
+          ots:[]
+        };
+      }
+      grupos[key].longTotal+=longNeta;
+      grupos[key].kgTotal+=kgNeta;
+      grupos[key].valorTotal+=valorNeto;
+      grupos[key].ots.push({
+        ot_number:wo.number,
+        product_name:prod.name||'--',
+        product_code:prod.code||'--',
+        longNeta,kgNeta,valorNeto,
+        scraps:scrapsOT
+      });
+    }
+  }
+
+  const keys=Object.keys(grupos);
+  if(!keys.length){
+    list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin material de proceso registrado</div>';
+    return;
+  }
+
+  // Ordenar por grupo→forma→diametro
+  keys.sort((a,b)=>{
+    const ga=grupos[a],gb=grupos[b];
+    return (ga.grupo+ga.forma+ga.diametro).localeCompare(gb.grupo+gb.forma+gb.diametro);
+  });
+
+  list.innerHTML=keys.map(key=>{
+    const g=grupos[key];
+    const diam=g.diametro?parseFloat(g.diametro).toFixed(3)+'"':'--';
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px">${g.material}</div>
+          <div style="font-size:11px;color:var(--muted)">${g.forma} — Ø ${diam}${g.grupo?' — '+g.grupo:''}</div>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+          <div style="text-align:center">
+            <div style="font-size:9px;color:var(--muted)">LONGITUD NETA</div>
+            <div style="font-family:'DM Mono',monospace;color:var(--accent);font-weight:700">${g.longTotal.toFixed(3)}"</div>
           </div>
-          <div style="font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
-            <span>${t.material||'--'} — Ø ${t.diametro?parseFloat(t.diametro).toFixed(3):'--'}"</span>
-            <span>Barras: <strong>${t.cantidad_barras||0}</strong></span>
-            <span>Kg: <strong style="color:var(--accent2)">${t.kg_real||0}</strong></span>
-            <span>Liberado: ${t.released_at?new Date(t.released_at).toLocaleDateString('es-MX'):'--'}</span>
+          <div style="text-align:center">
+            <div style="font-size:9px;color:var(--muted)">KG NETO</div>
+            <div style="font-family:'DM Mono',monospace;color:var(--accent2);font-weight:700">${g.kgTotal.toFixed(3)} kg</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:9px;color:var(--muted)">VALOR</div>
+            <div style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">$${g.valorTotal.toFixed(2)}</div>
           </div>
         </div>
       </div>
-    </div>`).join('');
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr style="color:var(--muted)">
+            <th style="text-align:left;padding:3px 6px">O.T.</th>
+            <th style="text-align:left;padding:3px 6px">Producto</th>
+            <th style="text-align:right;padding:3px 6px">Long. Neta</th>
+            <th style="text-align:right;padding:3px 6px">Kg Neto</th>
+            <th style="text-align:right;padding:3px 6px">Valor</th>
+            <th style="text-align:center;padding:3px 6px">Scrap</th>
+          </tr></thead>
+          <tbody>
+            ${g.ots.map(o=>`<tr style="border-top:1px solid rgba(255,255,255,.04)">
+              <td style="padding:3px 6px;font-family:'DM Mono',monospace;color:var(--accent)">${o.ot_number}</td>
+              <td style="padding:3px 6px"><span style="font-weight:600">${o.product_name}</span> <span style="color:var(--muted)">${o.product_code}</span></td>
+              <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace">${o.longNeta.toFixed(3)}"</td>
+              <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:var(--accent2)">${o.kgNeta.toFixed(3)}</td>
+              <td style="padding:3px 6px;text-align:right;font-family:'DM Mono',monospace;color:var(--green)">$${o.valorNeto.toFixed(2)}</td>
+              <td style="padding:3px 6px;text-align:center;color:${o.scraps>0?'var(--danger)':'var(--muted)'}">${o.scraps>0?o.scraps+' pzas':'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
 }
 window.renderRmtProd=renderRmtProd;
 
@@ -7877,10 +7961,10 @@ async function deleteMpStock(id){
   document.getElementById('del-yes').onclick=async()=>{
     box.remove();
     try{
+      // Borrar reservaciones primero (FK constraint)
+      const resFromDB=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(id));
+      for(const r of (resFromDB||[])) await sbDelete('mp_reservations',{id:r.id});
       await sbDelete('mp_stock',{id});
-      // Eliminar reservaciones asociadas
-      const resIds=mpReservations.filter(r=>r.mp_stock_id===id).map(r=>r.id);
-      for(const rid of resIds) await sbDelete('mp_reservations',{id:rid});
       mpStock=mpStock.filter(x=>x.id!==id);
       mpReservations=mpReservations.filter(r=>r.mp_stock_id!==id);
       renderAlmGeneral();
