@@ -4176,6 +4176,33 @@ async function deleteOT(id){
 }
 window.deleteOT=deleteOT;
 
+async function releaseOT(id){
+  const o=workOrders.find(w=>w.id===id);
+  if(!o){alert('OT no encontrada.');return;}
+  // Verificar que el material esté en tránsito (en_transito)
+  const resList=await sbSelect('mp_reservations','select=id,status&ot_id=eq.'+encodeURIComponent(id));
+  const hasTransito=(resList||[]).some(r=>r.status==='en_transito');
+  const hasPendiente=(resList||[]).some(r=>r.status==='apartado'||r.status==='parcial');
+  if(hasPendiente){
+    alert('⚠️ Hay material apartado pendiente de habilitar. Confirma el habilitado antes de liberar.');
+    return;
+  }
+  if(!hasTransito && (resList||[]).length>0){
+    if(!confirm('No hay material en tránsito confirmado. ¿Liberar la OT de todas formas?')) return;
+  } else {
+    if(!confirm('¿Liberar OT '+o.number+'? Se moverá a O.T. Liberadas y el material pasará a producción.')) return;
+  }
+  try{
+    await sbUpdate('work_orders',{id},{status:'released',released_at:new Date().toISOString()});
+    const idx=workOrders.findIndex(w=>w.id===id);
+    if(idx>=0) workOrders[idx]={...workOrders[idx],status:'released',released_at:new Date().toISOString()};
+    renderProgrammingList();
+    renderReleasedOTs();
+    alert('✅ OT '+o.number+' liberada correctamente.');
+  }catch(e){alert('Error al liberar: '+e.message);}
+}
+window.releaseOT=releaseOT;
+
 function editProgrammingOT(id){
   const o=workOrders.find(w=>w.id===id);
   if(!o) return;
@@ -6898,12 +6925,16 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
   if(tipo==='exacto'){
     cant=parseFloat(document.getElementById('hab-cant-exacto')?.value)||0;
     const long=parseFloat(document.getElementById('hab-long-exacto')?.value)||0;
-    totalLong=cant*long;
+    // Usar el campo editable de total — el usuario puede ajustar por sobrante/kerf
+    const totalLongEditado=parseFloat(document.getElementById('hab-total-exacto')?.value)||0;
+    totalLong=totalLongEditado>0?totalLongEditado:(cant*long);
+    // Longitud promedio por pieza para cálculo de volumen
+    const longProm=cant>0?totalLong/cant:long;
     let vol=0; const de=u==='mm'?diam/25.4:diam; const di=u==='mm'?dint/25.4:dint;
-    if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*long*cant;
-    else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*long*cant;
-    else vol=(Math.PI/4)*de*de*long*cant;
-    totalKg=parseFloat((vol*densidad*0.4536).toFixed(3));
+    if(forma==='Barra Hueca'||forma==='Tubo') vol=(Math.PI/4)*(de*de-di*di)*longProm*cant;
+    else if(forma==='Hexagonal') vol=(de*de*1.155*Math.PI/4)*longProm*cant;
+    else vol=(Math.PI/4)*de*de*longProm*cant;
+    totalKg=parseFloat((vol*densidad*0.4436).toFixed(3));
   } else {
     const filas=document.querySelectorAll('#hab-filas-wrap > div');
     filas.forEach(fila=>{
@@ -6923,15 +6954,27 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
   if(!totalLong||!cant){alert('Ingresa cantidad y longitud');return;}
 
   try{
-    // 1. Descontar longitud del inventario (mp_stock)
+    // 1. Descontar longitud del inventario (mp_stock) — lógica por longitud real
     const stock=mpStock.find(s=>s.id===stockId);
     if(stock){
-      const longActual=parseFloat(stock.longitud_in)||0;
-      // Descontar: reducir cantidad proporcional o registrar como consumo total
-      const newCant=Math.max(0,(parseInt(stock.cantidad)||1)-Math.round(cant));
+      const longPorBarra=parseFloat(stock.longitud_in)||0;
+      const cantActual=parseInt(stock.cantidad)||0;
+      const longTotalAct=longPorBarra*cantActual;
+      const longRestante=Math.max(0,longTotalAct-totalLong);
+      const newCant=longPorBarra>0?Math.floor(longRestante/longPorBarra):0;
+      const kgBarra=parseFloat(stock.kg_barra)||0;
+      const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
+      const newValor=parseFloat((newCant*kgBarra*(parseFloat(stock.precio_kg)||0)).toFixed(2));
+      const newStatus=newCant>0?'disponible':'sin_stock';
       await sbUpdate('mp_stock',{id:stockId},{
-        cantidad:newCant
+        cantidad:newCant,
+        kg_total:newKgTotal,
+        valor_total:newValor,
+        status:newStatus,
+        updated_at:new Date().toISOString()
       });
+      const idx=mpStock.findIndex(s=>s.id===stockId);
+      if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus};
     }
     // 2. Actualizar reservación → en_transito
     await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
