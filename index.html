@@ -3968,7 +3968,7 @@ function showNewOTForm(){
   const wrap=document.getElementById('new-ot-form-wrap');
   if(!wrap) return;
   const nextNum='OT-'+String(getNextOTNumber()).padStart(5,'0');
-  const prodOpts=[...products].sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(p=>'<option value="'+p.id+'">'+((p.code&&p.sort_order?p.sort_order+'. ':p.code?p.code+' — ':''))+(p.name||'')+(p.code?' ('+p.code+')':'')+'</option>').join('');
+  const prodOpts=[...products].sort((a,b)=>(a.sort_number??99999)-(b.sort_number??99999)||(a.code||'').localeCompare(b.code||'')).map(p=>'<option value="'+p.id+'">'+((p.sort_number!=null?p.sort_number+'. ':''))+(p.name||'')+(p.code?' — '+p.code:'')+'</option>').join('');
 
   const div=document.createElement('div');
   div.className='card';
@@ -4008,6 +4008,9 @@ function onOTFormProdChange(){
   const prodId=document.getElementById('otf-prod')?.value;
   const p=getProduct(prodId);
   if(p){
+    // Cargar lote de fabricación definido en Ingeniería
+    const qtyEl=document.getElementById('otf-qty');
+    if(qtyEl&&p.batch) qtyEl.value=p.batch;
     checkOTMaterialDisponible(p);
   } else {
     const infoEl=document.getElementById('otf-material-info');
@@ -4109,13 +4112,13 @@ async function saveNewOT(){
         const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
         return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
       });
-      const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&s.status==='disponible'));
+      const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial')));
       if(sinStock.length){
         const matCats=sinStock.map(m=>MAT_TYPES.find(t=>t.val===m.tipo)?.label||m.tipo).join(', ');
         alert('Sin existencia: '+matCats+'. OT creada sin apartar material.');
       } else {
         for(const m of barras){
-          const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+          const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
           if(stockDisp.length){
             const s=stockDisp[0];
             const resRec={id:uid(),mp_stock_id:s.id,material_id:m.tipo,
