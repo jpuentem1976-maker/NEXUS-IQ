@@ -7114,7 +7114,9 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
     const kgBarra=parseFloat(stock.kg_barra)||0;
     const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
     const newValor=parseFloat((newCant*kgBarra*(parseFloat(stock.precio_kg)||0)).toFixed(2));
-    const newStatus=newCant>0?'disponible':'sin_stock';
+    // Verificar si hay otras reservaciones activas sobre este stock (otras OTs)
+    const otrasResActivas=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(stockId)+'&id=neq.'+encodeURIComponent(resId)+'&status=in.(apartado,parcial)');
+    const newStatus=newCant<=0?'sin_stock':(otrasResActivas&&otrasResActivas.length>0)?'apartado':'disponible';
     await sbUpdate('mp_stock',{id:stockId},{
       cantidad:newCant,
       kg_total:newKgTotal,
