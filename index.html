@@ -970,7 +970,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 
 <!-- MODAL CONFIGURAR ALMACÉN PT -->
 <div id="pt-config-almacen-modal" class="overlay hidden">
-  <div class="card modal" style="max-width:500px">
+  <div class="card modal" style="max-width:540px">
     <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px" id="pt-config-modal-title">⚙ Nuevo Almacén</div>
     <div class="field">
       <label>Nombre del almacén <span style="color:var(--danger)">*</span></label>
@@ -8853,20 +8853,28 @@ function ptAddCampoConfig(existente){
   const row=document.createElement('div');
   row.id=id;
   row.dataset.fieldId=existente?.id||'';
-  row.style.cssText='display:flex;gap:8px;align-items:center;background:var(--bg3);border-radius:6px;padding:8px 10px';
+  row.style.cssText='display:flex;flex-direction:column;gap:6px;background:var(--bg3);border-radius:6px;padding:10px 12px;border:1px solid var(--border)';
   row.innerHTML=`
-    <input type="text" placeholder="Nombre del campo" value="${existente?.nombre_campo||''}" 
-      style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px" class="ptcfg-nombre">
-    <select style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px" class="ptcfg-tipo">
-      <option value="texto" ${existente?.tipo==='texto'?'selected':''}>Texto</option>
-      <option value="numero" ${existente?.tipo==='numero'?'selected':''}>Número</option>
-      <option value="fecha" ${existente?.tipo==='fecha'?'selected':''}>Fecha</option>
-    </select>
-    <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer">
-      <input type="checkbox" class="ptcfg-oblig" ${existente?.obligatorio?'checked':''}> Obligatorio
-    </label>
-    <button type="button" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer" 
-      onclick="this.closest('[id]').remove()">✕</button>`;
+    <div class="field" style="margin:0">
+      <label style="font-size:10px">NOMBRE DEL CAMPO</label>
+      <input type="text" placeholder="Ej: Número de Remisión" value="${existente?.nombre_campo||''}" 
+        style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-size:13px" class="ptcfg-nombre">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="field" style="margin:0;flex:1;min-width:110px">
+        <label style="font-size:10px">TIPO</label>
+        <select style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:6px 8px;font-size:13px" class="ptcfg-tipo">
+          <option value="texto" ${existente?.tipo==='texto'?'selected':''}>Texto</option>
+          <option value="numero" ${existente?.tipo==='numero'?'selected':''}>Número</option>
+          <option value="fecha" ${existente?.tipo==='fecha'?'selected':''}>Fecha</option>
+        </select>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;cursor:pointer;padding-top:14px">
+        <input type="checkbox" class="ptcfg-oblig" ${existente?.obligatorio?'checked':''}> Obligatorio
+      </label>
+      <button type="button" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:6px 12px;font-size:12px;cursor:pointer;margin-left:auto" 
+        onclick="this.closest('[id]').remove()">✕ Quitar</button>
+    </div>`;
   document.getElementById('pt-config-campos-list').appendChild(row);
 }
 window.ptAddCampoConfig=ptAddCampoConfig;
