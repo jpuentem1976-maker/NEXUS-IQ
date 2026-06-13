@@ -4045,7 +4045,7 @@ function checkOTMaterialDisponible(p){
     const totalReq=(longReq*cantReq).toFixed(3);
     const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
     const totalDisp=stockItems.reduce((a,s)=>{
-      return a+(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||1);
+      return a+(parseFloat(s.longitud_in)||0)*(parseFloat(s.cantidad)||0);
     },0);
     // Calcular ya apartado
     const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
@@ -4178,9 +4178,9 @@ async function deleteOT(id){
         const stockDB=await sbSelect('mp_stock','select=*&id=eq.'+encodeURIComponent(t.mp_stock_id));
         const s=(stockDB||[])[0];
         if(s){
-          const longRestituida=(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||0)+(parseFloat(t.longitud_in)||0);
+          const longRestituida=(parseFloat(s.longitud_in)||0)*(parseFloat(s.cantidad)||0)+(parseFloat(t.longitud_in)||0);
           const longBarra=parseFloat(s.longitud_in)||0;
-          const newCant=longBarra>0?Math.round(longRestituida/longBarra):parseInt(s.cantidad)||0;
+          const newCant=longBarra>0?parseFloat((longRestituida/longBarra).toFixed(3)):parseFloat(s.cantidad)||0;
           const kgBarra=parseFloat(s.kg_barra)||0;
           const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
           const newValor=parseFloat((newCant*kgBarra*(parseFloat(s.precio_kg)||0)).toFixed(2));
@@ -4246,8 +4246,8 @@ async function releaseOT(id){
       };
       await fetch(SB_URL+'/rest/v1/machine_load',{method:'POST',headers:H,body:JSON.stringify(mlRec)});
     }
-    // Actualizar mp_transit a 'liberado'
-    await fetch(SB_URL+'/rest/v1/mp_transit?ot_id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:H,body:JSON.stringify({status:'liberado',released_at:now})});
+    // Actualizar mp_transit a 'consumido' para que salga de Tránsito Producción
+    await fetch(SB_URL+'/rest/v1/mp_transit?ot_id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:H,body:JSON.stringify({status:'consumido',released_at:now})});
     await loadAllData();
     renderProgrammingList();
     renderReleasedOTs();
@@ -5953,7 +5953,7 @@ function renderAlmGeneral(){
   // Total global de existencias
   const grandTotalValor=items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
   const grandTotalKg=items.reduce((a,s)=>a+(parseFloat(s.kg_total)||0),0);
-  const grandTotalLong=items.reduce((a,s)=>a+(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||1),0);
+  const grandTotalLong=items.reduce((a,s)=>a+(parseFloat(s.longitud_in)||0)*(parseFloat(s.cantidad)||0),0);
 
   list.innerHTML='';
   if(!items.length){
@@ -5977,10 +5977,10 @@ function renderAlmGeneral(){
 
   Object.entries(groups).forEach(([key,g])=>{
     const gid='sg-'+btoa(unescape(encodeURIComponent(key))).replace(/[^a-zA-Z0-9]/g,'').substring(0,12);
-    const totalBarras=g.items.reduce((a,s)=>a+(parseInt(s.cantidad)||1),0);
-    const totalKg=g.items.reduce((a,s)=>a+(parseFloat(s.kg_total)||parseFloat((calcKgBarra(s)*(parseInt(s.cantidad)||1)).toFixed(2))),0);
+    const totalBarras=parseFloat(g.items.reduce((a,s)=>a+(parseFloat(s.cantidad)||0),0).toFixed(3));
+    const totalKg=g.items.reduce((a,s)=>a+(parseFloat(s.kg_total)||parseFloat((calcKgBarra(s)*(parseFloat(s.cantidad)||0)).toFixed(2))),0);
     const totalValor=g.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
-    const totalLongitud=g.items.reduce((a,s)=>a+(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||1),0);
+    const totalLongitud=g.items.reduce((a,s)=>a+(parseFloat(s.longitud_in)||0)*(parseFloat(s.cantidad)||0),0);
     const pppAvg=totalKg>0?(totalValor/totalKg).toFixed(2):0;
     const matCat=mpMaterials.find(m=>m.id===g.material_id||m.name===g.material);
     const minCat=matCat?.cantidad_min||0;
@@ -6047,14 +6047,14 @@ function renderAlmGeneral(){
       row.innerHTML=
         '<div style="flex:1">'+
           '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-            '<span style="font-family:DM Mono,monospace;font-size:13px;color:var(--text);font-weight:700">'+(s.longitud_in?parseFloat((parseFloat(s.longitud_in)*(parseInt(s.cantidad)||1)).toFixed(3))+'"':'--')+'</span>'+'<span style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted)">('+parseFloat(s.longitud_in).toFixed(3)+'" c/u)</span>'+
-            '<span style="font-size:12px;color:var(--muted)">'+(s.cantidad||1)+' barra'+((s.cantidad||1)!==1?'s':'')+'</span>'+
+            '<span style="font-family:DM Mono,monospace;font-size:13px;color:var(--text);font-weight:700">'+(s.longitud_in?parseFloat((parseFloat(s.longitud_in)*(parseFloat(s.cantidad)||0)).toFixed(3))+'"':'--')+'</span>'+'<span style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted)">('+parseFloat(s.longitud_in).toFixed(3)+'" c/u)</span>'+
+            '<span style="font-size:12px;color:var(--muted)">'+parseFloat(s.cantidad||0).toFixed(3)+' barra'+(parseFloat(s.cantidad||0)!==1?'s':'')+' </span>'+
             '<span class="tag" style="color:'+stColor+';font-size:10px">'+(s.status||'disponible')+'</span>'+
             (s.lote?'<span style="font-size:10px;color:var(--muted)">Lote: '+s.lote+'</span>':'')+
             (reservas.length>0?'<span style="font-size:10px;color:var(--warn)">📌 '+reservas.map(r=>r.ot_number).join(', ')+'</span>':'')+
           '</div>'+
           (reservas.length>0?(()=>{
-            const longTotal=parseFloat((parseFloat(s.longitud_in)*(parseInt(s.cantidad)||1)).toFixed(3));
+            const longTotal=parseFloat((parseFloat(s.longitud_in)*(parseFloat(s.cantidad)||0)).toFixed(3));
             const longApartado=reservas.reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
             const longDisp=Math.max(0,longTotal-longApartado);
             return '<div style="font-size:10px;color:var(--warn);margin-top:3px;font-family:DM Mono,monospace">'
@@ -6735,7 +6735,7 @@ function renderAlmReport(){
     if(!minimo) return false;
     const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
     const cantApartada=apartadosPorMat[key]||0;
-    const cantReal=Math.max(0,(parseInt(s.cantidad)||0)-cantApartada);
+    const cantReal=Math.max(0,(parseFloat(s.cantidad)||0)-cantApartada);
     const sem=semaforo(cantReal,minimo);
     return sem.label==='SIN STOCK'||sem.label==='BAJO MÍNIMO'||sem.label==='EN MÍNIMO';
   });
@@ -6757,8 +6757,8 @@ function renderAlmReport(){
         <td style="font-weight:600">${s.material?.toUpperCase()||'--'}</td>
         <td style="font-size:11px;color:var(--muted)">${s.forma||'--'}</td>
         <td style="font-family:'DM Mono',monospace;font-size:11px">${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}"${s.diametro_int?'/'+parseFloat(s.diametro_int).toFixed(3)+'"':''}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in?parseFloat((parseFloat(s.longitud_in)*(parseInt(s.cantidad)||1)).toFixed(3)):'--'}" (${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" c/u)</td>
-        <td style="font-weight:700;color:${sem.color};font-size:14px">${s.cantidad||0}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in?parseFloat((parseFloat(s.longitud_in)*(parseFloat(s.cantidad)||0)).toFixed(3)):'--'}" (${s.longitud_in?parseFloat(s.longitud_in).toFixed(3):'--'}" c/u)</td>
+        <td style="font-weight:700;color:${sem.color};font-size:14px">${parseFloat(s.cantidad||0).toFixed(3)}</td>
         <td style="color:var(--muted)">${s.cantidad_min||0}</td>
         <td style="font-size:11px;color:var(--muted)">${s.ubicacion||'--'}</td>
         <td style="font-size:11px;color:var(--muted)">${s.supplier_name||'--'}</td>
@@ -7107,10 +7107,11 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
     const stock=mpStock.find(s=>s.id===stockId);
     if(!stock) throw new Error('No se encontró el registro de stock (ID: '+stockId+'). Recarga la pestaña.');
     const longPorBarra=parseFloat(stock.longitud_in)||0;
-    const cantActual=parseInt(stock.cantidad)||0;
-    const longTotalAct=longPorBarra*cantActual;
-    const longRestante=Math.max(0,longTotalAct-totalLong);
-    const newCant=longPorBarra>0?Math.floor(longRestante/longPorBarra):0;
+    const cantActual=parseFloat(stock.cantidad)||0;                          // decimal
+    const longTotalAct=parseFloat((longPorBarra*cantActual).toFixed(3));
+    const longRestante=Math.max(0,parseFloat((longTotalAct-totalLong).toFixed(3)));
+    // Cantidad en barras con decimales — ej. 7.44 barras
+    const newCant=longPorBarra>0?parseFloat((longRestante/longPorBarra).toFixed(3)):0;
     const kgBarra=parseFloat(stock.kg_barra)||0;
     const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
     const newValor=parseFloat((newCant*kgBarra*(parseFloat(stock.precio_kg)||0)).toFixed(2));
@@ -7127,8 +7128,8 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
     const idx=mpStock.findIndex(s=>s.id===stockId);
     if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus};
 
-    // 2. Actualizar reservación → en_transito
-    await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
+    // 2. Eliminar reservación (ya está en tránsito, no debe seguir sumando en "apartado")
+    await sbDelete('mp_reservations',{id:resId});
     const res=mpReservations.find(r=>r.id===resId)||{};
     const woForTransit=workOrders.find(o=>o.id===res.ot_id)||{};
     const prodForTransit=getProduct(woForTransit.product_id)||{};
