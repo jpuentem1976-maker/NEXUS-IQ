@@ -133,7 +133,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   body{background:#fff!important;color:#000!important}
   .card{background:#fff!important;border:1px solid #ccc!important}
   .page{display:block!important}
-  #page-operator,#page-engineering,#page-programming,#page-almacen,#config-screen,#loading-overlay{display:none!important}
+  #page-operator,#page-engineering,#page-programming,#page-almacen,#page-almacen-pt,#config-screen,#loading-overlay{display:none!important}
   #page-reports{display:block!important;padding:0!important}
 }
 </style>
@@ -177,6 +177,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <button class="nav-btn" id="nb-prog-logout" onclick="progLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" id="nb-almacen" onclick="almacenClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-lock">🔒</span> Almacén MP</button>
   <button class="nav-btn" id="nb-alm-logout" onclick="almLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
+  <button class="nav-btn" id="nb-almacen-pt" onclick="almPTClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-pt-lock">🔒</span> Almacén PT</button>
+  <button class="nav-btn" id="nb-alm-pt-logout" onclick="almPTLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" onclick="reconectar()" style="font-size:11px;margin-left:4px">🔄</button>
   <div style="margin-left:6px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px;white-space:nowrap"><div class="live-dot"></div>EN LÍNEA</div>
   <button onclick="showDebug()" style="margin-left:6px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);padding:4px 8px;border-radius:6px;font-size:10px;cursor:pointer">🔍</button>
@@ -911,6 +913,142 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 </div>
 
+<!-- MODAL ALMACÉN PT LOGIN -->
+<div id="almacen-pt-modal" class="overlay hidden">
+  <div class="card modal card-accent" style="text-align:center">
+    <div style="font-size:32px;margin-bottom:12px">🏭</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A ALMACÉN PT</div>
+    <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
+    <div class="field" style="text-align:left;margin-bottom:6px">
+      <label>Contraseña</label>
+      <input type="password" id="alm-pt-pass" style="text-align:center;letter-spacing:6px;font-size:20px" onkeydown="if(event.key==='Enter')tryAlmPTLogin()">
+    </div>
+    <div id="alm-pt-error" class="hidden" style="color:var(--danger);font-size:12px;font-weight:700;margin:6px 0">✕ Contraseña incorrecta</div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('almacen-pt-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="tryAlmPTLogin()">🔓 Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVER A GENERAL PT -->
+<div id="pt-mover-general-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:420px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">📦 Mover a Almacén General PT</div>
+    <div id="pt-mover-general-info" style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="field">
+      <label>Cantidad a mover</label>
+      <input type="number" id="pt-mover-cant" min="1" style="font-size:18px;text-align:center">
+    </div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('pt-mover-general-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="confirmarMoverAGeneral()">✓ Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVER A ALMACÉN DESTINO -->
+<div id="pt-mover-destino-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:460px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">🚚 Mover a Almacén Destino</div>
+    <div id="pt-mover-destino-info" style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="field">
+      <label>Cantidad a mover</label>
+      <input type="number" id="pt-destino-cant" min="1" style="font-size:18px;text-align:center">
+    </div>
+    <div class="field">
+      <label>Almacén destino</label>
+      <select id="pt-destino-select" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;width:100%"></select>
+    </div>
+    <div id="pt-destino-campos-extra" style="margin-top:4px"></div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('pt-mover-destino-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="confirmarMoverADestino()">✓ Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIGURAR ALMACÉN PT -->
+<div id="pt-config-almacen-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:500px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px" id="pt-config-modal-title">⚙ Nuevo Almacén</div>
+    <div class="field">
+      <label>Nombre del almacén <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="pt-config-nombre" placeholder="Ej: Sucursal Monterrey, Cliente Pemex...">
+    </div>
+    <div class="field">
+      <label>Descripción</label>
+      <input type="text" id="pt-config-desc" placeholder="Opcional">
+    </div>
+    <div style="margin:16px 0 8px;font-size:13px;font-weight:700;color:var(--accent)">CAMPOS ADICIONALES EN MOVIMIENTO DE SALIDA</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Define qué datos se capturan al mover producto a este almacén (ej: Número de remisión, Nombre receptor)</div>
+    <div id="pt-config-campos-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+    <button class="btn btn-ghost btn-sm" onclick="ptAddCampoConfig()">+ Agregar campo</button>
+    <div class="g2" style="margin-top:18px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('pt-config-almacen-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="savePTAlmacen()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE ALMACÉN PT -->
+<div id="page-almacen-pt" class="page" style="padding:20px;max-width:1200px;margin:0 auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--accent2)">ALMACÉN DE PRODUCTO TERMINADO</div>
+    <button class="btn btn-sm btn-ghost" onclick="loadPTData().then(renderPTActive)">↻ Actualizar</button>
+  </div>
+
+  <div class="ptabs" style="margin-bottom:16px">
+    <button class="ptab active" onclick="setPTTab('pt-transit',this)">🚚 Tránsito Producción</button>
+    <button class="ptab" onclick="setPTTab('pt-general',this)">📦 Almacén General PT</button>
+    <button class="ptab" onclick="setPTTab('pt-almacenes',this)">🏭 Almacenes</button>
+    <button class="ptab" onclick="setPTTab('pt-movimientos',this)">📋 Movimientos</button>
+    <button class="ptab" onclick="setPTTab('pt-config',this)">⚙ Configurar Almacenes</button>
+  </div>
+
+  <!-- TRÁNSITO PRODUCCIÓN PT -->
+  <div id="pt-transit" class="subpage active">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Entregas de OT pendientes de mover a Almacén General PT</div>
+    <div id="pt-transit-list"></div>
+  </div>
+
+  <!-- ALMACÉN GENERAL PT -->
+  <div id="pt-general" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="pt-general-search" placeholder="🔍 Buscar producto u OT..." oninput="renderPTGeneral()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:240px">
+    </div>
+    <div id="pt-general-banner" style="margin-bottom:14px"></div>
+    <div id="pt-general-list"></div>
+  </div>
+
+  <!-- ALMACENES DESTINO -->
+  <div id="pt-almacenes" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <select id="pt-almacen-filter" onchange="renderPTAlmacenes()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+        <option value="">Todos los almacenes</option>
+      </select>
+    </div>
+    <div id="pt-almacenes-list"></div>
+  </div>
+
+  <!-- MOVIMIENTOS -->
+  <div id="pt-movimientos" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="date" id="pt-mov-from" onchange="renderPTMovimientos()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+      <input type="date" id="pt-mov-to" onchange="renderPTMovimientos()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+    </div>
+    <div id="pt-movimientos-list"></div>
+  </div>
+
+  <!-- CONFIGURAR ALMACENES -->
+  <div id="pt-config" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center">
+      <button class="btn btn-accent btn-sm" onclick="showPTAlmacenForm(null)">+ Nuevo Almacén</button>
+    </div>
+    <div id="pt-config-list"></div>
+  </div>
+</div>
+
 <!-- MODAL BAJA MERMA -->
 <div id="baja-modal" class="modal hidden">
   <div class="modal-box" style="max-width:420px">
@@ -961,6 +1099,7 @@ const PASS_REPORTS     = '4140';
 const PASS_ENGINEERING = '9840';
 const PASS_PROGRAMMING = '8620';
 const PASS_ALMACEN     = '4340';
+const PASS_ALMACEN_PT  = '7720';
 const PASS_INVENTARIOS = '52100';
 const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
@@ -968,7 +1107,7 @@ const OT_START_KEY = 'niq2_ot_start';
 let SB_URL = '', SB_KEY = '';
 let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[];
 let recursosProduccion=[];
-let reportsAuth=false, engAuth=false, progAuth=false;
+let reportsAuth=false, engAuth=false, progAuth=false, almPTAuth=false;
 
 function getConfig(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||null; }catch{ return null; } }
 
@@ -1407,6 +1546,7 @@ function goPage(p){
   document.getElementById('nb-'+p)?.classList.add('active');
   if(p==='reports'){ loadAllData().then(refreshReportSelects); }
   if(p==='almacen'){ loadAlmData(); }
+  if(p==='almacen-pt'){ loadPTData().then(renderPTActive); }
   if(p==='engineering'){ loadAllData().then(renderEngineering); }
   if(p==='programming'){ loadAllData().then(renderProgramming); }
   if(p==='consulta'){ loadAllData().then(renderConsulta); }
@@ -8214,6 +8354,602 @@ async function deleteMpMaterial(id){
   };
 }
 window.deleteMpMaterial=deleteMpMaterial;
+
+// ════════════════════════════════════════════════════════
+//  MÓDULO ALMACÉN PT
+// ════════════════════════════════════════════════════════
+
+// ── Estado ──
+let ptAuth = false;
+let ptTransit = [];      // pt_transit
+let ptStock = [];        // pt_stock (General + destinos)
+let ptWarehouses = [];   // pt_warehouses
+let ptWHFields = [];     // pt_warehouse_fields
+let ptMovements = [];    // pt_movements
+let _ptMoverCtx = {};    // contexto modal mover
+
+// ── Auth ──
+function almPTClick(){
+  if(almPTAuth){ goPage('almacen-pt'); return; }
+  document.getElementById('almacen-pt-modal').classList.remove('hidden');
+  document.getElementById('alm-pt-pass').value='';
+  document.getElementById('alm-pt-error').classList.add('hidden');
+  setTimeout(()=>document.getElementById('alm-pt-pass').focus(),80);
+}
+function tryAlmPTLogin(){
+  const v=document.getElementById('alm-pt-pass').value;
+  if(v===PASS_ALMACEN_PT){
+    almPTAuth=true;
+    document.getElementById('alm-pt-lock').textContent='🔓';
+    document.getElementById('nb-alm-pt-logout').style.display='';
+    document.getElementById('almacen-pt-modal').classList.add('hidden');
+    goPage('almacen-pt');
+  } else {
+    document.getElementById('alm-pt-error').classList.remove('hidden');
+    document.getElementById('alm-pt-pass').value='';
+    document.getElementById('alm-pt-pass').focus();
+  }
+}
+function almPTLogout(){
+  almPTAuth=false;
+  document.getElementById('alm-pt-lock').textContent='🔒';
+  document.getElementById('nb-alm-pt-logout').style.display='none';
+  goPage('operator');
+}
+window.almPTClick=almPTClick;
+window.tryAlmPTLogin=tryAlmPTLogin;
+window.almPTLogout=almPTLogout;
+
+// ── Tabs ──
+function setPTTab(id, btn){
+  document.querySelectorAll('#page-almacen-pt .subpage').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('#page-almacen-pt .ptab').forEach(el=>el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  if(id==='pt-transit')     renderPTTransit();
+  if(id==='pt-general')     renderPTGeneral();
+  if(id==='pt-almacenes')   renderPTAlmacenes();
+  if(id==='pt-movimientos') renderPTMovimientos();
+  if(id==='pt-config')      renderPTConfig();
+}
+window.setPTTab=setPTTab;
+
+function renderPTActive(){
+  const active=document.querySelector('#page-almacen-pt .subpage.active');
+  const id=active?active.id:'pt-transit';
+  if(id==='pt-transit')     renderPTTransit();
+  if(id==='pt-general')     renderPTGeneral();
+  if(id==='pt-almacenes')   renderPTAlmacenes();
+  if(id==='pt-movimientos') renderPTMovimientos();
+  if(id==='pt-config')      renderPTConfig();
+}
+
+// ── Carga de datos ──
+async function loadPTData(){
+  try{
+    const [tr, st, wh, whf, mv] = await Promise.all([
+      sbFetch('pt_transit','order=created_at.desc'),
+      sbFetch('pt_stock','order=created_at.desc'),
+      sbFetch('pt_warehouses','order=nombre.asc'),
+      sbFetch('pt_warehouse_fields','order=orden.asc'),
+      sbFetch('pt_movements','order=created_at.desc&limit=500'),
+    ]);
+    ptTransit   = tr  || [];
+    ptStock     = st  || [];
+    ptWarehouses= wh  || [];
+    ptWHFields  = whf || [];
+    ptMovements = mv  || [];
+
+    // Poblar selector de almacenes destino en filtro
+    const sel=document.getElementById('pt-almacen-filter');
+    if(sel){
+      sel.innerHTML='<option value="">Todos los almacenes</option>'+
+        ptWarehouses.filter(w=>w.activo!==false).map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('');
+    }
+  }catch(e){ console.error('loadPTData:',e); }
+}
+window.loadPTData=loadPTData;
+
+// ── Render Tránsito Producción PT ──
+function renderPTTransit(){
+  const el=document.getElementById('pt-transit-list');
+  if(!el) return;
+  const pendientes=ptTransit.filter(t=>t.status!=='completo');
+  if(!pendientes.length){
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin entregas pendientes de mover a General PT</div>`;
+    return;
+  }
+  let html=`<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
+      <th style="padding:8px 10px;text-align:left">OT</th>
+      <th style="padding:8px 10px;text-align:left">Producto</th>
+      <th style="padding:8px 10px;text-align:center">Entregadas</th>
+      <th style="padding:8px 10px;text-align:center">Movidas</th>
+      <th style="padding:8px 10px;text-align:center">Pendiente</th>
+      <th style="padding:8px 10px;text-align:center">Estado</th>
+      <th style="padding:8px 10px;text-align:center">Acción</th>
+    </tr></thead><tbody>`;
+  pendientes.forEach(t=>{
+    const pend=t.cantidad-(t.cantidad_movida||0);
+    const st=t.status==='parcial'?'<span style="color:var(--warning);font-weight:700">⏳ Parcial</span>':'<span style="color:var(--danger);font-weight:700">🔴 Pendiente</span>';
+    const btnId='pt-tr-btn-'+t.id;
+    window._ptMoverMap=window._ptMoverMap||{};
+    window._ptMoverMap[t.id]=t;
+    html+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${t.ot_number||'-'}</td>
+      <td style="padding:8px 10px">${t.producto_nombre||'-'}</td>
+      <td style="padding:8px 10px;text-align:center">${t.cantidad}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${t.cantidad_movida||0}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--accent2)">${pend}</td>
+      <td style="padding:8px 10px;text-align:center">${st}</td>
+      <td style="padding:8px 10px;text-align:center">
+        <button class="btn btn-sm btn-accent" id="${btnId}" data-id="${t.id}">📦 Mover a General</button>
+      </td>
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  el.innerHTML=html;
+
+  // Eventos botones (sin onclick en string)
+  pendientes.forEach(t=>{
+    const btn=document.getElementById('pt-tr-btn-'+t.id);
+    if(btn) btn.addEventListener('click',()=>showMoverAGeneral(t.id));
+  });
+}
+window.renderPTTransit=renderPTTransit;
+
+// ── Modal Mover a General PT ──
+function showMoverAGeneral(transitId){
+  const t=(window._ptMoverMap||{})[transitId];
+  if(!t) return;
+  const pend=t.cantidad-(t.cantidad_movida||0);
+  _ptMoverCtx={type:'transit-to-general', transitId, pend, t};
+  const info=document.getElementById('pt-mover-general-info');
+  info.innerHTML=`<div style="font-weight:700">${t.producto_nombre}</div>
+    <div style="color:var(--muted);margin-top:4px">OT: <b style="color:var(--accent)">${t.ot_number}</b> &nbsp;|&nbsp; Pendientes de mover: <b style="color:var(--accent2)">${pend}</b></div>`;
+  const cantEl=document.getElementById('pt-mover-cant');
+  cantEl.value=pend; cantEl.max=pend;
+  document.getElementById('pt-mover-general-modal').classList.remove('hidden');
+  setTimeout(()=>cantEl.focus(),80);
+}
+window.showMoverAGeneral=showMoverAGeneral;
+
+async function confirmarMoverAGeneral(){
+  const cant=parseInt(document.getElementById('pt-mover-cant').value)||0;
+  if(!cant||cant<=0){ alert('Ingresa una cantidad válida'); return; }
+  const {transitId,pend,t}=_ptMoverCtx;
+  if(cant>pend){ alert('No puedes mover más de '+pend+' piezas'); return; }
+  try{
+    const now=new Date().toISOString();
+    const nuevaMov=(t.cantidad_movida||0)+cant;
+    const nuevoStatus=nuevaMov>=t.cantidad?'completo':'parcial';
+    // Actualizar transit
+    await sbUpdate('pt_transit',{id:transitId},{cantidad_movida:nuevaMov,status:nuevoStatus});
+    // Crear entrada en pt_stock (General, warehouse_id=null)
+    const stockEntry={
+      warehouse_id:null, producto_id:t.producto_id, producto_nombre:t.producto_nombre,
+      ot_id:t.ot_id, ot_number:t.ot_number, cantidad:cant, cantidad_original:cant,
+      status:'disponible', created_at:now
+    };
+    await sbInsert('pt_stock',stockEntry);
+    // Registrar movimiento
+    await sbInsert('pt_movements',{
+      tipo:'transit-a-general', ot_number:t.ot_number, producto_nombre:t.producto_nombre,
+      cantidad:cant, origen:'Tránsito PT', destino:'Almacén General PT', created_at:now
+    });
+    closeModal('pt-mover-general-modal');
+    await loadPTData();
+    renderPTTransit();
+    alert(`✅ ${cant} piezas movidas a Almacén General PT`);
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.confirmarMoverAGeneral=confirmarMoverAGeneral;
+
+// ── Render Almacén General PT ──
+function renderPTGeneral(){
+  const el=document.getElementById('pt-general-list');
+  const banner=document.getElementById('pt-general-banner');
+  if(!el) return;
+  const q=(document.getElementById('pt-general-search')?.value||'').toLowerCase();
+  const stock=ptStock.filter(s=>s.warehouse_id===null&&s.status!=='agotado'&&
+    (!q||(s.producto_nombre||'').toLowerCase().includes(q)||(s.ot_number||'').toLowerCase().includes(q)));
+
+  // Banner totales
+  const totalPzas=stock.reduce((a,s)=>a+parseInt(s.cantidad||0),0);
+  if(banner) banner.innerHTML=totalPzas>0?
+    `<div style="display:flex;gap:16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content">
+      <span style="font-size:13px">📦 Total en General: <b style="color:var(--accent2);font-size:16px">${totalPzas}</b> piezas</span>
+    </div>`:'';
+
+  if(!stock.length){
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin stock en Almacén General PT</div>`;
+    return;
+  }
+  // Agrupar por producto
+  const grupos={};
+  stock.forEach(s=>{
+    const k=s.producto_nombre||'Sin nombre';
+    if(!grupos[k]) grupos[k]={nombre:k,items:[],total:0};
+    grupos[k].items.push(s);
+    grupos[k].total+=parseInt(s.cantidad||0);
+  });
+  let html='';
+  Object.values(grupos).forEach(g=>{
+    html+=`<div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:14px;color:var(--accent2);margin-bottom:8px">
+        ${g.nombre} <span style="font-weight:400;color:var(--muted);font-size:12px">— ${g.total} piezas disponibles</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">OT</th>
+        <th style="padding:6px 10px;text-align:center">Cantidad</th>
+        <th style="padding:6px 10px;text-align:left">Entrada</th>
+        <th style="padding:6px 10px;text-align:center">Acción</th>
+      </tr></thead><tbody>`;
+    g.items.forEach(s=>{
+      const fecha=s.created_at?new Date(s.created_at).toLocaleDateString('es-MX'):'—';
+      window._ptStockMap=window._ptStockMap||{};
+      window._ptStockMap[s.id]=s;
+      html+=`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;color:var(--accent);font-weight:700">${s.ot_number||'—'}</td>
+        <td style="padding:6px 10px;text-align:center;font-weight:700">${s.cantidad}</td>
+        <td style="padding:6px 10px;color:var(--muted)">${fecha}</td>
+        <td style="padding:6px 10px;text-align:center">
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)" 
+            id="pt-gen-btn-${s.id}" data-id="${s.id}">🚚 Mover a almacén</button>
+        </td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  });
+  el.innerHTML=html;
+
+  // Eventos
+  stock.forEach(s=>{
+    const btn=document.getElementById('pt-gen-btn-'+s.id);
+    if(btn) btn.addEventListener('click',()=>showMoverADestino(s.id));
+  });
+}
+window.renderPTGeneral=renderPTGeneral;
+
+// ── Modal Mover a Almacén Destino ──
+function showMoverADestino(stockId){
+  const s=(window._ptStockMap||{})[stockId];
+  if(!s) return;
+  const whs=ptWarehouses.filter(w=>w.activo!==false);
+  if(!whs.length){ alert('No hay almacenes destino configurados. Ve a ⚙ Configurar Almacenes.'); return; }
+  _ptMoverCtx={type:'general-to-destino',stockId,s};
+  const info=document.getElementById('pt-mover-destino-info');
+  info.innerHTML=`<div style="font-weight:700">${s.producto_nombre}</div>
+    <div style="color:var(--muted);margin-top:4px">OT: <b style="color:var(--accent)">${s.ot_number||'—'}</b> &nbsp;|&nbsp; Disponible: <b style="color:var(--accent2)">${s.cantidad}</b></div>`;
+  const cantEl=document.getElementById('pt-destino-cant');
+  cantEl.value=s.cantidad; cantEl.max=s.cantidad;
+  const sel=document.getElementById('pt-destino-select');
+  sel.innerHTML=whs.map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('');
+  renderCamposExtra(sel.value);
+  sel.onchange=()=>renderCamposExtra(sel.value);
+  document.getElementById('pt-mover-destino-modal').classList.remove('hidden');
+  setTimeout(()=>cantEl.focus(),80);
+}
+window.showMoverADestino=showMoverADestino;
+
+function renderCamposExtra(warehouseId){
+  const campos=ptWHFields.filter(f=>f.warehouse_id===warehouseId).sort((a,b)=>a.orden-b.orden);
+  const cont=document.getElementById('pt-destino-campos-extra');
+  if(!campos.length){ cont.innerHTML=''; return; }
+  cont.innerHTML=campos.map(f=>`
+    <div class="field" style="margin-top:8px">
+      <label>${f.nombre_campo}${f.obligatorio?' <span style="color:var(--danger)">*</span>':''}</label>
+      ${f.tipo==='fecha'?`<input type="date" id="ptcf-${f.id}" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;width:100%">`:
+        f.tipo==='numero'?`<input type="number" id="ptcf-${f.id}" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;width:100%">`:
+        `<input type="text" id="ptcf-${f.id}" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;width:100%">`}
+    </div>`).join('');
+}
+
+async function confirmarMoverADestino(){
+  const cant=parseInt(document.getElementById('pt-destino-cant').value)||0;
+  const whId=document.getElementById('pt-destino-select').value;
+  if(!cant||cant<=0){ alert('Ingresa una cantidad válida'); return; }
+  const {stockId,s}=_ptMoverCtx;
+  if(cant>s.cantidad){ alert('No puedes mover más de '+s.cantidad+' piezas'); return; }
+  // Validar campos obligatorios
+  const campos=ptWHFields.filter(f=>f.warehouse_id===whId);
+  const camposSalida={};
+  for(const f of campos){
+    const val=(document.getElementById('ptcf-'+f.id)?.value||'').trim();
+    if(f.obligatorio&&!val){ alert('El campo "'+f.nombre_campo+'" es obligatorio'); return; }
+    camposSalida[f.nombre_campo]=val;
+  }
+  const wh=ptWarehouses.find(w=>w.id===whId);
+  try{
+    const now=new Date().toISOString();
+    const newCant=s.cantidad-cant;
+    // Actualizar stock origen
+    if(newCant<=0){
+      await sbUpdate('pt_stock',{id:stockId},{cantidad:0,status:'agotado'});
+    } else {
+      await sbUpdate('pt_stock',{id:stockId},{cantidad:newCant});
+    }
+    // Crear entrada en almacén destino
+    await sbInsert('pt_stock',{
+      warehouse_id:whId, producto_id:s.producto_id, producto_nombre:s.producto_nombre,
+      ot_id:s.ot_id, ot_number:s.ot_number, cantidad:cant, cantidad_original:cant,
+      status:'disponible', campos_salida:camposSalida, moved_at:now, created_at:now
+    });
+    // Movimiento
+    await sbInsert('pt_movements',{
+      tipo:'general-a-destino', ot_number:s.ot_number, producto_nombre:s.producto_nombre,
+      cantidad:cant, origen:'Almacén General PT', destino:wh?.nombre||whId,
+      campos_salida:camposSalida, created_at:now
+    });
+    closeModal('pt-mover-destino-modal');
+    await loadPTData();
+    renderPTGeneral();
+    alert(`✅ ${cant} piezas movidas a ${wh?.nombre||'almacén destino'}`);
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.confirmarMoverADestino=confirmarMoverADestino;
+
+// ── Render Almacenes Destino ──
+function renderPTAlmacenes(){
+  const el=document.getElementById('pt-almacenes-list');
+  if(!el) return;
+  const filtroWH=document.getElementById('pt-almacen-filter')?.value||'';
+  const stock=ptStock.filter(s=>s.warehouse_id&&s.status!=='agotado'&&(!filtroWH||s.warehouse_id===filtroWH));
+  if(!stock.length){
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin stock en almacenes destino</div>`;
+    return;
+  }
+  // Agrupar por almacén
+  const grupos={};
+  stock.forEach(s=>{
+    const wh=ptWarehouses.find(w=>w.id===s.warehouse_id);
+    const k=s.warehouse_id;
+    if(!grupos[k]) grupos[k]={nombre:wh?.nombre||s.warehouse_id,items:[],total:0};
+    grupos[k].items.push(s);
+    grupos[k].total+=parseInt(s.cantidad||0);
+  });
+  let html='';
+  Object.values(grupos).forEach(g=>{
+    html+=`<div style="margin-bottom:24px">
+      <div style="font-weight:700;font-size:15px;color:var(--accent);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--accent)">
+        🏭 ${g.nombre} <span style="font-weight:400;color:var(--muted);font-size:12px">— ${g.total} piezas</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="padding:6px 10px;text-align:left">Producto</th>
+        <th style="padding:6px 10px;text-align:left">OT</th>
+        <th style="padding:6px 10px;text-align:center">Cantidad</th>
+        <th style="padding:6px 10px;text-align:left">Campos de salida</th>
+        <th style="padding:6px 10px;text-align:left">Fecha</th>
+      </tr></thead><tbody>`;
+    g.items.forEach(s=>{
+      const fecha=s.moved_at?new Date(s.moved_at).toLocaleDateString('es-MX'):'—';
+      const campos=s.campos_salida?Object.entries(s.campos_salida).filter(([,v])=>v).map(([k,v])=>`<span style="background:var(--bg3);border-radius:4px;padding:2px 6px;font-size:11px;margin-right:4px"><b>${k}:</b> ${v}</span>`).join(''):'—';
+      html+=`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;font-weight:600">${s.producto_nombre||'—'}</td>
+        <td style="padding:6px 10px;color:var(--accent)">${s.ot_number||'—'}</td>
+        <td style="padding:6px 10px;text-align:center;font-weight:700">${s.cantidad}</td>
+        <td style="padding:6px 10px">${campos}</td>
+        <td style="padding:6px 10px;color:var(--muted)">${fecha}</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  });
+  el.innerHTML=html;
+}
+window.renderPTAlmacenes=renderPTAlmacenes;
+
+// ── Render Movimientos PT ──
+function renderPTMovimientos(){
+  const el=document.getElementById('pt-movimientos-list');
+  if(!el) return;
+  const from=document.getElementById('pt-mov-from')?.value;
+  const to=document.getElementById('pt-mov-to')?.value;
+  let movs=ptMovements;
+  if(from) movs=movs.filter(m=>m.created_at&&m.created_at>=from);
+  if(to)   movs=movs.filter(m=>m.created_at&&m.created_at<=to+'T23:59:59');
+  if(!movs.length){
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px">Sin movimientos en el período</div>`;
+    return;
+  }
+  let html=`<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
+      <th style="padding:8px 10px;text-align:left">Fecha</th>
+      <th style="padding:8px 10px;text-align:left">Tipo</th>
+      <th style="padding:8px 10px;text-align:left">Producto</th>
+      <th style="padding:8px 10px;text-align:left">OT</th>
+      <th style="padding:8px 10px;text-align:center">Cant.</th>
+      <th style="padding:8px 10px;text-align:left">Origen → Destino</th>
+    </tr></thead><tbody>`;
+  movs.forEach(m=>{
+    const fecha=m.created_at?new Date(m.created_at).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'}):'—';
+    const tipoLabel=m.tipo==='transit-a-general'?'📦 Transit→General':'🚚 General→Destino';
+    html+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px 10px;color:var(--muted);font-size:12px">${fecha}</td>
+      <td style="padding:6px 10px;font-size:12px">${tipoLabel}</td>
+      <td style="padding:6px 10px;font-weight:600">${m.producto_nombre||'—'}</td>
+      <td style="padding:6px 10px;color:var(--accent)">${m.ot_number||'—'}</td>
+      <td style="padding:6px 10px;text-align:center;font-weight:700">${m.cantidad||0}</td>
+      <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${m.origen||''}${m.destino?' → '+m.destino:''}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  el.innerHTML=html;
+}
+window.renderPTMovimientos=renderPTMovimientos;
+
+// ── Render Config Almacenes ──
+function renderPTConfig(){
+  const el=document.getElementById('pt-config-list');
+  if(!el) return;
+  const activos=ptWarehouses.filter(w=>w.activo!==false);
+  if(!activos.length){
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px">Sin almacenes configurados. Crea el primero con el botón de arriba.</div>`;
+    return;
+  }
+  let html=`<div style="display:flex;flex-direction:column;gap:12px">`;
+  activos.forEach(w=>{
+    window._ptWHMap=window._ptWHMap||{};
+    window._ptWHMap[w.id]=w;
+    const campos=ptWHFields.filter(f=>f.warehouse_id===w.id).sort((a,b)=>a.orden-b.orden);
+    const camposHTML=campos.length?campos.map(f=>`<span style="background:var(--bg3);border-radius:4px;padding:2px 8px;font-size:11px;border:1px solid var(--border)">${f.nombre_campo} (${f.tipo})${f.obligatorio?' *':''}</span>`).join(' '):'<span style="color:var(--muted);font-size:12px">Sin campos adicionales</span>';
+    html+=`<div class="card" style="padding:14px 18px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${w.nombre}</div>
+          ${w.descripcion?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${w.descripcion}</div>`:''}
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${camposHTML}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-ghost" id="pt-edit-wh-${w.id}" data-id="${w.id}">✏ Editar</button>
+          <button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)" id="pt-del-wh-${w.id}" data-id="${w.id}">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  });
+  html+=`</div>`;
+  el.innerHTML=html;
+
+  activos.forEach(w=>{
+    const editBtn=document.getElementById('pt-edit-wh-'+w.id);
+    const delBtn=document.getElementById('pt-del-wh-'+w.id);
+    if(editBtn) editBtn.addEventListener('click',()=>showPTAlmacenForm(w.id));
+    if(delBtn) delBtn.addEventListener('click',()=>deletePTAlmacen(w.id));
+  });
+}
+window.renderPTConfig=renderPTConfig;
+
+// ── Form Configurar Almacén ──
+let _ptEditingWHId=null;
+let _ptCampoCount=0;
+
+function showPTAlmacenForm(whId){
+  _ptEditingWHId=whId;
+  _ptCampoCount=0;
+  const title=document.getElementById('pt-config-modal-title');
+  title.textContent=whId?'✏ Editar Almacén':'⚙ Nuevo Almacén';
+  if(whId){
+    const w=ptWarehouses.find(x=>x.id===whId)||{};
+    document.getElementById('pt-config-nombre').value=w.nombre||'';
+    document.getElementById('pt-config-desc').value=w.descripcion||'';
+    // Cargar campos existentes
+    const campos=ptWHFields.filter(f=>f.warehouse_id===whId).sort((a,b)=>a.orden-b.orden);
+    const listEl=document.getElementById('pt-config-campos-list');
+    listEl.innerHTML='';
+    campos.forEach(f=>ptAddCampoConfig(f));
+  } else {
+    document.getElementById('pt-config-nombre').value='';
+    document.getElementById('pt-config-desc').value='';
+    document.getElementById('pt-config-campos-list').innerHTML='';
+  }
+  document.getElementById('pt-config-almacen-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('pt-config-nombre').focus(),80);
+}
+window.showPTAlmacenForm=showPTAlmacenForm;
+
+function ptAddCampoConfig(existente){
+  const id='ptcfg-row-'+(++_ptCampoCount);
+  const row=document.createElement('div');
+  row.id=id;
+  row.dataset.fieldId=existente?.id||'';
+  row.style.cssText='display:flex;gap:8px;align-items:center;background:var(--bg3);border-radius:6px;padding:8px 10px';
+  row.innerHTML=`
+    <input type="text" placeholder="Nombre del campo" value="${existente?.nombre_campo||''}" 
+      style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px" class="ptcfg-nombre">
+    <select style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:12px" class="ptcfg-tipo">
+      <option value="texto" ${existente?.tipo==='texto'?'selected':''}>Texto</option>
+      <option value="numero" ${existente?.tipo==='numero'?'selected':''}>Número</option>
+      <option value="fecha" ${existente?.tipo==='fecha'?'selected':''}>Fecha</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer">
+      <input type="checkbox" class="ptcfg-oblig" ${existente?.obligatorio?'checked':''}> Obligatorio
+    </label>
+    <button type="button" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:3px 8px;font-size:12px;cursor:pointer" 
+      onclick="this.closest('[id]').remove()">✕</button>`;
+  document.getElementById('pt-config-campos-list').appendChild(row);
+}
+window.ptAddCampoConfig=ptAddCampoConfig;
+
+async function savePTAlmacen(){
+  const nombre=(document.getElementById('pt-config-nombre').value||'').trim();
+  if(!nombre){ alert('El nombre del almacén es obligatorio'); return; }
+  const desc=(document.getElementById('pt-config-desc').value||'').trim();
+  try{
+    let whId=_ptEditingWHId;
+    if(whId){
+      await sbUpdate('pt_warehouses',{id:whId},{nombre,descripcion:desc});
+    } else {
+      const res=await sbInsert('pt_warehouses',{nombre,descripcion:desc,activo:true});
+      whId=res?.[0]?.id||res?.id;
+      if(!whId) throw new Error('No se pudo obtener ID del nuevo almacén');
+    }
+    // Campos: eliminar todos los del almacén y reinsertar
+    await sbDelete('pt_warehouse_fields',{warehouse_id:whId});
+    const rows=[...document.getElementById('pt-config-campos-list').children];
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i];
+      const nom=r.querySelector('.ptcfg-nombre')?.value?.trim();
+      if(!nom) continue;
+      const tipo=r.querySelector('.ptcfg-tipo')?.value||'texto';
+      const oblig=r.querySelector('.ptcfg-oblig')?.checked||false;
+      await sbInsert('pt_warehouse_fields',{warehouse_id:whId,nombre_campo:nom,tipo,obligatorio:oblig,orden:i});
+    }
+    closeModal('pt-config-almacen-modal');
+    await loadPTData();
+    renderPTConfig();
+    // Actualizar selector en filtro de almacenes
+    const sel=document.getElementById('pt-almacen-filter');
+    if(sel) sel.innerHTML='<option value="">Todos los almacenes</option>'+
+      ptWarehouses.filter(w=>w.activo!==false).map(w=>`<option value="${w.id}">${w.nombre}</option>`).join('');
+    alert('✅ Almacén guardado');
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.savePTAlmacen=savePTAlmacen;
+
+async function deletePTAlmacen(whId){
+  const wh=ptWarehouses.find(w=>w.id===whId);
+  const enUso=ptStock.some(s=>s.warehouse_id===whId&&s.status!=='agotado');
+  if(enUso){ alert('No se puede eliminar: hay stock activo en este almacén'); return; }
+  if(!confirm(`¿Eliminar almacén "${wh?.nombre}"? Esta acción no se puede deshacer.`)) return;
+  try{
+    await sbDelete('pt_warehouse_fields',{warehouse_id:whId});
+    await sbDelete('pt_warehouses',{id:whId});
+    await loadPTData();
+    renderPTConfig();
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.deletePTAlmacen=deletePTAlmacen;
+
+// ── Registro automático desde entregas de Programación ──
+// Se llama desde releaseOT o cuando se registra una entrega
+async function registrarEntregaEnPTTransit(otId, otNumber, productoId, productoNombre, cantidadEntregada){
+  if(!cantidadEntregada||cantidadEntregada<=0) return;
+  try{
+    const now=new Date().toISOString();
+    // Buscar si ya hay un registro para esta OT
+    const existente=ptTransit.find(t=>t.ot_id===String(otId)&&t.status!=='completo');
+    if(existente){
+      const nuevaMov=existente.cantidad+cantidadEntregada;
+      await sbUpdate('pt_transit',{id:existente.id},{cantidad:nuevaMov});
+    } else {
+      await sbInsert('pt_transit',{
+        ot_id:String(otId), ot_number:otNumber, producto_id:String(productoId),
+        producto_nombre:productoNombre, cantidad:cantidadEntregada, cantidad_movida:0,
+        status:'pendiente', entregado_at:now, created_at:now
+      });
+    }
+    // Refrescar datos si estamos en página PT
+    if(almPTAuth){
+      ptTransit=await sbFetch('pt_transit','order=created_at.desc')||[];
+    }
+  }catch(e){ console.warn('registrarEntregaEnPTTransit:',e); }
+}
+window.registrarEntregaEnPTTransit=registrarEntregaEnPTTransit;
+
+// ════════════════════════════════════════════════════════
+//  FIN MÓDULO ALMACÉN PT
+// ════════════════════════════════════════════════════════
 
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
 if(typeof releaseOT!=='undefined') window.releaseOT=releaseOT;
