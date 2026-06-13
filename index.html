@@ -8078,7 +8078,18 @@ async function renderRmtProd(){
     return (ga.grupo+ga.forma+ga.diametro).localeCompare(gb.grupo+gb.forma+gb.diametro);
   });
 
-  list.innerHTML=keys.map(key=>{
+  // Banner totales globales
+  const grandLong=keys.reduce((a,k)=>a+grupos[k].longTotal,0);
+  const grandKg=keys.reduce((a,k)=>a+grupos[k].kgTotal,0);
+  const grandValor=keys.reduce((a,k)=>a+grupos[k].valorTotal,0);
+  const bannerGlobal=`<div style="display:flex;gap:24px;padding:12px 18px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.2);border-radius:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px">TOTAL INVENTARIO EN PROCESO</span>
+    <span style="font-size:13px">Long: <strong style="color:var(--accent);font-family:'DM Mono',monospace">${grandLong.toFixed(3)}"</strong></span>
+    <span style="font-size:13px">Kg: <strong style="color:var(--accent2);font-family:'DM Mono',monospace">${grandKg.toFixed(3)} kg</strong></span>
+    <span style="font-size:16px;font-weight:700">Valor: <strong style="color:var(--green);font-family:'DM Mono',monospace">$${grandValor.toFixed(2)}</strong></span>
+  </div>`;
+
+  list.innerHTML=bannerGlobal+keys.map(key=>{
     const g=grupos[key];
     const diam=g.diametro?parseFloat(g.diametro).toFixed(3)+'"':'--';
     return `<div class="card" style="margin-bottom:12px">
