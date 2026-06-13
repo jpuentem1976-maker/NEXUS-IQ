@@ -4025,12 +4025,20 @@ function checkOTMaterialDisponible(p){
   const infoEl=document.getElementById('otf-material-info');
   const apartarWrap=document.getElementById('otf-apartar-wrap');
   if(!infoEl||!p) return;
+  // Incluir todos los materiales de barra/tubing — buscar por forma además de grupo
   const mats=(p.materials||[]).filter(m=>{
     const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
-    return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+    if(!matCat) return false;
+    // grupo explícito O forma de barra conocida
+    const porGrupo=matCat.grupo==='barra'||matCat.grupo==='tubing';
+    const porForma=matCat.forma&&['Redondo','Hexagonal','Barra Hueca','Cuadrado/Solera','Tubo'].includes(matCat.forma);
+    return porGrupo||porForma;
   });
+  console.log('[checkOTMat] p.materials=',p.materials?.length,'mats filtradas=',mats.length,
+    'MAT_TYPES sample=',MAT_TYPES.slice(0,3).map(t=>({val:t.val,grupo:t.grupo,forma:t.forma})));
   if(!mats.length){
-    infoEl.innerHTML='';
+    // Mostrar aviso en vez de ocultar silenciosamente
+    infoEl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">Este producto no tiene materiales de barra en el BOM.</div>';
     if(apartarWrap) apartarWrap.style.display='none';
     return;
   }
