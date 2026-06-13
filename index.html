@@ -1515,7 +1515,7 @@ function populateSelects(){
   workOrders.filter(o=>o.status==='released').forEach(o=>{
     const p=getProduct(o.product_id);
     const resOp=mpReservations.filter(r=>r.ot_id===o.id);
-    const enTransitoOp=resOp.some(r=>r.status==='en_transito');
+    const enTransitoOp=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado'));
     const apartadoOp=resOp.some(r=>r.status==='apartado'||r.status==='parcial');
     const badgeOp=enTransitoOp?' ⏳':apartadoOp?' 🟢':resOp.length?' 🔴':'';
     selOt.innerHTML+=`<option value="${o.id}">${o.number}${badgeOp} — ${p?p.name:'?'}${p&&p.code?' ('+p.code+')':''}</option>`;
@@ -3903,7 +3903,7 @@ function renderProgrammingList(){
 
     // Badge material MP
     const resO=mpReservations.filter(r=>r.ot_id===o.id);
-    const enTransitoO=resO.some(r=>r.status==='en_transito');
+    const enTransitoO=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado'));
     const apartadoO=resO.some(r=>r.status==='apartado'||r.status==='parcial');
     let badgeMP='<span class="tag" style="color:var(--muted);font-size:10px">🔴 Sin apartar</span>';
     if(enTransitoO) badgeMP='<span class="tag" style="color:var(--warn);font-size:10px">⏳ En Habilitado</span>';
@@ -4209,7 +4209,7 @@ async function releaseOT(id){
   if(!o){alert('OT no encontrada.');return;}
   // Verificar que el material esté en tránsito (en_transito)
   const resList=await sbSelect('mp_reservations','select=id,status&ot_id=eq.'+encodeURIComponent(id));
-  const hasTransito=(resList||[]).some(r=>r.status==='en_transito');
+  const transitList=await sbSelect('mp_transit','select=id,status&ot_id=eq.'+encodeURIComponent(id)); const hasTransito=(transitList||[]).some(t=>t.status==='listo');
   const hasPendiente=(resList||[]).some(r=>r.status==='apartado'||r.status==='parcial');
   if(hasPendiente){
     alert('⚠️ Hay material apartado pendiente de habilitar. Confirma el habilitado antes de liberar.');
@@ -6040,7 +6040,7 @@ function renderAlmGeneral(){
     g.items.forEach(s=>{
       const kgB=parseFloat(calcKgBarra({...s,cantidad:1}).toFixed(3));
       const stColor=s.status==='disponible'?'var(--green)':s.status==='apartado'?'var(--danger)':s.status==='parcial'?'var(--warn)':'var(--muted)';
-      const reservas=mpReservations.filter(r=>r.mp_stock_id===s.id&&(r.status==='apartado'||r.status==='parcial'||r.status==='en_transito'));
+      const reservas=mpReservations.filter(r=>r.mp_stock_id===s.id&&(r.status==='apartado'||r.status==='parcial'));
 
       const row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border)';
@@ -6418,13 +6418,13 @@ function renderAlmTransit(){
   const grandTransitValor=transitItems.reduce((a,t)=>a+(parseFloat(t.valor)||parseFloat((parseFloat(t.kg_real||0)*parseFloat(t.precio_kg||0)).toFixed(2))||0),0);
   const grandTransitKg=transitItems.reduce((a,t)=>a+(parseFloat(t.kg_real)||0),0);
   const now=Date.now();
-  if(!mpTransit.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin material en tránsito</div>'; return; }
+  const visibleTransit=mpTransit.filter(t=>t.status==="listo"||t.status==="liberado"); if(!visibleTransit.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin material en tránsito</div>'; return; }
   // Banner total tránsito
   list.innerHTML=`<div style="display:flex;gap:20px;padding:10px 16px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11px;color:var(--muted);font-weight:600">TOTALES EN TRÁNSITO</span>
     <span style="font-size:12px">Kg: <strong style="color:var(--accent2);font-family:'DM Mono',monospace">${grandTransitKg.toFixed(3)} kg</strong></span>
     <span style="font-size:12px">Valor: <strong style="color:var(--green);font-family:'DM Mono',monospace">$${grandTransitValor.toFixed(2)}</strong></span>
-  </div>`+mpTransit.map(t=>{
+  </div>`+visibleTransit.map(t=>{
   const tValor=parseFloat(t.valor)||parseFloat((parseFloat(t.kg_real||0)*parseFloat(t.precio_kg||0)).toFixed(2))||0;
     const dias=Math.floor((now-new Date(t.moved_at).getTime())/(1000*60*60*24));
     const alerta7=dias>=7;
