@@ -557,10 +557,14 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 
   <!-- PRODUCTS -->
   <div id="e-products" class="subpage active">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <div style="font-size:15px;font-weight:700">Catálogo de Productos</div>
       <span id="products-counter" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25);border-radius:20px;padding:2px 10px;font-size:12px;font-family:'DM Mono',monospace;font-weight:700"></span>
       <div style="margin-left:auto"><button class="btn btn-accent btn-sm" onclick="showProductForm(null)">+ Nuevo Producto</button></div>
+    </div>
+    <div class="ptabs" style="margin-bottom:14px">
+      <button class="ptab active" id="prodtab-stock" onclick="setProductTipoTab('stock')">📦 Stock</button>
+      <button class="ptab" id="prodtab-pedido" onclick="setProductTipoTab('pedido')">🔧 Bajo Pedido</button>
     </div>
     <div id="product-form-wrap"></div>
     <div id="products-list"></div>
@@ -2231,13 +2235,24 @@ function toggleOps(id){
   btn.textContent=hidden?'▲ Ocultar':'▼ Ver operaciones';
 }
 
+let _productTipoTab='stock';
+function setProductTipoTab(tipo){
+  _productTipoTab=tipo;
+  document.getElementById('prodtab-stock')?.classList.toggle('active',tipo==='stock');
+  document.getElementById('prodtab-pedido')?.classList.toggle('active',tipo==='pedido');
+  document.getElementById('product-form-wrap').innerHTML='';
+  renderProducts();
+}
+window.setProductTipoTab=setProductTipoTab;
+
 function renderProducts(){
   const list=document.getElementById('products-list');
+  const filtered=products.filter(p=>(p.tipo_producto||'stock')===_productTipoTab);
   // Actualizar contador
   const counter=document.getElementById('products-counter');
-  if(counter) counter.textContent=products.length+' producto'+(products.length!==1?'s':'');
-  if(!products.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin productos</div>`; return; }
-  const sorted=[...products].sort((a,b)=>{const an=a.sort_number??99999,bn=b.sort_number??99999;return an-bn;});
+  if(counter) counter.textContent=filtered.length+' producto'+(filtered.length!==1?'s':'');
+  if(!filtered.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin productos ${_productTipoTab==='pedido'?'bajo pedido':'de stock'}</div>`; return; }
+  const sorted=[...filtered].sort((a,b)=>{const an=a.sort_number??99999,bn=b.sort_number??99999;return an-bn;});
   list.innerHTML=sorted.map(p=>{
 
     // ── Lee del BOM (product_materials) — ignora campos legacy ──
@@ -2320,7 +2335,7 @@ function renderProducts(){
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
             <span style="font-weight:700;font-size:15px">${(p.sort_number!==null&&p.sort_number!==undefined)?p.sort_number+'. ':''} ${p.name}</span>
-            <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>${p.familia?`<span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:#a855f7">${p.familia}</span>`:''}${(p.tipo_producto==='pedido')?'<span class="tag" style="background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.3);color:#fb923c">🔧 Bajo Pedido</span>':''}
+            <span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">${p.code}</span>${p.familia?`<span class="tag" style="background:rgba(168,85,247,.1);border-color:rgba(168,85,247,.3);color:#a855f7">${p.familia}</span>`:''}
             ${p.batch?`<span class="tag" style="background:rgba(124,58,237,.12);color:var(--accent2);border:1px solid rgba(124,58,237,.25)">Lote: ${p.batch}</span>`:''}
             ${p.stock_min?`<span class="tag" style="background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.25)">Min: ${p.stock_min} pzas</span>`:''}
           </div>
@@ -2618,17 +2633,11 @@ function showProductForm(id){
       </div>
       <div class="g4" style="margin-bottom:12px">
         <div class="field"><label>Familia</label><input id="pf-familia" value="${p.familia||''}" placeholder="ej. Perforadoras, Válvulas..." style="text-transform:uppercase"></div>
-        <div class="field"><label>Tipo de Producto</label>
-          <select id="pf-tipo-producto" onchange="onTipoProductoChange()">
-            <option value="stock" ${(p.tipo_producto||'stock')==='stock'?'selected':''}>📦 Producto de Stock</option>
-            <option value="pedido" ${p.tipo_producto==='pedido'?'selected':''}>🔧 Producto Bajo Pedido</option>
-          </select>
-        </div>
-        <div class="field" id="pf-batch-wrap" style="${(p.tipo_producto==='pedido')?'opacity:0.4':''}">
+        <div class="field" id="pf-batch-wrap" style="${(_productTipoTab==='pedido')?'opacity:0.4':''}">
           <label>Lote de Fabricación</label>
           <input id="pf-batch" value="${p.batch||''}" placeholder="ej. 100">
         </div>
-        <div class="field" id="pf-stock-min-wrap" style="${(p.tipo_producto==='pedido')?'opacity:0.4':''}">
+        <div class="field" id="pf-stock-min-wrap" style="${(_productTipoTab==='pedido')?'opacity:0.4':''}">
           <label>Stock Mínimo (pzas/45 días)</label>
           <input type="number" id="pf-stock-min" value="${p.stock_min||''}" placeholder="ej. 164" oninput="calcStockDays()">
         </div>
@@ -3307,7 +3316,7 @@ async function saveProduct(id,isNew){
 
   const prodData={id,name,code,
     familia:(document.getElementById('pf-familia')?.value.trim().toUpperCase())||null,
-    tipo_producto:document.getElementById('pf-tipo-producto')?.value||'stock',
+    tipo_producto:_productTipoTab,
     batch:document.getElementById('pf-batch')?.value.trim()||null,
     photo_url:document.getElementById('pf-photo-url-final')?.value.trim()||document.getElementById('pf-photo')?.value.trim()||null,
     steel_type:document.getElementById('pf-steel')?.value.trim()||null,
@@ -3672,12 +3681,7 @@ async function deleteProductDrawing(){
 window.deleteProductDrawing=deleteProductDrawing;
 
 function onTipoProductoChange(){
-  const tipo=document.getElementById('pf-tipo-producto')?.value;
-  const batchWrap=document.getElementById('pf-batch-wrap');
-  const stockWrap=document.getElementById('pf-stock-min-wrap');
-  const isPedido=tipo==='pedido';
-  if(batchWrap) batchWrap.style.opacity=isPedido?'0.4':'1';
-  if(stockWrap) stockWrap.style.opacity=isPedido?'0.4':'1';
+  // Ya no se usa: el tipo de producto se define por la pestaña activa (Stock / Bajo Pedido)
 }
 window.onTipoProductoChange=onTipoProductoChange;
 
@@ -8550,101 +8554,120 @@ async function confirmarMoverAGeneral(){
 }
 window.confirmarMoverAGeneral=confirmarMoverAGeneral;
 
-// ── Render Almacén General PT (agrupado por producto) ──
+// ── Render Almacén General PT (catálogo completo + existencia) ──
 function renderPTGeneral(){
   const el=document.getElementById('pt-general-list');
   const banner=document.getElementById('pt-general-banner');
   if(!el) return;
   const q=(document.getElementById('pt-general-search')?.value||'').toLowerCase();
-  const stock=ptStock.filter(s=>s.warehouse_id===null&&s.status!=='agotado'&&parseInt(s.cantidad||0)>0);
 
-  // Agrupar por producto
-  const grupos={};
-  stock.forEach(s=>{
-    const prod=products.find(p=>p.id===s.producto_id);
-    const key=s.producto_id||s.producto_nombre;
-    if(!grupos[key]) grupos[key]={
-      producto_id:s.producto_id,
-      nombre:s.producto_nombre||prod?.name||'Sin nombre',
-      codigo:prod?.code||'—',
-      ubicacion:prod?.ubicacion_pt||'',
-      stock_min:prod?.stock_min||0,
-      total:0, lotes:[]
-    };
-    grupos[key].total+=parseInt(s.cantidad||0);
-    grupos[key].lotes.push(s);
+  // Sumar existencias por producto desde pt_stock (General PT, warehouse_id=null)
+  const existPorProducto={};
+  ptStock.filter(s=>s.warehouse_id===null&&s.status!=='agotado').forEach(s=>{
+    const k=s.producto_id||s.producto_nombre;
+    existPorProducto[k]=(existPorProducto[k]||0)+parseInt(s.cantidad||0);
   });
 
-  let lista=Object.values(grupos);
-  if(q) lista=lista.filter(g=>g.nombre.toLowerCase().includes(q)||g.codigo.toLowerCase().includes(q)||
-    g.lotes.some(l=>(l.ot_number||'').toLowerCase().includes(q)));
-  lista.sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  // Construir lista desde el catálogo completo de productos activos
+  let lista=products.filter(p=>p.active!==false).map(p=>{
+    const key=p.id;
+    const total=existPorProducto[key]||0;
+    const lotes=ptStock.filter(s=>s.warehouse_id===null&&s.status!=='agotado'&&(s.producto_id===p.id));
+    return {
+      producto_id:p.id,
+      nombre:p.name||'Sin nombre',
+      codigo:p.code||'—',
+      familia:p.familia||'',
+      sort_number:p.sort_number,
+      tipo_producto:p.tipo_producto||'stock',
+      ubicacion:p.ubicacion_pt||'',
+      stock_min:p.stock_min||0,
+      total, lotes
+    };
+  });
 
-  // Banner totales
+  if(q) lista=lista.filter(g=>g.nombre.toLowerCase().includes(q)||g.codigo.toLowerCase().includes(q)||
+    (g.familia||'').toLowerCase().includes(q)||g.lotes.some(l=>(l.ot_number||'').toLowerCase().includes(q)));
+  lista.sort((a,b)=>(a.sort_number??99999)-(b.sort_number??99999)||a.nombre.localeCompare(b.nombre));
+
+  // Banner totales (solo Stock para el semáforo de mínimos)
+  const stockItems=lista.filter(g=>g.tipo_producto==='stock');
   const totalPzas=lista.reduce((a,g)=>a+g.total,0);
-  const bajoMin=lista.filter(g=>g.stock_min>0&&g.total<g.stock_min).length;
-  if(banner) banner.innerHTML=totalPzas>0?
+  const bajoMin=stockItems.filter(g=>g.stock_min>0&&g.total<g.stock_min).length;
+  if(banner) banner.innerHTML=
     `<div style="display:flex;gap:24px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content;flex-wrap:wrap">
       <span style="font-size:13px">📦 Total en General: <b style="color:var(--accent2);font-size:16px">${totalPzas}</b> piezas</span>
       <span style="font-size:13px">🗂 Productos: <b style="color:var(--accent);font-size:16px">${lista.length}</b></span>
       ${bajoMin>0?`<span style="font-size:13px">🔴 Bajo mínimo: <b style="color:var(--danger);font-size:16px">${bajoMin}</b></span>`:''}
-    </div>`:'';
+    </div>`;
 
   if(!lista.length){
-    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin stock en Almacén General PT</div>`;
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin productos en el catálogo</div>`;
     return;
   }
 
   let html=`<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
       <th style="padding:8px 10px;text-align:left;width:24px"></th>
+      <th style="padding:8px 10px;text-align:left">#</th>
       <th style="padding:8px 10px;text-align:left">Código</th>
       <th style="padding:8px 10px;text-align:left">Producto</th>
+      <th style="padding:8px 10px;text-align:left">Familia</th>
+      <th style="padding:8px 10px;text-align:center">Tipo</th>
       <th style="padding:8px 10px;text-align:left">Ubicación</th>
-      <th style="padding:8px 10px;text-align:center">Existencia</th>
       <th style="padding:8px 10px;text-align:center">Mínimo</th>
+      <th style="padding:8px 10px;text-align:center">Existencia</th>
       <th style="padding:8px 10px;text-align:center">Estado</th>
     </tr></thead><tbody>`;
 
   lista.forEach((g,gi)=>{
-    const bajo=g.stock_min>0&&g.total<g.stock_min;
-    const semaforo=bajo?'🔴':(g.stock_min>0&&g.total<g.stock_min*1.3?'🟡':'🟢');
+    const esStock=g.tipo_producto==='stock';
+    const bajo=esStock&&g.stock_min>0&&g.total<g.stock_min;
+    const cerca=esStock&&g.stock_min>0&&g.total<g.stock_min*1.3&&!bajo;
+    const semaforo=!esStock?'—':(bajo?'🔴':(cerca?'🟡':'🟢'));
+    const tipoLabel=esStock?'📦 Stock':'🔧 Pedido';
     const gid='ptg-'+gi;
-    html+=`<tr style="border-bottom:1px solid var(--border);cursor:pointer" class="ptg-toggle" data-gid="${gid}">
-      <td style="padding:8px 10px;color:var(--muted)" id="${gid}-arrow">▶</td>
+    const hasLotes=g.lotes.length>0;
+    html+=`<tr style="border-bottom:1px solid var(--border);${hasLotes?'cursor:pointer':''}" class="${hasLotes?'ptg-toggle':''}" data-gid="${gid}">
+      <td style="padding:8px 10px;color:var(--muted)" id="${gid}-arrow">${hasLotes?'▶':''}</td>
+      <td style="padding:8px 10px;color:var(--muted)">${g.sort_number??'—'}</td>
       <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${g.codigo}</td>
       <td style="padding:8px 10px;font-weight:600">${g.nombre}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${g.familia||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:12px">${tipoLabel}</td>
       <td style="padding:8px 10px;color:var(--muted)">${g.ubicacion||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${esStock?(g.stock_min||'—'):'—'}</td>
       <td style="padding:8px 10px;text-align:center;font-weight:700;font-size:15px;color:${bajo?'var(--danger)':'var(--text)'}">${g.total}</td>
-      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.stock_min||'—'}</td>
       <td style="padding:8px 10px;text-align:center">${semaforo}</td>
-    </tr>
-    <tr id="${gid}-detail" style="display:none;background:var(--bg3)">
-      <td colspan="7" style="padding:0">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
-          <th style="padding:6px 10px 6px 40px;text-align:left">OT</th>
-          <th style="padding:6px 10px;text-align:center">Cantidad</th>
-          <th style="padding:6px 10px;text-align:left">Entrada</th>
-          <th style="padding:6px 10px;text-align:center">Acción</th>
-        </tr></thead><tbody>`;
-    g.lotes.forEach(s=>{
-      const fecha=s.created_at?new Date(s.created_at).toLocaleDateString('es-MX'):'—';
-      window._ptStockMap=window._ptStockMap||{};
-      window._ptStockMap[s.id]=s;
-      html+=`<tr style="border-top:1px solid var(--border)">
-        <td style="padding:6px 10px 6px 40px;color:var(--accent);font-weight:700">${s.ot_number||'—'}</td>
-        <td style="padding:6px 10px;text-align:center;font-weight:700">${s.cantidad}</td>
-        <td style="padding:6px 10px;color:var(--muted)">${fecha}</td>
-        <td style="padding:6px 10px;text-align:center">
-          <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)" 
-            id="pt-gen-btn-${s.id}" data-id="${s.id}">🚚 Mover a almacén</button>
+    </tr>`;
+    if(hasLotes){
+      html+=`<tr id="${gid}-detail" style="display:none;background:var(--bg3)">
+        <td colspan="10" style="padding:0">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
+            <th style="padding:6px 10px 6px 40px;text-align:left">OT</th>
+            <th style="padding:6px 10px;text-align:center">Cantidad</th>
+            <th style="padding:6px 10px;text-align:left">Entrada</th>
+            <th style="padding:6px 10px;text-align:center">Acción</th>
+          </tr></thead><tbody>`;
+      g.lotes.forEach(s=>{
+        const fecha=s.created_at?new Date(s.created_at).toLocaleDateString('es-MX'):'—';
+        window._ptStockMap=window._ptStockMap||{};
+        window._ptStockMap[s.id]=s;
+        html+=`<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 10px 6px 40px;color:var(--accent);font-weight:700">${s.ot_number||'—'}</td>
+          <td style="padding:6px 10px;text-align:center;font-weight:700">${s.cantidad}</td>
+          <td style="padding:6px 10px;color:var(--muted)">${fecha}</td>
+          <td style="padding:6px 10px;text-align:center">
+            <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)" 
+              id="pt-gen-btn-${s.id}" data-id="${s.id}">🚚 Mover a almacén</button>
+          </td>
+        </tr>`;
+      });
+      html+=`</tbody></table>
         </td>
       </tr>`;
-    });
-    html+=`</tbody></table>
-      </td>
-    </tr>`;
+    }
   });
   html+=`</tbody></table>`;
   el.innerHTML=html;
@@ -8655,6 +8678,7 @@ function renderPTGeneral(){
       const gid=row.dataset.gid;
       const detail=document.getElementById(gid+'-detail');
       const arrow=document.getElementById(gid+'-arrow');
+      if(!detail) return;
       const isOpen=detail.style.display!=='none';
       detail.style.display=isOpen?'none':'table-row';
       arrow.textContent=isOpen?'▶':'▼';
@@ -8662,10 +8686,10 @@ function renderPTGeneral(){
   });
 
   // Eventos botones mover (evitar que el click propague al toggle de fila)
-  stock.forEach(s=>{
+  lista.forEach(g=>g.lotes.forEach(s=>{
     const btn=document.getElementById('pt-gen-btn-'+s.id);
     if(btn) btn.addEventListener('click',(ev)=>{ ev.stopPropagation(); showMoverADestino(s.id); });
-  });
+  }));
 }
 window.renderPTGeneral=renderPTGeneral;
 
