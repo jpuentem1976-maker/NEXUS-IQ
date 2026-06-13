@@ -5925,9 +5925,7 @@ function renderAlmGeneral(){
   const totBanner=document.createElement('div');
   totBanner.style.cssText='display:flex;gap:20px;padding:10px 16px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center';
   totBanner.innerHTML='<span style="font-size:11px;color:var(--muted);font-weight:600">TOTALES ALMACÉN</span>'
-    +'<span style="font-size:12px">Long: <strong style="color:var(--accent);font-family:DM Mono,monospace">'+grandTotalLong.toFixed(3)+'"</strong></span>'
-    +'<span style="font-size:12px">Kg: <strong style="color:var(--accent2);font-family:DM Mono,monospace">'+grandTotalKg.toFixed(2)+' kg</strong></span>'
-    +'<span style="font-size:12px">Valor: <strong style="color:var(--green);font-family:DM Mono,monospace">$'+grandTotalValor.toFixed(2)+'</strong></span>';
+    +'<span style="font-size:12px">Valor: <strong style="color:var(--green);font-family:DM Mono,monospace">$'+grandTotalValor.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></span>';
   list.appendChild(totBanner);
 
   // Agrupar por material+forma+diámetro
@@ -7050,53 +7048,58 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
   if(!totalLong||!cant){alert('Ingresa cantidad y longitud');return;}
 
   try{
-    // 1. Descontar longitud del inventario (mp_stock) — lógica por longitud real
+    // Refrescar datos antes de operar para evitar desincronización
+    await loadAlmData();
+
+    // 1. Descontar longitud del inventario (mp_stock)
     const stock=mpStock.find(s=>s.id===stockId);
-    if(stock){
-      const longPorBarra=parseFloat(stock.longitud_in)||0;
-      const cantActual=parseInt(stock.cantidad)||0;
-      const longTotalAct=longPorBarra*cantActual;
-      const longRestante=Math.max(0,longTotalAct-totalLong);
-      const newCant=longPorBarra>0?Math.floor(longRestante/longPorBarra):0;
-      const kgBarra=parseFloat(stock.kg_barra)||0;
-      const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
-      const newValor=parseFloat((newCant*kgBarra*(parseFloat(stock.precio_kg)||0)).toFixed(2));
-      const newStatus=newCant>0?'disponible':'sin_stock';
-      await sbUpdate('mp_stock',{id:stockId},{
-        cantidad:newCant,
-        kg_total:newKgTotal,
-        valor_total:newValor,
-        status:newStatus,
-        updated_at:new Date().toISOString()
-      });
-      const idx=mpStock.findIndex(s=>s.id===stockId);
-      if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus};
-    }
+    if(!stock) throw new Error('No se encontró el registro de stock (ID: '+stockId+'). Recarga la pestaña.');
+    const longPorBarra=parseFloat(stock.longitud_in)||0;
+    const cantActual=parseInt(stock.cantidad)||0;
+    const longTotalAct=longPorBarra*cantActual;
+    const longRestante=Math.max(0,longTotalAct-totalLong);
+    const newCant=longPorBarra>0?Math.floor(longRestante/longPorBarra):0;
+    const kgBarra=parseFloat(stock.kg_barra)||0;
+    const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
+    const newValor=parseFloat((newCant*kgBarra*(parseFloat(stock.precio_kg)||0)).toFixed(2));
+    const newStatus=newCant>0?'disponible':'sin_stock';
+    await sbUpdate('mp_stock',{id:stockId},{
+      cantidad:newCant,
+      kg_total:newKgTotal,
+      valor_total:newValor,
+      status:newStatus,
+      updated_at:new Date().toISOString()
+    });
+    const idx=mpStock.findIndex(s=>s.id===stockId);
+    if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus};
+
     // 2. Actualizar reservación → en_transito
     await sbUpdate('mp_reservations',{id:resId},{status:'en_transito'});
-    // 3. Registrar en mp_transit
     const res=mpReservations.find(r=>r.id===resId)||{};
     const woForTransit=workOrders.find(o=>o.id===res.ot_id)||{};
     const prodForTransit=getProduct(woForTransit.product_id)||{};
+
+    // 3. Registrar en mp_transit
     await sbInsert('mp_transit',{
       id:uid(),
-      ot_id:res.ot_id,
-      ot_number:res.ot_number,
+      ot_id:res.ot_id||null,
+      ot_number:res.ot_number||'--',
       product_id:woForTransit.product_id||null,
       product_name:prodForTransit.name||res.product_name||'',
       product_code:prodForTransit.code||res.product_code||'',
-      material:stock?.material,
-      forma:stock?.forma||forma,
-      diametro:stock?.diametro,
+      material:stock.material||'',
+      forma:stock.forma||forma||'',
+      diametro:stock.diametro||null,
       longitud_in:totalLong,
       cantidad_barras:cant,
       kg_real:totalKg,
-      precio_kg:parseFloat(stock?.precio_kg)||0,
-      valor:parseFloat((totalKg*(parseFloat(stock?.precio_kg)||0)).toFixed(2)),
+      precio_kg:parseFloat(stock.precio_kg)||0,
+      valor:parseFloat((totalKg*(parseFloat(stock.precio_kg)||0)).toFixed(2)),
       status:'listo',
       moved_by:'Almacenista',
       moved_at:new Date().toISOString()
     });
+
     // 4. Registrar movimiento
     await sbInsert('mp_movements',{
       id:uid(),
@@ -7107,15 +7110,16 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
       kg:totalKg,
       origen:'Existencias',
       destino:'Tránsito Producción',
-      ot_id:res.ot_id,
-      ot_number:res.ot_number,
+      ot_id:res.ot_id||null,
+      ot_number:res.ot_number||'--',
       recorded_at:new Date().toISOString()
     });
+
     document.getElementById('alm-habilitar-form').innerHTML='';
     await loadAlmData();
     renderAlmHabilitar();
     alert('✅ Material habilitado y movido a Tránsito Producción.');
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){console.error('confirmarHabilitado error:',e);alert('Error: '+e.message);}
 }
 window.confirmarHabilitado=confirmarHabilitado;
 
