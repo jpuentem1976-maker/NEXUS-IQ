@@ -4040,7 +4040,7 @@ function checkOTMaterialDisponible(p){
     const longReq=parseFloat(m.longitud)||0;
     const cantReq=parseInt(m.cantidad)||1;
     const totalReq=(longReq*cantReq).toFixed(3);
-    const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&s.status==='disponible');
+    const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
     const totalDisp=stockItems.reduce((a,s)=>{
       return a+(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||1);
     },0);
@@ -6014,6 +6014,19 @@ function renderAlmGeneral(){
             (s.lote?'<span style="font-size:10px;color:var(--muted)">Lote: '+s.lote+'</span>':'')+
             (reservas.length>0?'<span style="font-size:10px;color:var(--warn)">📌 '+reservas.map(r=>r.ot_number).join(', ')+'</span>':'')+
           '</div>'+
+          (reservas.length>0?(()=>{
+            const longTotal=parseFloat((parseFloat(s.longitud_in)*(parseInt(s.cantidad)||1)).toFixed(3));
+            const longApartado=reservas.reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
+            const longDisp=Math.max(0,longTotal-longApartado);
+            return '<div style="font-size:10px;color:var(--warn);margin-top:3px;font-family:DM Mono,monospace">'
+              +longTotal.toFixed(3)+'"  '
+              +'<span style="color:var(--muted)">—</span>  '
+              +'<span style="color:var(--danger)">'+longApartado.toFixed(3)+'"</span>  '
+              +'<span style="color:var(--muted)">=</span>  '
+              +'<span style="color:'+( longDisp>0?'var(--green)':'var(--danger)')+'">'+longDisp.toFixed(3)+'"</span>'
+              +'  <span style="color:var(--muted);font-family:Barlow,sans-serif;font-size:9px">disponible</span>'
+              +'</div>';
+          })():'')+
           '<div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'+
             '<span>Kg/barra: '+kgB+'</span>'+
             '<span>Kg total: '+(kgB*(s.cantidad||1)).toFixed(1)+'</span>'+
