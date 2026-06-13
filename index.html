@@ -4153,16 +4153,52 @@ window.saveNewOT=saveNewOT;
 async function deleteOT(id){
   if(!confirm('¿Eliminar esta O.T.? Esta acción no se puede deshacer.')) return;
   try{
-    // Consultar Supabase directamente — no confiar en memoria (puede estar desactualizada)
-    const resFromDB = await sbSelect('mp_reservations','select=id&ot_id=eq.'+encodeURIComponent(id));
-    for(const r of (resFromDB||[])) await sbDelete('mp_reservations',{id:r.id});
+    // 1. Obtener reservaciones para restaurar stock
+    const resFromDB = await sbSelect('mp_reservations','select=*&ot_id=eq.'+encodeURIComponent(id));
+    for(const r of (resFromDB||[])){
+      // Restaurar status del stock a disponible
+      if(r.mp_stock_id){
+        const stockDB=await sbSelect('mp_stock','select=*&id=eq.'+encodeURIComponent(r.mp_stock_id));
+        const s=(stockDB||[])[0];
+        if(s){
+          // Verificar si hay otras reservaciones activas sobre este stock
+          const otrasRes=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(r.mp_stock_id)+'&ot_id=neq.'+encodeURIComponent(id)+'&status=in.(apartado,parcial,en_transito)');
+          const nuevoStatus=(otrasRes&&otrasRes.length>0)?'apartado':'disponible';
+          await sbUpdate('mp_stock',{id:r.mp_stock_id},{status:nuevoStatus});
+          const idx=mpStock.findIndex(x=>x.id===r.mp_stock_id);
+          if(idx>=0) mpStock[idx]={...mpStock[idx],status:nuevoStatus};
+        }
+      }
+      await sbDelete('mp_reservations',{id:r.id});
+    }
+    // 2. Borrar mp_transit de esta OT y restaurar stock si fue habilitado
+    const transitFromDB=await sbSelect('mp_transit','select=*&ot_id=eq.'+encodeURIComponent(id));
+    for(const t of (transitFromDB||[])){
+      if(t.mp_stock_id){
+        const stockDB=await sbSelect('mp_stock','select=*&id=eq.'+encodeURIComponent(t.mp_stock_id));
+        const s=(stockDB||[])[0];
+        if(s){
+          const longRestituida=(parseFloat(s.longitud_in)||0)*(parseInt(s.cantidad)||0)+(parseFloat(t.longitud_in)||0);
+          const longBarra=parseFloat(s.longitud_in)||0;
+          const newCant=longBarra>0?Math.round(longRestituida/longBarra):parseInt(s.cantidad)||0;
+          const kgBarra=parseFloat(s.kg_barra)||0;
+          const newKgTotal=parseFloat((newCant*kgBarra).toFixed(3));
+          const newValor=parseFloat((newCant*kgBarra*(parseFloat(s.precio_kg)||0)).toFixed(2));
+          await sbUpdate('mp_stock',{id:t.mp_stock_id},{cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:'disponible'});
+          const idx=mpStock.findIndex(x=>x.id===t.mp_stock_id);
+          if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:'disponible'};
+        }
+      }
+      await sbDelete('mp_transit',{id:t.id});
+    }
     mpReservations = mpReservations.filter(r=>r.ot_id!==id);
-    // Borrar machine_load
+    // 3. Borrar machine_load
     const mlFromDB = await sbSelect('machine_load','select=id&ot_id=eq.'+encodeURIComponent(id));
     for(const m of (mlFromDB||[])) await sbDelete('machine_load',{id:m.id});
-    // Borrar la OT
+    // 4. Borrar la OT
     await sbDelete('work_orders',{id});
     workOrders = workOrders.filter(o=>o.id!==id);
+    await loadAlmData();
     renderProgrammingList();
   }catch(e){alert('Error al eliminar: '+e.message);}
 }
