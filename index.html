@@ -8133,18 +8133,21 @@ async function deleteMpStock(id){
     </div>
   </div>`;
   document.body.appendChild(box);
-  document.getElementById('del-no').onclick=()=>box.remove();
-  document.getElementById('del-yes').onclick=async()=>{
+  const btnNo=document.getElementById('del-no');
+  const btnYes=document.getElementById('del-yes');
+  btnNo.onclick=()=>box.remove();
+  btnYes.onclick=()=>{
     box.remove();
-    try{
-      // Borrar reservaciones primero (FK constraint)
-      const resFromDB=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(id));
-      for(const r of (resFromDB||[])) await sbDelete('mp_reservations',{id:r.id});
-      await sbDelete('mp_stock',{id});
-      mpStock=mpStock.filter(x=>x.id!==id);
-      mpReservations=mpReservations.filter(r=>r.mp_stock_id!==id);
-      renderAlmGeneral();
-    }catch(e){alert('Error: '+e.message);}
+    (async()=>{
+      try{
+        const resFromDB=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(id));
+        for(const r of (resFromDB||[])) await sbDelete('mp_reservations',{id:r.id});
+        await sbDelete('mp_stock',{id});
+        mpStock=mpStock.filter(x=>x.id!==id);
+        mpReservations=mpReservations.filter(r=>r.mp_stock_id!==id);
+        renderAlmGeneral();
+      }catch(e){alert('Error: '+e.message);}
+    })();
   };
 }
 window.deleteMpStock=deleteMpStock;
