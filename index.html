@@ -1196,8 +1196,16 @@ window.removeMachineLoad = async function removeMachineLoad(id){
   box.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
   box.innerHTML='<div style="background:#1a1f2e;border:1px solid #333;border-radius:12px;padding:28px 32px;max-width:380px;width:90%;text-align:center"><div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">Eliminar operacion?</div><div style="font-size:13px;color:#aaa;margin-bottom:20px">Se eliminara de la carga de maquinas.</div><div style="display:flex;gap:10px;justify-content:center"><button id="ml-confirm-yes" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:700">Si, eliminar</button><button id="ml-confirm-no" style="background:#333;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer">Cancelar</button></div></div>';
   document.body.appendChild(box);
-  document.getElementById('ml-confirm-no').onclick=()=>box.remove();
-  document.getElementById('ml-confirm-yes').onclick=async()=>{
+  const mlNo=document.getElementById('ml-confirm-no');
+  const mlYes=document.getElementById('ml-confirm-yes');
+  const onKeyML=(e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); mlYes.click(); }
+    else if(e.key==='Escape'){ e.preventDefault(); mlNo.click(); }
+  };
+  document.addEventListener('keydown',onKeyML);
+  mlNo.onclick=()=>{ document.removeEventListener('keydown',onKeyML); box.remove(); };
+  mlYes.onclick=async()=>{
+    document.removeEventListener('keydown',onKeyML);
     box.remove();
     try{
       await sbDelete('machine_load',{id});
@@ -8318,8 +8326,14 @@ async function deleteMpStock(id){
   document.body.appendChild(box);
   const btnNo=document.getElementById('del-no');
   const btnYes=document.getElementById('del-yes');
-  btnNo.onclick=()=>box.remove();
+  const onKey=(e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); btnYes.click(); }
+    else if(e.key==='Escape'){ e.preventDefault(); btnNo.click(); }
+  };
+  document.addEventListener('keydown',onKey);
+  btnNo.onclick=()=>{ document.removeEventListener('keydown',onKey); box.remove(); };
   btnYes.onclick=()=>{
+    document.removeEventListener('keydown',onKey);
     box.remove();
     (async()=>{
       try{
@@ -8356,8 +8370,16 @@ async function deleteMpMaterial(id){
     </div>
   </div>`;
   document.body.appendChild(box);
-  document.getElementById('delm-no').onclick=()=>box.remove();
-  document.getElementById('delm-yes').onclick=async()=>{
+  const btnNoM=document.getElementById('delm-no');
+  const btnYesM=document.getElementById('delm-yes');
+  const onKeyM=(e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); btnYesM.click(); }
+    else if(e.key==='Escape'){ e.preventDefault(); btnNoM.click(); }
+  };
+  document.addEventListener('keydown',onKeyM);
+  btnNoM.onclick=()=>{ document.removeEventListener('keydown',onKeyM); box.remove(); };
+  btnYesM.onclick=async()=>{
+    document.removeEventListener('keydown',onKeyM);
     box.remove();
     try{
       await sbDelete('mp_materials',{id});
