@@ -8898,6 +8898,11 @@ function onMpfBomItemChange(){
     // Para pre-habilitado, "PRECIO/KG ($)" -> ya lo cambiamos a "PRECIO/PIEZA"; el resumen de
     // KG/Long sigue mostrándose informativamente, pero el valor se calculará por pieza en saveMpStock.
   }
+
+  // Precargar Cantidad con el valor del lote definido en el BOM (editable por el usuario)
+  const cantEl=document.getElementById('mpf-cant');
+  if(cantEl&&m.cantidad) cantEl.value=m.cantidad;
+
   calcAlmKg();
 }
 window.onMpfBomItemChange=onMpfBomItemChange;
