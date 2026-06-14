@@ -2745,6 +2745,12 @@ function showProductForm(id){
           <input id="pf-ubicacion-pt" value="${p.ubicacion_pt||''}" placeholder="ej. A-12, Rack 3" style="text-transform:uppercase">
         </div>
       </div>
+      <div class="g4" style="margin-bottom:12px">
+        <div class="field">
+          <label>Precio de Venta (MXN)</label>
+          <input type="number" step="0.01" id="pf-precio-venta" value="${p.precio_venta||''}" placeholder="ej. 1250.00">
+        </div>
+      </div>
 
       <!-- Photo -->
       <div style="margin-bottom:14px">
@@ -3426,6 +3432,7 @@ async function saveProduct(id,isNew){
     carb_carbon_pct:ht==='carburizado'?parseFloat(document.getElementById('pf-carbpct')?.value)||null:null,
     stock_min:parseInt(document.getElementById('pf-stock-min')?.value)||0,
     ubicacion_pt:document.getElementById('pf-ubicacion-pt')?.value.trim().toUpperCase()||null,
+    precio_venta:parseFloat(document.getElementById('pf-precio-venta')?.value)||null,
     sort_number:parseFloat(document.getElementById('pf-sort-number')?.value)||null,
     drawing_url:document.getElementById('pf-drawing-url')?.value.trim()||null,
   };
@@ -9202,25 +9209,47 @@ function renderPTTransit(){
 window.renderPTTransit=renderPTTransit;
 
 // ── Modal Mover a General PT ──
-function showMoverAGeneral(transitId){
+async function showMoverAGeneral(transitId){
   const t=(window._ptMoverMap||{})[transitId];
   if(!t) return;
   const pend=t.cantidad-(t.cantidad_movida||0);
   _ptMoverCtx={type:'transit-to-general', transitId, pend, t};
   const info=document.getElementById('pt-mover-general-info');
   info.innerHTML=`<div style="font-weight:700">${t.producto_nombre}</div>
-    <div style="color:var(--muted);margin-top:4px">OT: <b style="color:var(--accent)">${t.ot_number}</b> &nbsp;|&nbsp; Pendientes de mover: <b style="color:var(--accent2)">${pend}</b></div>`;
+    <div style="color:var(--muted);margin-top:4px">OT: <b style="color:var(--accent)">${t.ot_number}</b> &nbsp;|&nbsp; Pendientes de mover: <b style="color:var(--accent2)">${pend}</b></div>
+    <div id="pt-mover-costeo-preview" style="margin-top:8px;color:var(--muted);font-size:12px">⏳ Calculando costo de fabricación de la OT...</div>`;
   const cantEl=document.getElementById('pt-mover-cant');
   cantEl.value=pend; cantEl.max=pend;
   document.getElementById('pt-mover-general-modal').classList.remove('hidden');
   setTimeout(()=>cantEl.focus(),80);
+
+  // Calcular costo de fabricación de la OT (Paso 3)
+  try{
+    const c=await calcOTCosting(t.ot_id);
+    _ptMoverCtx.costoUnitario=c?.costoUnitario||0;
+    _ptMoverCtx.costoTotal=c?.costoTotal||0;
+    const prev=document.getElementById('pt-mover-costeo-preview');
+    if(prev){
+      if(c&&c.costoUnitario>0){
+        prev.innerHTML=`💰 Costo de fabricación (OT ${t.ot_number}): <b style="color:var(--accent2)">$${c.costoUnitario.toFixed(2)}</b> /pza &nbsp;|&nbsp; Total OT: $${c.costoTotal.toFixed(2)}`;
+        prev.style.color='var(--text)';
+      } else {
+        prev.innerHTML=`⚠️ Sin datos de costeo para esta OT (MP/MOD/GIF en $0). El lote se registrará con costo_fabricacion = $0.`;
+        prev.style.color='var(--warning)';
+      }
+    }
+  }catch(e){
+    _ptMoverCtx.costoUnitario=0; _ptMoverCtx.costoTotal=0;
+    const prev=document.getElementById('pt-mover-costeo-preview');
+    if(prev){ prev.innerHTML='⚠️ No se pudo calcular el costeo de la OT. Se registrará con costo_fabricacion = $0.'; prev.style.color='var(--warning)'; }
+  }
 }
 window.showMoverAGeneral=showMoverAGeneral;
 
 async function confirmarMoverAGeneral(){
   const cant=parseInt(document.getElementById('pt-mover-cant').value)||0;
   if(!cant||cant<=0){ alert('Ingresa una cantidad válida'); return; }
-  const {transitId,pend,t}=_ptMoverCtx;
+  const {transitId,pend,t,costoUnitario}=_ptMoverCtx;
   if(cant>pend){ alert('No puedes mover más de '+pend+' piezas'); return; }
   try{
     const now=new Date().toISOString();
@@ -9228,10 +9257,11 @@ async function confirmarMoverAGeneral(){
     const nuevoStatus=nuevaMov>=t.cantidad?'completo':'parcial';
     // Actualizar transit
     await sbUpdate('pt_transit',{id:transitId},{cantidad_movida:nuevaMov,status:nuevoStatus});
-    // Crear entrada en pt_stock (General, warehouse_id=null)
+    // Crear entrada en pt_stock (General, warehouse_id=null) — Paso 3: costo_fabricacion del lote
     const stockEntry={
       warehouse_id:null, producto_id:t.producto_id, producto_nombre:t.producto_nombre,
       ot_id:t.ot_id, ot_number:t.ot_number, cantidad:cant, cantidad_original:cant,
+      costo_fabricacion:parseFloat((costoUnitario||0).toFixed(4)),
       status:'disponible', created_at:now
     };
     await sbInsert('pt_stock',stockEntry);
@@ -9243,7 +9273,7 @@ async function confirmarMoverAGeneral(){
     closeModal('pt-mover-general-modal');
     await loadPTData();
     renderPTTransit();
-    alert(`✅ ${cant} piezas movidas a Almacén General PT`);
+    alert(`✅ ${cant} piezas movidas a Almacén General PT`+(costoUnitario?` (costo: $${costoUnitario.toFixed(2)}/pza)`:''));
   }catch(e){ alert('Error: '+e.message); }
 }
 window.confirmarMoverAGeneral=confirmarMoverAGeneral;
@@ -9267,6 +9297,17 @@ function renderPTGeneral(){
     const key=p.id;
     const total=existPorProducto[key]||0;
     const lotes=ptStock.filter(s=>s.warehouse_id===null&&s.status!=='agotado'&&(s.producto_id===p.id));
+    // Paso 4: Costo Promedio Ponderado = Σ(cantidad_lote × costo_lote) / Σ(cantidad_lote)
+    let sumCantCosto=0, sumCant=0;
+    lotes.forEach(l=>{
+      const c=parseFloat(l.costo_fabricacion)||0;
+      const q=parseInt(l.cantidad)||0;
+      sumCantCosto+=q*c; sumCant+=q;
+    });
+    const costoPromedio=sumCant>0?(sumCantCosto/sumCant):0;
+    const precioVenta=parseFloat(p.precio_venta)||0;
+    const valorCosto=total*costoPromedio;
+    const valorVenta=total*precioVenta;
     return {
       producto_id:p.id,
       nombre:p.name||'Sin nombre',
@@ -9276,6 +9317,10 @@ function renderPTGeneral(){
       tipo_producto:p.tipo_producto||'stock',
       ubicacion:p.ubicacion_pt||'',
       stock_min:p.stock_min||0,
+      precio_venta:precioVenta,
+      costo_promedio:costoPromedio,
+      valor_costo:valorCosto,
+      valor_venta:valorVenta,
       total, lotes
     };
   });
@@ -9287,11 +9332,15 @@ function renderPTGeneral(){
   // Banner totales (solo Stock para el semáforo de mínimos)
   const stockItems=lista.filter(g=>g.tipo_producto==='stock');
   const totalPzas=lista.reduce((a,g)=>a+g.total,0);
+  const totalValorCosto=lista.reduce((a,g)=>a+g.valor_costo,0);
+  const totalValorVenta=lista.reduce((a,g)=>a+g.valor_venta,0);
   const bajoMin=stockItems.filter(g=>g.stock_min>0&&g.total<g.stock_min).length;
   if(banner) banner.innerHTML=
     `<div style="display:flex;gap:24px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content;flex-wrap:wrap">
       <span style="font-size:13px">📦 Total en General: <b style="color:var(--accent2);font-size:16px">${totalPzas}</b> piezas</span>
       <span style="font-size:13px">🗂 Productos: <b style="color:var(--accent);font-size:16px">${lista.length}</b></span>
+      <span style="font-size:13px">💲 Valor a Costo: <b style="color:var(--accent2);font-size:16px">$${totalValorCosto.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
+      <span style="font-size:13px">🏷 Valor a Venta: <b style="color:var(--green);font-size:16px">$${totalValorVenta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
       ${bajoMin>0?`<span style="font-size:13px">🔴 Bajo mínimo: <b style="color:var(--danger);font-size:16px">${bajoMin}</b></span>`:''}
     </div>`;
 
@@ -9311,6 +9360,10 @@ function renderPTGeneral(){
       <th style="padding:8px 10px;text-align:left">Ubicación</th>
       <th style="padding:8px 10px;text-align:center">Mínimo</th>
       <th style="padding:8px 10px;text-align:center">Existencia</th>
+      <th style="padding:8px 10px;text-align:center">Costo Prom.</th>
+      <th style="padding:8px 10px;text-align:center">Valor Costo</th>
+      <th style="padding:8px 10px;text-align:center">Precio Venta</th>
+      <th style="padding:8px 10px;text-align:center">Valor Venta</th>
       <th style="padding:8px 10px;text-align:center">Estado</th>
     </tr></thead><tbody>`;
 
@@ -9332,25 +9385,32 @@ function renderPTGeneral(){
       <td style="padding:8px 10px;color:var(--muted)">${g.ubicacion||'—'}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--muted)">${esStock?(g.stock_min||'—'):'—'}</td>
       <td style="padding:8px 10px;text-align:center;font-weight:700;font-size:15px;color:${bajo?'var(--danger)':'var(--text)'}">${g.total}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.costo_promedio>0?'$'+g.costo_promedio.toFixed(2):'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--accent2)">${g.valor_costo>0?'$'+g.valor_costo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.precio_venta>0?'$'+g.precio_venta.toFixed(2):'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--green)">${g.valor_venta>0?'$'+g.valor_venta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
       <td style="padding:8px 10px;text-align:center">${semaforo}</td>
     </tr>`;
     if(hasLotes){
       html+=`<tr id="${gid}-detail" style="display:none;background:var(--bg3)">
-        <td colspan="10" style="padding:0">
+        <td colspan="14" style="padding:0">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
             <th style="padding:6px 10px 6px 40px;text-align:left">OT</th>
             <th style="padding:6px 10px;text-align:center">Cantidad</th>
+            <th style="padding:6px 10px;text-align:center">Costo Fab. /pza</th>
             <th style="padding:6px 10px;text-align:left">Entrada</th>
             <th style="padding:6px 10px;text-align:center">Acción</th>
           </tr></thead><tbody>`;
       g.lotes.forEach(s=>{
         const fecha=s.created_at?new Date(s.created_at).toLocaleDateString('es-MX'):'—';
+        const costoLote=parseFloat(s.costo_fabricacion)||0;
         window._ptStockMap=window._ptStockMap||{};
         window._ptStockMap[s.id]=s;
         html+=`<tr style="border-top:1px solid var(--border)">
           <td style="padding:6px 10px 6px 40px;color:var(--accent);font-weight:700">${s.ot_number||'—'}</td>
           <td style="padding:6px 10px;text-align:center;font-weight:700">${s.cantidad}</td>
+          <td style="padding:6px 10px;text-align:center;color:var(--muted)">${costoLote>0?'$'+costoLote.toFixed(2):'—'}</td>
           <td style="padding:6px 10px;color:var(--muted)">${fecha}</td>
           <td style="padding:6px 10px;text-align:center">
             <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)" 
