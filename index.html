@@ -2996,16 +2996,17 @@ function showProductForm(id){
 
 function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
-  // Solo marcar "selected" si hay match EXACTO de nombre con el catálogo de operaciones.
-  // Si el usuario renombró la operación (ej. "Inspección" -> "Inspección Final"), el selector
-  // queda en "-- Operación --" (sin selección falsa) — el op_type real se preserva por separado en saveProduct().
+  // El dropdown de Categoría es solo para CAMBIAR el tipo si el usuario lo desea.
+  // El op_type real/actual se guarda en el hidden pfop-optype-${op.id} (fuente de verdad),
+  // independiente de si el nombre coincide con el catálogo o fue personalizado.
   const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
   return `<div class="op-row-wrap">
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
     <input value="${op.op_number||''}" placeholder="10" id="pfop-num-${op.id}" style="text-align:center;font-weight:700;font-family:'DM Mono',monospace">
-    <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')">
-      <option value="">-- Operación --</option>
+    <input type="hidden" id="pfop-optype-${op.id}" value="${op.op_type||'machining'}">
+    <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')" title="Tipo actual: ${isSec?'Secundaria':'Maquinado'}. Selecciona aquí solo si quieres CAMBIARLO.">
+      <option value="">${isSec?'Secundaria':'Maquinado'} (actual)</option>
       ${opCatOpts}
     </select>
     <select id="pfop-mach-${op.id}" onchange="onOpMachChange('${op.id}')">
@@ -3092,10 +3093,13 @@ function opRowPF(op,i,prodId){
 
 function onOpCatChange(id){
   const val=document.getElementById('pfop-cat-'+id)?.value||'';
-  if(!val) return;
+  if(!val) return; // "(actual)" — usuario no cambió nada, se preserva op_type del hidden
   const [name,type]=val.split('|');
   const nameInput=document.getElementById('pfop-name-'+id);
   if(nameInput&&!nameInput.value) nameInput.value=name;
+  // Usuario eligió explícitamente un nuevo tipo -> actualizar la fuente de verdad
+  const optypeInp=document.getElementById('pfop-optype-'+id);
+  if(optypeInp) optypeInp.value=type;
   const isSec=type==='secondary';
   const setupInp=document.getElementById('pfop-setup-'+id);
   const unitInp=document.getElementById('pfop-unit-'+id);
@@ -3110,6 +3114,22 @@ function onOpMachChange(id){
   var machName = (sel.options[sel.selectedIndex]?.text||'').trim();
   var cncDiv = document.getElementById('cnc-section-'+id);
   if(cncDiv) cncDiv.style.display = CNC_MAQUINAS.includes(machName) ? '' : 'none';
+  // Para filas NUEVAS (sin No. Op. capturado todavía) y sin categoría elegida manualmente,
+  // inferir op_type por TARGET_MACHINES al cambiar de máquina (ayuda a precargar Secundaria
+  // para máquinas como Control de Calidad, Marcadora, Tratamientos Térmicos).
+  var numInp=document.getElementById('pfop-num-'+id);
+  var catSel=document.getElementById('pfop-cat-'+id);
+  var optypeInp=document.getElementById('pfop-optype-'+id);
+  if(numInp&&!numInp.value.trim()&&catSel&&!catSel.value&&optypeInp){
+    var tm=typeof TARGET_MACHINES!=='undefined'?TARGET_MACHINES:[];
+    var inferred=tm.includes(machName)?'machining':'secondary';
+    optypeInp.value=inferred;
+    var isSec=inferred==='secondary';
+    var setupInp=document.getElementById('pfop-setup-'+id);
+    var unitInp=document.getElementById('pfop-unit-'+id);
+    if(setupInp){ setupInp.disabled=isSec; if(isSec){setupInp.value='';setupInp.placeholder='N/A';} else { setupInp.placeholder='25'; } }
+    if(unitInp){ unitInp.disabled=isSec; if(isSec){unitInp.value='';unitInp.placeholder='N/A';} else { unitInp.placeholder='8.5'; } }
+  }
 }
 window.onOpMachChange = onOpMachChange;
 
@@ -3514,11 +3534,15 @@ async function saveProduct(id,isNew){
     const parts=catVal.split('|');
     const mparts=(machVal||'').split('|'); const machId=mparts[0]||null; const machName=mparts[1]||'';
     // Determinar op_type:
-    // 1) Si se seleccionó categoría explícita en el dropdown -> usar esa.
-    // 2) Si no, y la operación ya existía -> preservar su op_type actual (NO sobreescribir a 'machining').
-    // 3) Si es operación nueva sin categoría -> machining solo si la máquina está en TARGET_MACHINES, si no, secondary.
+    // 1) Campo hidden pfop-optype (fuente de verdad): refleja el op_type actual de la operación,
+    //    actualizado solo si el usuario eligió explícitamente un nuevo tipo en el dropdown (onOpCatChange).
+    // 2) Si no existe el hidden (fila nueva agregada dinámicamente sin pasar por opRowPF) -> usar dropdown si tiene valor.
+    // 3) Si nada de lo anterior -> inferir por máquina (TARGET_MACHINES -> machining, si no -> secondary).
     let opType;
-    if(parts[1]){
+    const optypeHidden=document.getElementById('pfop-optype-'+opId)?.value;
+    if(optypeHidden){
+      opType=optypeHidden;
+    } else if(parts[1]){
       opType=parts[1];
     } else {
       const origOp=_origProd?.operations?.find(o=>o.id===opId);
