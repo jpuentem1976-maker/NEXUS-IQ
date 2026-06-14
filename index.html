@@ -2996,7 +2996,13 @@ function showProductForm(id){
 
 function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
-  const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
+  // Match exacto por nombre; si no hay match (ej. el usuario renombró "Inspección" -> "Inspección Final"),
+  // usar como fallback el primer catálogo cuyo type coincida con op.op_type, para no perder la categoría.
+  const exactMatch=opCatalog.some(o=>op.name===o.name);
+  const opCatOpts=opCatalog.map(o=>{
+    const sel=exactMatch?(op.name===o.name):(op.op_type&&o.type===op.op_type&&opCatalog.findIndex(x=>x.type===op.op_type)===opCatalog.indexOf(o));
+    return `<option value="${o.name}|${o.type}" ${sel?'selected':''}>${o.name}</option>`;
+  }).join('');
   const isSec=op.op_type==='secondary';
   return `<div class="op-row-wrap">
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
@@ -3499,6 +3505,7 @@ async function saveProduct(id,isNew){
   });
 
   const opsData=[]; let valid=true;
+  const _origProd=products.find(x=>x.id===id);
   opIds.forEach((opId,idx)=>{
     const num=document.getElementById('pfop-num-'+opId)?.value.trim();
     const catVal=document.getElementById('pfop-cat-'+opId)?.value||'';
@@ -3507,8 +3514,24 @@ async function saveProduct(id,isNew){
     const s=parseFloat(document.getElementById('pfop-setup-'+opId)?.value)||0;
     const u=parseFloat(document.getElementById('pfop-unit-'+opId)?.value)||0;
     if(!num||!nameV){ valid=false; return; }
-    const parts=catVal.split('|'); const opType=parts[1]||'machining';
+    const parts=catVal.split('|');
     const mparts=(machVal||'').split('|'); const machId=mparts[0]||null; const machName=mparts[1]||'';
+    // Determinar op_type:
+    // 1) Si se seleccionó categoría explícita en el dropdown -> usar esa.
+    // 2) Si no, y la operación ya existía -> preservar su op_type actual (NO sobreescribir a 'machining').
+    // 3) Si es operación nueva sin categoría -> machining solo si la máquina está en TARGET_MACHINES, si no, secondary.
+    let opType;
+    if(parts[1]){
+      opType=parts[1];
+    } else {
+      const origOp=_origProd?.operations?.find(o=>o.id===opId);
+      if(origOp?.op_type){
+        opType=origOp.op_type;
+      } else {
+        const tm=typeof TARGET_MACHINES!=='undefined'?TARGET_MACHINES:[];
+        opType=tm.includes(machName)?'machining':'secondary';
+      }
+    }
     // Collect tools
     const tools=[...document.querySelectorAll('#tools-rows-'+opId+' > div')].map(el=>{
       const tid=el.id.replace('tool-','');
