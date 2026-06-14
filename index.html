@@ -2613,6 +2613,17 @@ let MAT_TYPES = [];
 // Grupos de materiales (determina qué campos se muestran)
 // barra: Forma+Ø+Long+Barras+Kg | tubing: ØExt+ØInt+Long+Cant+Kg | pieza: Cantidad en piezas
 const MAT_GRUPOS = {barra:['acero','laton','aluminio','bronce'],tubing:['tubing'],pieza:['pieza','forja','fundicion']};
+// Formas que NO tienen longitud/diámetro (son piezas terminadas: Forja, Fundición, Corte en Pantógrafo/Láser)
+// — independiente del campo "grupo" guardado en mp_materials, cualquier material con estas formas
+// se trata como PIEZA en Almacén MP (cantidad + precio/pieza, sin kg/longitud).
+const FORMAS_PIEZA=['Corte en Pantógrafo','Corte Láser','Forja','Fundición','N/A'];
+// Devuelve el "grupo" efectivo a usar para renderizar el formulario de Almacén MP:
+// si la forma del material indica que es una pieza terminada, fuerza 'pieza'
+// sin importar lo que diga matCat.grupo en la BD (corrige catálogo mal clasificado).
+function efectiveGrupo(matCat){
+  if(matCat?.forma&&FORMAS_PIEZA.includes(matCat.forma)) return 'pieza';
+  return matCat?.grupo||'pieza';
+}
 const MAT_SHAPES = [
   {val:'redondo', label:'Redondo'},
   {val:'hexagonal', label:'Hexagonal'},
@@ -6787,7 +6798,7 @@ async function saveMpStock(id){
   // Leer datos del formulario dinámico
   const matSel=document.getElementById('mpf-mat');
   const matOpt=matSel?.options[matSel?.selectedIndex];
-  const grupo=matOpt?.dataset?.grupo||'pieza';
+  const grupo=efectiveGrupo({grupo:matOpt?.dataset?.grupo,forma:matOpt?.dataset?.forma});
   const dens=parseFloat(matOpt?.dataset?.dens)||0.2836;
   const matId=matSel?.value||'';
   const matName=matOpt?.text||'';
@@ -6831,6 +6842,9 @@ async function saveMpStock(id){
     // PIEZA (forja, fundición, etc.): no aplica densidad. Se trata 1 pieza = 1 "kg-equivalente"
     // para que las fórmulas de valorización (kg_total * precio_kg) den el total correcto,
     // donde precio_kg en este caso representa precio/pieza.
+    forma=matOpt?.dataset?.forma||'N/A';
+    diam=parseFloat(matOpt?.dataset?.diam)||null;
+    dint=parseFloat(matOpt?.dataset?.dint)||null;
     cant=parseInt(document.getElementById('mpf-p-cant')?.value)||0;
     kgUnit=1;
   }
@@ -8373,7 +8387,7 @@ window.showMpStockForm=showMpStockForm;
 function onAlmMatChange(){
   const sel=document.getElementById('mpf-mat');
   const opt=sel?.options[sel.selectedIndex];
-  const grupo=opt?.dataset?.grupo||'pieza';
+  const grupo=efectiveGrupo({grupo:opt?.dataset?.grupo,forma:opt?.dataset?.forma});
   const diam=opt?.dataset?.diam||'';
   const dint=opt?.dataset?.dint||'';
   const forma=opt?.dataset?.forma||'redondo';
@@ -8440,7 +8454,7 @@ window.onAlmTLongChange=onAlmTLongChange;
 function calcAlmKg(){
   const sel=document.getElementById('mpf-mat');
   const opt=sel?.options[sel?.selectedIndex];
-  const grupo=opt?.dataset?.grupo||'pieza';
+  const grupo=efectiveGrupo({grupo:opt?.dataset?.grupo,forma:opt?.dataset?.forma});
   const dens=parseFloat(opt?.dataset?.dens)||0.2836;
   const precio=parseFloat(document.getElementById('mpf-precio')?.value)||0;
   let kgUnit=0,cant=0;
