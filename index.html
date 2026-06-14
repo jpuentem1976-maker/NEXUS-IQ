@@ -4315,7 +4315,9 @@ window.showRecursoForm=showRecursoForm;
 async function ejecutarApartarOT(otId,materialId,longReq,cantReq){
   const wo=workOrders.find(o=>o.id===otId);
   if(!wo){alert('OT no encontrada');return;}
-  const stockDisp=mpStock.filter(s=>s.material_id===materialId&&s.status==='disponible');
+  // Excluir lotes "Por Producto" (pre-habilitado/piezas vinculados a un producto+renglón BOM
+  // específico) — esos no forman parte del stock genérico de Almacén disponible para cualquier OT.
+  const stockDisp=mpStock.filter(s=>s.material_id===materialId&&!s.producto_id&&s.status==='disponible');
   if(!stockDisp.length){alert('Sin stock disponible');return;}
   const s=stockDisp[0];
   try{
@@ -4545,46 +4547,90 @@ function checkOTMaterialDisponible(p){
   });
   console.log('[checkOTMat] p.materials=',p.materials?.length,'mats filtradas=',mats.length,
     'MAT_TYPES sample=',MAT_TYPES.slice(0,3).map(t=>({val:t.val,grupo:t.grupo,forma:t.forma})));
-  if(!mats.length){
+  // ── Renglones "Por Producto" (pre-habilitado / piezas) vinculados a ESTE producto ──
+  // mp_stock con producto_id===p.id se muestran aparte (Confirmar Recepción directa, sin pasar
+  // por corte/habilitado). NO deben mezclarse con "Existencia total" del stock genérico de Almacén,
+  // y el stock "Por Producto" de OTROS productos tampoco debe contar aquí.
+  const porProductoItems=mpStock.filter(s=>s.producto_id===p.id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+  const matsPorProducto=[];
+  (p.materials||[]).forEach((m,i)=>{
+    const bomId=m.id||i;
+    const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
+    if(!stockItems.length) return;
+    const matCat=mpMaterials.find(x=>x.id===m.tipo);
+    const totalCant=stockItems.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
+    const yaApartado=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
+    const dispReal=Math.max(0,totalCant-yaApartado);
+    const reqLote=parseInt(m.cantidad)||0;
+    matsPorProducto.push({m,matCat,totalCant,yaApartado,dispReal,reqLote});
+  });
+
+  if(!mats.length&&!matsPorProducto.length){
     // Mostrar aviso en vez de ocultar silenciosamente
     infoEl.innerHTML='<div style="color:var(--muted);font-size:11px;padding:8px">Este producto no tiene materiales de barra en el BOM.</div>';
     if(apartarWrap) apartarWrap.style.display='none';
     return;
   }
-  let html='<div class="card" style="padding:12px 16px;margin-bottom:0;border-color:rgba(0,212,255,.2)">';
-  html+='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📦 MATERIAL REQUERIDO VS. INVENTARIO DISPONIBLE</div>';
+  let html='';
   let hayDisponible=false;
-  mats.forEach(m=>{
-    const matCat=MAT_TYPES.find(t=>t.val===m.tipo)||{};
-    const u=(matCat.categoria==='Acero'&&matCat.forma==='Barra Hueca')?'mm':'"';
-    const longReq=parseFloat(m.longitud)||0;
-    const cantReq=parseInt(m.cantidad)||1;
-    const totalReq=(longReq*cantReq).toFixed(3);
-    const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
-    const totalDisp=stockItems.reduce((a,s)=>{
-      return a+stockLongTotal(s);
-    },0);
-    // Calcular ya apartado
-    const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
-    const dispReal=Math.max(0,totalDisp-yaApartado);
-    const sobrara=dispReal-parseFloat(totalReq);
-    const colorReal=dispReal>=parseFloat(totalReq)?'var(--green)':'var(--danger)';
-    const icon=dispReal>=parseFloat(totalReq)?'✅':'❌';
-    const dimStr=matCat.diametro?'Ø '+parseFloat(matCat.diametro).toFixed(3)+u:'';
-    html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px">';
-    html+=icon+' <strong>'+(matCat.label||m.tipo)+(dimStr?' — '+dimStr:'')+'</strong><br>';
-    html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;font-size:11px">';
-    html+='<div><div style="color:var(--muted)">Existencia total</div><strong>'+totalDisp.toFixed(3)+'"</strong></div>';
-    html+='<div><div style="color:var(--muted)">Ya apartado</div><strong style="color:var(--warn)">'+yaApartado.toFixed(3)+'"</strong></div>';
-    html+='<div><div style="color:var(--muted)">Disponible real</div><strong style="color:'+colorReal+'">'+dispReal.toFixed(3)+'"</strong></div>';
-    html+='<div><div style="color:var(--muted)">Esta OT necesita</div><strong style="color:var(--accent2)">'+totalReq+'"</strong></div>';
+
+  if(mats.length){
+    html+='<div class="card" style="padding:12px 16px;margin-bottom:8px;border-color:rgba(0,212,255,.2)">';
+    html+='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📦 MATERIAL REQUERIDO VS. INVENTARIO DISPONIBLE (Almacén General)</div>';
+    mats.forEach(m=>{
+      const matCat=MAT_TYPES.find(t=>t.val===m.tipo)||{};
+      const u=(matCat.categoria==='Acero'&&matCat.forma==='Barra Hueca')?'mm':'"';
+      const longReq=parseFloat(m.longitud)||0;
+      const cantReq=parseInt(m.cantidad)||1;
+      const totalReq=(longReq*cantReq).toFixed(3);
+      // Excluir lotes "Por Producto" (vinculados a un producto+renglón específico) — esos NO
+      // forman parte del stock genérico de Almacén, aunque coincida el material_id.
+      const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+      const totalDisp=stockItems.reduce((a,s)=>{
+        return a+stockLongTotal(s);
+      },0);
+      // Calcular ya apartado
+      const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
+      const dispReal=Math.max(0,totalDisp-yaApartado);
+      const sobrara=dispReal-parseFloat(totalReq);
+      const colorReal=dispReal>=parseFloat(totalReq)?'var(--green)':'var(--danger)';
+      const icon=dispReal>=parseFloat(totalReq)?'✅':'❌';
+      const dimStr=matCat.diametro?'Ø '+parseFloat(matCat.diametro).toFixed(3)+u:'';
+      html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px">';
+      html+=icon+' <strong>'+(matCat.label||m.tipo)+(dimStr?' — '+dimStr:'')+'</strong><br>';
+      html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;font-size:11px">';
+      html+='<div><div style="color:var(--muted)">Existencia total</div><strong>'+totalDisp.toFixed(3)+'"</strong></div>';
+      html+='<div><div style="color:var(--muted)">Ya apartado</div><strong style="color:var(--warn)">'+yaApartado.toFixed(3)+'"</strong></div>';
+      html+='<div><div style="color:var(--muted)">Disponible real</div><strong style="color:'+colorReal+'">'+dispReal.toFixed(3)+'"</strong></div>';
+      html+='<div><div style="color:var(--muted)">Esta OT necesita</div><strong style="color:var(--accent2)">'+totalReq+'"</strong></div>';
+      html+='</div>';
+      if(sobrara>=0) html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Sobrará: '+sobrara.toFixed(3)+'"</div>';
+      else html+='<div style="font-size:11px;color:var(--danger);margin-top:4px">❌ Falta: '+Math.abs(sobrara).toFixed(3)+'"</div>';
+      html+='</div>';
+      if(dispReal>=parseFloat(totalReq)) hayDisponible=true;
+    });
     html+='</div>';
-    if(sobrara>=0) html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Sobrará: '+sobrara.toFixed(3)+'"</div>';
-    else html+='<div style="font-size:11px;color:var(--danger);margin-top:4px">❌ Falta: '+Math.abs(sobrara).toFixed(3)+'"</div>';
+  }
+
+  if(matsPorProducto.length){
+    html+='<div class="card" style="padding:12px 16px;margin-bottom:0;border-color:rgba(16,185,129,.25)">';
+    html+='<div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px">🏷 MATERIAL PRE-HABILITADO / PIEZAS (vinculado a este producto)</div>';
+    matsPorProducto.forEach(({m,matCat,totalCant,yaApartado,dispReal,reqLote})=>{
+      const okQty=dispReal>=reqLote;
+      const icon=okQty?'✅':'❌';
+      html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px">';
+      html+=icon+' <strong>'+(matCat?.name||'--').toUpperCase()+'</strong> <span class="tag" style="color:var(--muted)">'+(m.unidad||'pzas')+'</span><br>';
+      html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;font-size:11px">';
+      html+='<div><div style="color:var(--muted)">Existencia</div><strong>'+totalCant+'</strong></div>';
+      html+='<div><div style="color:var(--muted)">Ya apartado</div><strong style="color:var(--warn)">'+yaApartado+'</strong></div>';
+      html+='<div><div style="color:var(--muted)">Disponible / Lote requiere</div><strong style="color:'+(okQty?'var(--green)':'var(--danger)')+'">'+dispReal+' / '+reqLote+'</strong></div>';
+      html+='</div>';
+      html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">Recepción directa en "OT por Habilitar" — no requiere corte.</div>';
+      html+='</div>';
+    });
     html+='</div>';
-    if(dispReal>=parseFloat(totalReq)) hayDisponible=true;
-  });
-  html+='</div>';
+  }
+
   infoEl.innerHTML=html;
   if(apartarWrap) apartarWrap.style.display=hayDisponible?'':'none';
 }
@@ -4629,13 +4675,13 @@ async function saveNewOT(){
         const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
         return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
       });
-      const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial')));
+      const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial')));
       if(sinStock.length){
         const matCats=sinStock.map(m=>MAT_TYPES.find(t=>t.val===m.tipo)?.label||m.tipo).join(', ');
         alert('Sin existencia: '+matCats+'. OT creada sin apartar material.');
       } else {
         for(const m of barras){
-          const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+          const stockDisp=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
           if(stockDisp.length){
             const s=stockDisp[0];
             const resRec={id:uid(),mp_stock_id:s.id,material_id:m.tipo,
@@ -7563,8 +7609,7 @@ function renderAlmReport(){
   mpReservations.filter(r=>r.status==='apartado'||r.status==='parcial').forEach(r=>{
     const s=mpStock.find(x=>x.id===r.mp_stock_id);
     if(!s) return;
-    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
-    const longBarra=stockLongOrig(s);
+    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.producto_id||'')+'||'+(s.bom_item_id||'');
     const longApartada=(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1);
     const barrasApartadas=longBarra>0?(longApartada/longBarra):((parseInt(r.cantidad)||1));
     apartadosPorMat[key]=(apartadosPorMat[key]||0)+barrasApartadas;
@@ -7574,9 +7619,9 @@ function renderAlmReport(){
   const filtered=mpStock.filter(s=>{
     const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
     if(!matCat||matCat.reposicion===false) return false;
-    const minimo=matCat.cantidad_min||0;
-    if(!minimo) return false;
-    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
+    const minimo=s.producto_id?0:(matCat.cantidad_min||0);
+    if(!s.producto_id&&!minimo) return false;
+    const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.producto_id||'')+'||'+(s.bom_item_id||'');
     const cantApartada=apartadosPorMat[key]||0;
     const cantReal=Math.max(0,stockBarrasDecimal(s)-cantApartada);
     const sem=semaforo(cantReal,minimo);
@@ -7585,12 +7630,12 @@ function renderAlmReport(){
   const sorted=[...filtered].sort((a,b)=>{
     const matA=mpMaterials.find(m=>m.id===a.material_id||m.name===a.material);
     const matB=mpMaterials.find(m=>m.id===b.material_id||m.name===b.material);
-    const keyA=(a.material||'')+'||'+(a.forma||'')+'||'+(a.diametro||'');
-    const keyB=(b.material||'')+'||'+(b.forma||'')+'||'+(b.diametro||'');
+    const keyA=(a.material||'')+'||'+(a.forma||'')+'||'+(a.diametro||'')+'||'+(a.producto_id||'')+'||'+(a.bom_item_id||'');
+    const keyB=(b.material||'')+'||'+(b.forma||'')+'||'+(b.diametro||'')+'||'+(b.producto_id||'')+'||'+(b.bom_item_id||'');
     const realA=Math.max(0,stockBarrasDecimal(a)-(apartadosPorMat[keyA]||0));
     const realB=Math.max(0,stockBarrasDecimal(b)-(apartadosPorMat[keyB]||0));
-    const sa=semaforo(realA,matA?.cantidad_min||0);
-    const sb=semaforo(realB,matB?.cantidad_min||0);
+    const sa=semaforo(realA,a.producto_id?0:(matA?.cantidad_min||0));
+    const sb=semaforo(realB,b.producto_id?0:(matB?.cantidad_min||0));
     const order={'SIN STOCK':0,'BAJO MÍNIMO':1,'EN MÍNIMO':2,'OK':3};
     return (order[sa.label]||3)-(order[sb.label]||3);
   });
@@ -7601,14 +7646,15 @@ function renderAlmReport(){
       <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist. Disp.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th>
     </tr></thead><tbody>${sorted.map(s=>{
       const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
-      const minimo=matCat?.cantidad_min||0;
-      const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'');
+      const minimo=s.producto_id?0:(matCat?.cantidad_min||0);
+      const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.producto_id||'')+'||'+(s.bom_item_id||'');
       const cantApartada=apartadosPorMat[key]||0;
       const cantReal=Math.max(0,stockBarrasDecimal(s)-cantApartada);
       const sem=semaforo(cantReal,minimo);
+      const prodTag=s.producto_id?(products.find(p=>p.id===s.producto_id)?.name||'Producto'):'';
       return `<tr>
         <td><span style="font-size:10px;font-weight:700;color:${sem.color}">${sem.label}</span></td>
-        <td style="font-weight:600">${s.material?.toUpperCase()||'--'}</td>
+        <td style="font-weight:600">${s.material?.toUpperCase()||'--'}${prodTag?'<br><span class="tag" style="color:var(--green);font-size:9px;margin-top:2px">🏷 '+prodTag.toUpperCase()+'</span>':''}</td>
         <td style="font-size:11px;color:var(--muted)">${s.forma||'--'}</td>
         <td style="font-family:'DM Mono',monospace;font-size:11px">${s.diametro?parseFloat(s.diametro).toFixed(3):'--'}"${s.diametro_int?'/'+parseFloat(s.diametro_int).toFixed(3)+'"':''}</td>
         <td style="font-family:'DM Mono',monospace;font-size:11px">${s.longitud_in?stockLongTotal(s):'--'}" (${s.longitud_in?stockLongOrig(s).toFixed(3):'--'}" c/u)</td>
@@ -8557,6 +8603,7 @@ function showMpStockForm(id){
             </select>
           </div>
         </div>
+        <div id="mpf-bom-confirm" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);font-size:13px"></div>
         <small style="color:var(--muted);font-size:10px">Material o pieza ya habilitado/pre-cortado por el proveedor para este producto — no pasará por el proceso de corte/habilitado en Almacén.</small>
       </div>
 
@@ -8711,6 +8758,7 @@ function onMpfTipoEntradaChange(){
     if(matWrap) matWrap.style.display='none';
     // Limpiar selección previa de material/paneles hasta elegir producto+renglón
     const sel=document.getElementById('mpf-mat'); if(sel) sel.value='';
+    const confirmBox=document.getElementById('mpf-bom-confirm'); if(confirmBox) confirmBox.style.display='none';
     ['mpf-panel-barra','mpf-panel-tubing','mpf-panel-pieza','mpf-resumen-barra','mpf-resumen-pieza'].forEach(id=>{
       const el=document.getElementById(id); if(el) el.style.display='none';
     });
@@ -8726,10 +8774,10 @@ function onMpfProdChange(){
   const prodId=document.getElementById('mpf-prod')?.value||'';
   const bomSel=document.getElementById('mpf-bom-item');
   if(!bomSel) return;
-  if(!prodId){ bomSel.innerHTML='<option value="">-- Selecciona producto primero --</option>'; return; }
+  if(!prodId){ bomSel.innerHTML='<option value="">-- Selecciona producto primero --</option>'; const cb=document.getElementById('mpf-bom-confirm'); if(cb) cb.style.display='none'; return; }
   const prod=products.find(p=>p.id===prodId);
   const mats=prod?.materials||[];
-  if(!mats.length){ bomSel.innerHTML='<option value="">-- Este producto no tiene materiales en BOM --</option>'; return; }
+  if(!mats.length){ bomSel.innerHTML='<option value="">-- Este producto no tiene materiales en BOM --</option>'; const cb=document.getElementById('mpf-bom-confirm'); if(cb) cb.style.display='none'; return; }
   bomSel.innerHTML='<option value="">-- Selecciona renglón --</option>'+mats.map((m,i)=>{
     const matCat=mpMaterials.find(x=>x.id===m.tipo);
     const grupo=efectiveGrupo({grupo:matCat?.grupo,forma:m.forma||matCat?.forma});
@@ -8757,9 +8805,25 @@ function onMpfBomItemChange(){
   const prod=products.find(p=>p.id===prodId);
   const mats=prod?.materials||[];
   const m=mats.find((x,i)=>(x.id||i)==bomItemId);
-  if(!m) return;
+  const confirmBox=document.getElementById('mpf-bom-confirm');
+  if(!m){ if(confirmBox) confirmBox.style.display='none'; return; }
   const matCat=mpMaterials.find(x=>x.id===m.tipo);
-  if(!matCat){ alert('El material de este renglón del BOM ya no existe en el Catálogo de Materiales.'); return; }
+  if(!matCat){ alert('El material de este renglón del BOM ya no existe en el Catálogo de Materiales.'); if(confirmBox) confirmBox.style.display='none'; return; }
+
+  // Confirmación visual: refuerza qué material/pieza se está dando de alta para evitar
+  // seleccionar el renglón equivocado entre piezas similares (ej. O-Ring vs Seguro Exterior)
+  if(confirmBox){
+    const grupoChk=efectiveGrupo({grupo:matCat.grupo,forma:m.forma||matCat.forma});
+    let dimTxt='';
+    if(grupoChk==='barra'||grupoChk==='tubing'){
+      dimTxt=' — '+(m.forma||matCat.forma||'')+' Ø'+(m.diametro?parseFloat(m.diametro).toFixed(3)+'"':'?')
+        +(m.diametro_int?'/Øi'+parseFloat(m.diametro_int).toFixed(3)+'"':'')
+        +(m.longitud?' × '+parseFloat(m.longitud).toFixed(3)+'"':'');
+    }
+    confirmBox.innerHTML='✅ Dando entrada a: <strong style="color:var(--green)">'+(matCat.name||'').toUpperCase()+'</strong>'+dimTxt
+      +(m.cantidad?' <span style="color:var(--muted)">('+m.cantidad+' '+(m.unidad||'pzas')+'/lote BOM)</span>':'');
+    confirmBox.style.display='';
+  }
 
   // Preseleccionar el material de catálogo en el select oculto
   const matSel=document.getElementById('mpf-mat');
