@@ -893,6 +893,10 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
         <option value="apartado">Apartado</option>
         <option value="parcial">Apartado parcial</option>
       </select>
+      <div style="display:flex;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:2px;margin-left:auto">
+        <button class="btn btn-sm alm-view-btn" id="alm-view-material" onclick="setAlmViewMode('material')">📦 Por Material</button>
+        <button class="btn btn-sm btn-ghost alm-view-btn" id="alm-view-producto" onclick="setAlmViewMode('producto')">🏷 Por Producto</button>
+      </div>
     </div>
     <div id="alm-general-form"></div>
     <div id="alm-general-list"></div>
@@ -6585,6 +6589,17 @@ function stockBarrasDecimal(s){ const orig=stockLongOrig(s); const total=stockLo
 // ══════════════════════════════════════
 //  ALMACÉN GENERAL
 // ══════════════════════════════════════
+let _almViewMode='material';
+function setAlmViewMode(mode){
+  _almViewMode=mode;
+  const btnMat=document.getElementById('alm-view-material');
+  const btnProd=document.getElementById('alm-view-producto');
+  if(btnMat) btnMat.className='btn btn-sm alm-view-btn'+(mode==='material'?' btn-accent':' btn-ghost');
+  if(btnProd) btnProd.className='btn btn-sm alm-view-btn'+(mode==='producto'?' btn-accent':' btn-ghost');
+  renderAlmGeneral();
+}
+window.setAlmViewMode=setAlmViewMode;
+
 function renderAlmGeneral(){
   const list=document.getElementById('alm-general-list');
   if(!list) return;
@@ -6598,6 +6613,13 @@ function renderAlmGeneral(){
       String(s.diametro||'').includes(search)||
       (s.forma||'').toLowerCase().includes(search))
   );
+
+  if(_almViewMode==='producto'){
+    renderAlmGeneralPorProducto(items,list);
+    return;
+  }
+  // Vista "Por Material": excluir lotes vinculados a un producto/renglón de BOM (esos viven en "Por Producto")
+  items=items.filter(s=>!s.producto_id);
 
   // Total global de existencias
   const grandTotalValor=items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
@@ -6781,6 +6803,112 @@ function renderAlmGeneral(){
   });
 }
 
+// ── Vista "Por Producto": materiales/piezas pre-habilitados vinculados a un Producto + Renglón de BOM ──
+function renderAlmGeneralPorProducto(items,list){
+  const porProd=items.filter(s=>s.producto_id);
+  list.innerHTML='';
+  const grandTotalValor=porProd.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
+  const totBanner=document.createElement('div');
+  totBanner.style.cssText='display:flex;gap:20px;padding:10px 16px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center';
+  totBanner.innerHTML='<span style="font-size:11px;color:var(--muted);font-weight:600">TOTALES POR PRODUCTO</span>'
+    +'<span style="font-size:12px">Valor: <strong style="color:var(--green);font-family:DM Mono,monospace">$'+grandTotalValor.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></span>';
+  list.appendChild(totBanner);
+
+  if(!porProd.length){
+    list.innerHTML+='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin materiales/piezas "Por Producto" registrados.<br><small>Usa "+ Nueva Entrada" → "Material por Producto" para dar de alta material pre-habilitado o piezas compradas vinculadas a un producto.</small></div>';
+    return;
+  }
+
+  // Agrupar por producto, luego por renglón de BOM (bom_item_id)
+  const byProd={};
+  porProd.forEach(s=>{
+    const pid=s.producto_id;
+    if(!byProd[pid]) byProd[pid]={producto_id:pid,items:[]};
+    byProd[pid].items.push(s);
+  });
+
+  Object.values(byProd).forEach(grp=>{
+    const prod=products.find(p=>p.id===grp.producto_id);
+    const prodCard=document.createElement('div');
+    prodCard.className='card';
+    prodCard.style.cssText='margin-bottom:12px;padding:0;overflow:hidden';
+
+    const prodHeader=document.createElement('div');
+    prodHeader.style.cssText='padding:10px 16px;background:var(--bg2);display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    const totalValorProd=grp.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
+    prodHeader.innerHTML='<span style="font-weight:700;font-size:14px">'+(prod?.name||'(producto no encontrado)').toUpperCase()+'</span>'
+      +(prod?.code?'<span class="tag" style="color:var(--accent);font-family:monospace">'+prod.code+'</span>':'')
+      +'<span style="margin-left:auto;font-size:12px;color:var(--green)">Valor: $'+totalValorProd.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>';
+    prodCard.appendChild(prodHeader);
+
+    // Agrupar por renglón de BOM
+    const byBomItem={};
+    grp.items.forEach(s=>{
+      const bid=s.bom_item_id||'sin-renglon';
+      if(!byBomItem[bid]) byBomItem[bid]={bom_item_id:s.bom_item_id,items:[]};
+      byBomItem[bid].items.push(s);
+    });
+
+    Object.values(byBomItem).forEach(bg=>{
+      const mats=prod?.materials||[];
+      const m=mats.find((x,i)=>(x.id||i)==bg.bom_item_id);
+      const matCat=mpMaterials.find(x=>x.id===m?.tipo);
+      const sample=bg.items[0];
+      const grupo=efectiveGrupo({grupo:matCat?.grupo,forma:sample.forma||matCat?.forma});
+      const esPieza=grupo==='pieza';
+      let dimStr='';
+      if(!esPieza&&sample.diametro){
+        dimStr='Ø '+parseFloat(sample.diametro).toFixed(3)+'"'+(sample.diametro_int?' / Øi '+parseFloat(sample.diametro_int).toFixed(3)+'"':'')
+          +(sample.longitud_in?' × '+parseFloat(sample.longitud_in).toFixed(3)+'"':'');
+      }
+      const totalCant=bg.items.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
+      const totalValor=bg.items.reduce((a,s)=>a+(parseFloat(s.valor_total)||0),0);
+      const pppAvg=totalCant>0?(totalValor/totalCant).toFixed(2):0;
+      const apartado=mpReservations.some(r=>(r.status==='apartado'||r.status==='parcial')&&bg.items.some(s=>s.id===r.mp_stock_id));
+
+      const row=document.createElement('div');
+      row.style.cssText='padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+      row.innerHTML='<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+          +'<span style="font-weight:600;font-size:13px">'+(matCat?.name||sample.material||'--').toUpperCase()+'</span>'
+          +(esPieza?'<span class="tag" style="color:var(--muted)">'+(sample.forma||'Pieza')+'</span>':'')
+          +(dimStr?'<span class="tag" style="color:var(--accent);font-family:DM Mono,monospace">'+dimStr+'</span>':'')
+          +(sample.pre_habilitado?'<span class="tag" style="color:var(--green);background:rgba(16,185,129,.1)">🏷 Pre-habilitado</span>':'')
+          +(apartado?'<span class="tag" style="color:var(--warn)">📌 Apartado</span>':'')
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'
+          +'<span>Existencia: <strong style="color:var(--text)">'+totalCant+' pzas</strong></span>'
+          +'<span>Precio/pza: $'+pppAvg+'</span>'
+          +'<span>Valor: <strong style="color:var(--green)">$'+totalValor.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></span>'
+          +(sample.ubicacion?'<span>📍 '+sample.ubicacion+'</span>':'')
+          +(sample.supplier_name?'<span>🏭 '+sample.supplier_name+'</span>':'')
+        +'</div>'
+      +'</div>';
+      const btnWrap=document.createElement('div');
+      btnWrap.style.cssText='display:flex;gap:6px';
+      bg.items.forEach(s=>{
+        if(s.status==='disponible'||s.status==='parcial'){
+          const btnApt=document.createElement('button');
+          btnApt.className='btn btn-sm btn-warn';
+          btnApt.textContent='📌 Apartar';
+          btnApt.addEventListener('click',()=>showApartarForm(s.id));
+          btnWrap.appendChild(btnApt);
+        }
+        const btnEdit=document.createElement('button');
+        btnEdit.className='btn btn-sm btn-ghost';
+        btnEdit.textContent='✏️';
+        btnEdit.addEventListener('click',()=>showMpStockForm(s.id));
+        btnWrap.appendChild(btnEdit);
+      });
+      row.appendChild(btnWrap);
+      prodCard.appendChild(row);
+    });
+
+    list.appendChild(prodCard);
+  });
+}
+window.renderAlmGeneralPorProducto=renderAlmGeneralPorProducto;
+
 function toggleAlmGroup(gid){
   const el=document.getElementById(gid);
   const icon=document.getElementById(gid+'-icon');
@@ -6810,6 +6938,20 @@ async function saveMpStock(id){
   const ubic=document.getElementById('mpf-ubic')?.value||null;
   const lote=document.getElementById('mpf-lote')?.value||null;
   const esEspecial=document.getElementById('mpf-especial')?.value==='true';
+
+  // Entrada "Por Producto" (pre-habilitado / piezas ligadas a un producto y renglón de BOM específico)
+  const tipoEntrada=document.querySelector('input[name="mpf-tipo-entrada"]:checked')?.value||'almacen';
+  let productoId=null, bomItemId=null, preHabilitado=false;
+  if(tipoEntrada==='producto'){
+    productoId=document.getElementById('mpf-prod')?.value||null;
+    bomItemId=document.getElementById('mpf-bom-item')?.value||null;
+    if(!productoId||!bomItemId){ alert('Selecciona el Producto y el Renglón del BOM.'); return; }
+    if(!matId){ alert('No se pudo determinar el material de catálogo para este renglón del BOM.'); return; }
+    // Solo marcar pre_habilitado=true para renglones de BARRA (llegan a medida, normalmente irían a corte).
+    // Los renglones tipo "pieza" (Forja/Fundición/Corte/piezas compradas) ya se identifican por su forma
+    // y van directo a "Confirmar Recepción" sin necesitar el flag.
+    preHabilitado=(grupo==='barra'||grupo==='tubing');
+  }
 
   let forma=null,diam=null,dint=null,longM=null,longIn=null,cant=0,kgUnit=0;
 
@@ -6856,25 +6998,44 @@ async function saveMpStock(id){
   let precioPPP=precioNuevo;
   let valorTotal=parseFloat((kgNuevo*precioNuevo).toFixed(2));
 
+  // Pre-habilitado (barra pre-cortada por proveedor, "Por Producto"): el precio capturado es
+  // PRECIO/PIEZA, no precio/kg. El valor total = cantidad × precio/pieza, independiente del kg
+  // calculado (que se conserva solo informativamente para referencia de peso).
+  if(preHabilitado&&(grupo==='barra'||grupo==='tubing')){
+    valorTotal=parseFloat((cant*precioNuevo).toFixed(2));
+  }
+
   if(!id){
     // Nueva entrada — verificar si ya existe stock del mismo material/forma/diámetro/longitud
     // Comparación robusta: tolera diferencias mínimas de decimales (±0.01)
+    // Los lotes "Por Producto" (producto_id/bom_item_id) NUNCA se mezclan con stock genérico de almacén,
+    // ni entre renglones de productos distintos, aunque coincidan Ø/Long.
     const existing=mpStock.find(s=>{
       const mismoMat=(s.material_id&&s.material_id===matId)||(s.material===matName);
       const mismaForma=!forma||(s.forma||'')===(forma||'');
       const mismoDiam=Math.abs(parseFloat(s.diametro||0)-parseFloat(diam||0))<0.01;
       const mismaLong=Math.abs(parseFloat(s.longitud_in||0)-parseFloat(longIn||0))<0.1;
+      const mismoOrigen=(s.producto_id||null)===(productoId||null)&&(s.bom_item_id||null)===(bomItemId||null);
       const disponible=s.status==='disponible'||s.status==='parcial';
-      return mismoMat&&mismaForma&&mismoDiam&&mismaLong&&disponible;
+      return mismoMat&&mismaForma&&mismoDiam&&mismaLong&&mismoOrigen&&disponible;
     });
     if(existing){
-      // Calcular PPP con el stock existente
-      const kgExist=parseFloat(existing.kg_total)||0;
-      const valorExist=parseFloat(existing.valor_total)||0;
-      kgTotal=parseFloat((kgExist+kgNuevo).toFixed(2));
-      precioPPP=kgTotal>0?parseFloat(((valorExist+(kgNuevo*precioNuevo))/kgTotal).toFixed(4)):precioNuevo;
-      valorTotal=parseFloat((kgTotal*precioPPP).toFixed(2));
       const newCant=(parseInt(existing.cantidad)||0)+cant;
+      if(preHabilitado&&(grupo==='barra'||grupo==='tubing')){
+        // Pre-habilitado: PPP ponderado por PIEZAS (precio/pieza), no por kg
+        const cantExist=parseInt(existing.cantidad)||0;
+        const valorExist=parseFloat(existing.valor_total)||0;
+        kgTotal=parseFloat(((parseFloat(existing.kg_total)||0)+kgNuevo).toFixed(2));
+        valorTotal=parseFloat((valorExist+(cant*precioNuevo)).toFixed(2));
+        precioPPP=newCant>0?parseFloat((valorTotal/newCant).toFixed(4)):precioNuevo;
+      } else {
+        // Calcular PPP con el stock existente (ponderado por kg)
+        const kgExist=parseFloat(existing.kg_total)||0;
+        const valorExist=parseFloat(existing.valor_total)||0;
+        kgTotal=parseFloat((kgExist+kgNuevo).toFixed(2));
+        precioPPP=kgTotal>0?parseFloat(((valorExist+(kgNuevo*precioNuevo))/kgTotal).toFixed(4)):precioNuevo;
+        valorTotal=parseFloat((kgTotal*precioPPP).toFixed(2));
+      }
       // Actualizar registro existente con PPP
       await sbUpdate('mp_stock',{id:existing.id},{
         cantidad:newCant,kg_barra:kgUnit,kg_total:kgTotal,
@@ -6885,12 +7046,12 @@ async function saveMpStock(id){
       if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:kgTotal,precio_kg:precioPPP,valor_total:valorTotal};
       await sbInsert('mp_movements',{id:uid(),tipo:'entrada',mp_stock_id:existing.id,
         material:matName,forma,diametro:diam,longitud_in:parseFloat((longIn*cant).toFixed(3)),
-        cantidad:cant,kg:kgNuevo,valor:parseFloat((kgNuevo*precioNuevo).toFixed(2)),
+        cantidad:cant,kg:kgNuevo,valor:parseFloat((preHabilitado?(cant*precioNuevo):(kgNuevo*precioNuevo)).toFixed(2)),
         origen:'Compra',destino:'Almacén General',usuario:'Almacenista',
         recorded_at:new Date().toISOString()});
       document.getElementById('alm-general-form').innerHTML='';
       renderAlmGeneral();
-      alert(`✅ Entrada registrada. PPP actualizado a $${precioPPP}/kg`);
+      alert(`✅ Entrada registrada. PPP actualizado a $${precioPPP}${preHabilitado?'/pza':'/kg'}`);
       return;
     }
   }
@@ -6904,6 +7065,7 @@ async function saveMpStock(id){
     precio_kg:precioPPP,valor_total:valorTotal,
     supplier_id:supId,supplier_name:supName,
     ubicacion:ubic,lote,status:'disponible',
+    producto_id:productoId,bom_item_id:bomItemId,pre_habilitado:preHabilitado,
     updated_at:new Date().toISOString(),
   };
 
@@ -8366,9 +8528,41 @@ function showMpStockForm(id){
   document.getElementById('alm-general-form').innerHTML=`
     <div class="card" style="margin-bottom:14px;border-color:rgba(0,212,255,.3)">
       <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:12px">${s?'EDITAR MATERIAL':'NUEVA ENTRADA DE MATERIAL'}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
 
-        <div class="field" style="grid-column:1/-1"><label>ARTÍCULO DEL CATÁLOGO</label>
+      <!-- TIPO DE ENTRADA -->
+      <div class="field" style="margin-bottom:14px">
+        <label>TIPO DE ENTRADA</label>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer">
+            <input type="radio" name="mpf-tipo-entrada" value="almacen" ${(!s||!s.producto_id)?'checked':''} onchange="onMpfTipoEntradaChange()"> Material de Almacén
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer">
+            <input type="radio" name="mpf-tipo-entrada" value="producto" ${(s&&s.producto_id)?'checked':''} onchange="onMpfTipoEntradaChange()"> Material por Producto (pre-habilitado / piezas)
+          </label>
+        </div>
+      </div>
+
+      <!-- PANEL: POR PRODUCTO -->
+      <div id="mpf-panel-producto" style="display:${(s&&s.producto_id)?'':'none'};margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:4px">
+          <div class="field" style="margin:0"><label>PRODUCTO</label>
+            <select id="mpf-prod" onchange="onMpfProdChange()">
+              <option value="">-- Selecciona producto --</option>
+              ${[...products].filter(p=>p.active!==false).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(p=>`<option value="${p.id}" ${s?.producto_id===p.id?'selected':''}>${p.name}${p.code?' ('+p.code+')':''}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin:0"><label>RENGLÓN DEL BOM</label>
+            <select id="mpf-bom-item" onchange="onMpfBomItemChange()">
+              <option value="">-- Selecciona producto primero --</option>
+            </select>
+          </div>
+        </div>
+        <small style="color:var(--muted);font-size:10px">Material o pieza ya habilitado/pre-cortado por el proveedor para este producto — no pasará por el proceso de corte/habilitado en Almacén.</small>
+      </div>
+
+      <div id="mpf-fields-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+
+        <div class="field" id="mpf-mat-wrap" style="grid-column:1/-1"><label>ARTÍCULO DEL CATÁLOGO</label>
           <select id="mpf-mat" onchange="onAlmMatChange()" style="font-size:13px">
             <option value="">-- Selecciona material --</option>
             ${[...MAT_TYPES].sort((a,b)=>{
@@ -8505,6 +8699,111 @@ function showMpStockForm(id){
   if(s) onAlmMatChange();
 }
 window.showMpStockForm=showMpStockForm;
+
+// ── TIPO DE ENTRADA: Almacén vs Por Producto ──
+function onMpfTipoEntradaChange(){
+  const tipo=document.querySelector('input[name="mpf-tipo-entrada"]:checked')?.value||'almacen';
+  const panelProd=document.getElementById('mpf-panel-producto');
+  const matWrap=document.getElementById('mpf-mat-wrap');
+  if(panelProd) panelProd.style.display=tipo==='producto'?'':'none';
+  if(tipo==='producto'){
+    // El selector de catálogo se oculta: se determina automáticamente al elegir el renglón del BOM
+    if(matWrap) matWrap.style.display='none';
+    // Limpiar selección previa de material/paneles hasta elegir producto+renglón
+    const sel=document.getElementById('mpf-mat'); if(sel) sel.value='';
+    ['mpf-panel-barra','mpf-panel-tubing','mpf-panel-pieza','mpf-resumen-barra','mpf-resumen-pieza'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.style.display='none';
+    });
+  } else {
+    if(matWrap) matWrap.style.display='';
+    onAlmMatChange();
+  }
+}
+window.onMpfTipoEntradaChange=onMpfTipoEntradaChange;
+
+// Al elegir producto: poblar el selector de renglones del BOM (materiales y piezas)
+function onMpfProdChange(){
+  const prodId=document.getElementById('mpf-prod')?.value||'';
+  const bomSel=document.getElementById('mpf-bom-item');
+  if(!bomSel) return;
+  if(!prodId){ bomSel.innerHTML='<option value="">-- Selecciona producto primero --</option>'; return; }
+  const prod=products.find(p=>p.id===prodId);
+  const mats=prod?.materials||[];
+  if(!mats.length){ bomSel.innerHTML='<option value="">-- Este producto no tiene materiales en BOM --</option>'; return; }
+  bomSel.innerHTML='<option value="">-- Selecciona renglón --</option>'+mats.map((m,i)=>{
+    const matCat=mpMaterials.find(x=>x.id===m.tipo);
+    const grupo=efectiveGrupo({grupo:matCat?.grupo,forma:m.forma||matCat?.forma});
+    let label=matCat?.name||'(material no encontrado)';
+    if(grupo==='barra'||grupo==='tubing'){
+      const u='"';
+      label+=' — '+(m.forma||matCat?.forma||'')+' Ø'+(m.diametro?parseFloat(m.diametro).toFixed(3)+u:'?')
+        +(m.diametro_int?'/Øi'+parseFloat(m.diametro_int).toFixed(3)+u:'')
+        +(m.longitud?' × '+parseFloat(m.longitud).toFixed(3)+'"':'')
+        +(m.cantidad?' ('+m.cantidad+' barras BOM)':'');
+    } else {
+      label+=(m.cantidad?' ('+m.cantidad+' '+(m.unidad||'pzas')+'/lote BOM)':'');
+    }
+    return `<option value="${m.id||i}">${label}</option>`;
+  }).join('');
+}
+window.onMpfProdChange=onMpfProdChange;
+
+// Al elegir el renglón del BOM: resolver el material de catálogo correspondiente,
+// preseleccionarlo en el <select> oculto de catálogo, y mostrar el panel correcto
+// con Ø/Long bloqueados según el BOM (para renglones de barra).
+function onMpfBomItemChange(){
+  const prodId=document.getElementById('mpf-prod')?.value||'';
+  const bomItemId=document.getElementById('mpf-bom-item')?.value||'';
+  const prod=products.find(p=>p.id===prodId);
+  const mats=prod?.materials||[];
+  const m=mats.find((x,i)=>(x.id||i)==bomItemId);
+  if(!m) return;
+  const matCat=mpMaterials.find(x=>x.id===m.tipo);
+  if(!matCat){ alert('El material de este renglón del BOM ya no existe en el Catálogo de Materiales.'); return; }
+
+  // Preseleccionar el material de catálogo en el select oculto
+  const matSel=document.getElementById('mpf-mat');
+  if(matSel){ matSel.value=matCat.id; }
+  const opt=matSel?.options[matSel.selectedIndex];
+  const grupo=efectiveGrupo({grupo:matCat.grupo,forma:m.forma||matCat.forma});
+
+  // Mostrar paneles correspondientes
+  document.getElementById('mpf-panel-barra').style.display=grupo==='barra'?'':'none';
+  document.getElementById('mpf-panel-tubing').style.display=grupo==='tubing'?'':'none';
+  document.getElementById('mpf-panel-pieza').style.display=grupo==='pieza'?'':'none';
+  const resB=document.getElementById('mpf-resumen-barra'), resP=document.getElementById('mpf-resumen-pieza');
+  const precioLbl=document.getElementById('mpf-precio-label');
+  if(grupo==='pieza'){
+    if(resB) resB.style.display='none';
+    if(resP) resP.style.display='';
+    if(precioLbl) precioLbl.textContent='PRECIO/PIEZA ($)';
+  } else {
+    if(resB) resB.style.display='';
+    if(resP) resP.style.display='none';
+    if(precioLbl) precioLbl.textContent='PRECIO/PIEZA ($) — pre-habilitado por proveedor';
+  }
+
+  if(grupo==='barra'){
+    const fEl=document.getElementById('mpf-forma');
+    if(fEl&&m.forma) fEl.value=m.forma;
+    const dEl=document.getElementById('mpf-diam');
+    if(dEl){ dEl.value=m.diametro||matCat.diametro||''; dEl.readOnly=true; dEl.style.opacity='0.6'; dEl.title='Bloqueado: medida fija del BOM de '+(prod?.name||'')+'.'; }
+    const diEl=document.getElementById('mpf-dint');
+    const dintW=document.getElementById('mpf-dint-wrap');
+    if(m.forma==='barra_hueca'||grupo==='tubing'){
+      if(dintW) dintW.style.display='';
+      if(diEl){ diEl.value=m.diametro_int||matCat.diametro_int||''; diEl.readOnly=true; diEl.style.opacity='0.6'; }
+    } else if(dintW) dintW.style.display='none';
+    const lonEl=document.getElementById('mpf-long-in');
+    if(lonEl){ lonEl.value=m.longitud||''; lonEl.readOnly=true; lonEl.style.opacity='0.6'; lonEl.title='Bloqueado: medida fija del BOM de '+(prod?.name||'')+'.'; }
+    const lonMEl=document.getElementById('mpf-long-m');
+    if(lonMEl){ lonMEl.value=''; lonMEl.disabled=true; lonMEl.placeholder='N/A (medida fija en pulgadas)'; }
+    // Para pre-habilitado, "PRECIO/KG ($)" -> ya lo cambiamos a "PRECIO/PIEZA"; el resumen de
+    // KG/Long sigue mostrándose informativamente, pero el valor se calculará por pieza en saveMpStock.
+  }
+  calcAlmKg();
+}
+window.onMpfBomItemChange=onMpfBomItemChange;
 
 function onAlmMatChange(){
   const sel=document.getElementById('mpf-mat');
