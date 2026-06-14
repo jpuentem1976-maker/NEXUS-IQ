@@ -220,12 +220,18 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
       </div>
       <div class="field">
         <label>Operador</label>
-        <select id="sel-operator" onchange="checkSelectReady()"><option value="">-- Selecciona operador --</option></select>
+        <select id="sel-operator" onchange="checkSelectReady();renderSecOpsActive();"><option value="">-- Selecciona operador --</option></select>
       </div>
       <div class="g2" style="gap:10px">
         <button class="btn btn-accent btn-lg" id="btn-go-setup" disabled onclick="goSetup()" style="flex:1">CONTINUAR AL MONTAJE →</button>
         <button class="btn btn-green btn-lg" id="btn-go-prod" disabled onclick="goDirectProduction()" style="flex:1">▶ CONTINUAR PRODUCCIÓN</button>
       </div>
+    </div>
+
+    <!-- OPERACIONES SECUNDARIAS EN CURSO (computadora compartida) -->
+    <div id="sec-active-box" class="hidden" style="max-width:680px;margin-top:18px">
+      <div style="font-size:13px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">🔄 Operaciones Secundarias en Curso</div>
+      <div id="sec-active-list" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
 
@@ -1195,7 +1201,7 @@ const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
 
 let SB_URL = '', SB_KEY = '';
-let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[], otExternalServices=[];
+let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[], otExternalServices=[], secOpsActive=[];
 let recursosProduccion=[];
 let reportsAuth=false, engAuth=false, progAuth=false, almPTAuth=false;
 
@@ -1574,7 +1580,7 @@ async function loadAlmDataSilent(){
 }
 
 async function loadAllData(){
-  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,ext,prodMats,mpMatsData,recursosProdData]=await Promise.all([
+  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,ext,prodMats,mpMatsData,recursosProdData,secOps]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
     sbSelect('operations','select=*&order=sort_order'),
     sbSelect('work_orders','select=*&order=created_at.desc'),
@@ -1591,6 +1597,7 @@ async function loadAllData(){
     sbSelect('product_materials','select=*'),
     sbSelect('mp_materials','select=*&active=eq.true&order=name.asc'),
     sbSelect('recursos_produccion','select=*&order=familia.asc,subfamilia.asc,nombre.asc'),
+    sbSelect('secondary_ops_active','select=*&status=eq.en_curso&order=started_at.asc'),
   ]);
   products=prods.map(p=>({...p,operations:(ops||[]).filter(o=>o.product_id===p.id).sort((a,b)=>a.sort_order-b.sort_order),materials:(prodMats||[]).filter(m=>m.product_id===p.id)}));
   operators=(opsList||[]);
@@ -1615,6 +1622,7 @@ async function loadAllData(){
     window._mpMaterialsRaw=mpMaterials;
   }
   recursosProduccion=recursosProdData||[];
+  secOpsActive=secOps||[];
 }
 
 function showLoading(m){ document.getElementById('loading-msg').textContent=m||'CARGANDO...'; document.getElementById('loading-overlay').classList.remove('hidden'); }
@@ -1744,12 +1752,13 @@ window.setProgTab = function setProgTab(id,btn){
 /* ═══════════════════════════════════════════════════════
    OPERATOR FLOW
 ═══════════════════════════════════════════════════════ */
-let ctx={wo:null,product:null,operation:null,operator:null,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:null,secStart:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
+let ctx={wo:null,product:null,operation:null,operator:null,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:null,secStart:null,secStartedAt:null,secActiveId:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
 let tickInterval=null;
 
 function showStep(s){
   ['step-select','step-setup','step-production','step-secondary'].forEach(id=>{const el=document.getElementById(id);el.classList.add('hidden');el.classList.remove('fade');el.classList.remove('active');});
   const el=document.getElementById(s); el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('fade');
+  if(s==='step-select') renderSecOpsActive();
 }
 
 function populateSelects(){
@@ -1766,6 +1775,7 @@ function populateSelects(){
   const selOper=document.getElementById('sel-operator');
   selOper.innerHTML='<option value="">-- Selecciona operador --</option>';
   operators.forEach(o=>{ selOper.innerHTML+=`<option value="${o.id}">${o.name} (${o.code})</option>`; });
+  renderSecOpsActive();
 }
 
 function onOTChange(){
@@ -1852,7 +1862,7 @@ function buildCtx(){
   const oper=operators.find(o=>o.id===operId);
   const existing=sessions.filter(s=>s.ot_id===woId&&s.operation_id===opId);
   const sessId=existing.length?existing[0].session_id:uid();
-  ctx={wo,product:prod,operation:op,operator:oper,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:sessId,secStart:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
+  ctx={wo,product:prod,operation:op,operator:oper,setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:sessId,secStart:null,secStartedAt:null,secActiveId:null,setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
 }
 
 function goSetup(){
@@ -1877,7 +1887,13 @@ function goSetup(){
 function goDirectProduction(){
   buildCtx();
   ctx.prodStart=Date.now();
-  if(ctx.operation.op_type==='secondary'){ startSecondaryStep(); return; }
+  if(ctx.operation.op_type==='secondary'){
+    // ¿Ya hay una operación secundaria en curso de este operador para esta OT/operación?
+    const existing=(secOpsActive||[]).find(s=>s.status==='en_curso'&&s.ot_id===ctx.wo.id&&s.operation_id===ctx.operation.id&&s.operator_id===ctx.operator.id);
+    if(existing){ reopenSecondaryOp(existing.id); return; }
+    startSecondaryStep();
+    return;
+  }
   goProduction();
 }
 
@@ -2020,41 +2036,144 @@ function goProduction(){
 }
 
 /* SECONDARY OP */
+// Renderiza la lista de operaciones secundarias en curso (computadora compartida)
+function renderSecOpsActive(){
+  const box=document.getElementById('sec-active-box');
+  const list=document.getElementById('sec-active-list');
+  if(!box||!list) return;
+  const operId=document.getElementById('sel-operator')?.value||'';
+  // Mostrar todas las en_curso; resaltar/priorizar las del operador seleccionado
+  const all=(secOpsActive||[]).filter(s=>s.status==='en_curso');
+  if(!all.length){ box.classList.add('hidden'); list.innerHTML=''; return; }
+  box.classList.remove('hidden');
+  const sorted=all.slice().sort((a,b)=>{
+    const aMine=operId&&a.operator_id===operId?0:1;
+    const bMine=operId&&b.operator_id===operId?0:1;
+    return aMine-bMine||new Date(a.started_at)-new Date(b.started_at);
+  });
+  list.innerHTML=sorted.map(s=>{
+    const mine=operId&&s.operator_id===operId;
+    const elSec=Math.floor((Date.now()-new Date(s.started_at).getTime())/1000);
+    return `<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;${mine?'border-color:var(--accent)':''}">
+      <div style="flex:1;min-width:160px">
+        <div style="font-weight:700;font-size:13px">${s.product_name||'—'}</div>
+        <div style="font-size:11px;color:var(--muted)">Op.${s.op_number||'--'} ${s.operation_name||''} · OT: <b style="color:var(--accent)">${s.ot_number||'--'}</b></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);text-align:center">
+        <div style="text-transform:uppercase;font-size:9px">Operador</div>
+        <div style="font-weight:700;color:${mine?'var(--accent)':'var(--text)'}">${s.operator_name||'--'}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);text-align:center;font-family:'DM Mono',monospace">
+        <div style="text-transform:uppercase;font-size:9px">En curso</div>
+        <div class="sec-active-timer" data-started="${s.started_at}" style="font-weight:700;color:var(--warn)">${fmtSec(elSec)}</div>
+      </div>
+      <button class="btn btn-sm btn-orange" onclick="reopenSecondaryOp('${s.id}')">▶ Reabrir / Terminar</button>
+    </div>`;
+  }).join('');
+}
+window.renderSecOpsActive=renderSecOpsActive;
+
+// Tick para refrescar los timers de la lista de operaciones en curso (cada 1s mientras step-select está visible)
+setInterval(()=>{
+  const box=document.getElementById('sec-active-box');
+  if(!box||box.classList.contains('hidden')) return;
+  document.querySelectorAll('.sec-active-timer').forEach(elx=>{
+    const started=new Date(elx.dataset.started).getTime();
+    elx.textContent=fmtSec(Math.floor((Date.now()-started)/1000));
+  });
+},1000);
+
 function startSecondaryStep(){
   document.getElementById('sec-op-title').textContent=ctx.operation.name.toUpperCase();
   document.getElementById('sec-sub').textContent=`${ctx.product.name} · Op.${ctx.operation.op_number} · OT: ${ctx.wo.number}`;
   document.getElementById('sec-operator').textContent=ctx.operator.name;
   document.getElementById('sec-ot').textContent=ctx.wo.number;
   document.getElementById('sec-machine').textContent=ctx.operation.machine_name||'Mesa de Trabajo';
-  document.getElementById('sec-timer').textContent='00:00'; document.getElementById('sec-timer').style.color='var(--muted)';
   const _maxSecPzs=Math.max(1,(ctx.wo.qty||0)-(otScrap||[]).filter(s=>s.ot_id===ctx.wo.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0));
   const _secInp=document.getElementById('sec-piezas');
   _secInp.value=''; _secInp.max=_maxSecPzs; _secInp.placeholder='0 (max '+_maxSecPzs+')';
-  document.getElementById('sec-btn-start').classList.remove('hidden');
-  document.getElementById('sec-btn-finish').classList.add('hidden');
+  const sumEl=document.getElementById('sec-summary'); if(sumEl) sumEl.innerHTML='';
   showStep('step-secondary');
+
+  if(ctx.secActiveId){
+    // Reabriendo una operación ya iniciada: mostrar timer corriendo desde started_at persistido
+    document.getElementById('sec-btn-start').classList.add('hidden');
+    document.getElementById('sec-btn-finish').classList.remove('hidden');
+    document.getElementById('sec-timer').style.color='var(--accent)';
+    clearInterval(tickInterval);
+    tickInterval=setInterval(()=>{
+      const el=Math.floor((Date.now()-ctx.secStartedAt)/1000);
+      document.getElementById('sec-timer').textContent=fmtSec(el);
+    },500);
+  } else {
+    document.getElementById('sec-timer').textContent='00:00'; document.getElementById('sec-timer').style.color='var(--muted)';
+    document.getElementById('sec-btn-start').classList.remove('hidden');
+    document.getElementById('sec-btn-finish').classList.add('hidden');
+  }
 }
 
-function startSecondary(){
-  ctx.secStart=Date.now();
+// Inicia una operación secundaria NUEVA: persiste started_at en secondary_ops_active
+// para que la pantalla pueda cerrarse y otro operador use la misma computadora.
+async function startSecondary(){
+  const now=Date.now();
+  ctx.secStart=now; ctx.secStartedAt=now;
   document.getElementById('sec-btn-start').classList.add('hidden');
   document.getElementById('sec-btn-finish').classList.remove('hidden');
   document.getElementById('sec-timer').style.color='var(--accent)';
   clearInterval(tickInterval);
   tickInterval=setInterval(()=>{
-    const el=Math.floor((Date.now()-ctx.secStart)/1000);
+    const el=Math.floor((Date.now()-ctx.secStartedAt)/1000);
     document.getElementById('sec-timer').textContent=fmtSec(el);
   },500);
+  // Persistir inicio en BD
+  const rec={id:uid(),session_id:ctx.sessionId,ot_id:ctx.wo.id,ot_number:ctx.wo.number,
+    product_id:ctx.product.id,product_name:ctx.product.name,product_code:ctx.product.code,
+    operation_id:ctx.operation.id,operation_name:ctx.operation.name,op_number:ctx.operation.op_number,
+    machine_name:ctx.operation.machine_name,operator_id:ctx.operator.id,operator_name:ctx.operator.name,
+    qty:ctx.wo.qty,started_at:new Date(now).toISOString(),status:'en_curso',created_at:new Date(now).toISOString()};
+  ctx.secActiveId=rec.id;
+  try{ await sbInsert('secondary_ops_active',rec); secOpsActive.unshift(rec); }catch(e){ console.error(e); }
+}
+
+// Reabre una operación secundaria en curso (puede haberla iniciado este u otro turno).
+// Reconstruye ctx desde el registro persistido y muestra la pantalla con timer corriendo.
+function reopenSecondaryOp(secActiveId){
+  const rec=(secOpsActive||[]).find(s=>s.id===secActiveId);
+  if(!rec) return;
+  const wo=getWO(rec.ot_id);
+  const prod=getProduct(rec.product_id);
+  const op=prod?.operations.find(o=>o.id===rec.operation_id);
+  const oper=operators.find(o=>o.id===rec.operator_id);
+  if(!wo||!prod||!op){ alert('No se encontró la información de esta operación (OT/Producto/Operación). Verifica el catálogo.'); return; }
+  ctx={wo,product:prod,operation:op,operator:oper||{id:rec.operator_id,name:rec.operator_name},
+    setupStart:null,setupEnd:null,setupEff:0,prodStart:null,pieceTimes:[],elapsed:0,
+    lunchStart:null,totalLunch:0,dtStart:null,dtCat:'',downtimes:[],sessionId:rec.session_id||uid(),
+    secStart:new Date(rec.started_at).getTime(),secStartedAt:new Date(rec.started_at).getTime(),
+    secActiveId:rec.id,
+    setupLunchStart:null,setupTotalLunch:0,setupDtStart:null,setupDtCat:'',setupDowntimes:[]};
+  startSecondaryStep();
+}
+window.reopenSecondaryOp=reopenSecondaryOp;
+
+// Marca el registro persistido como finalizado en secondary_ops_active
+async function closeSecActiveRecord(){
+  if(!ctx.secActiveId) return;
+  try{
+    await sbUpdate('secondary_ops_active',{id:ctx.secActiveId},{status:'finalizada',ended_at:new Date().toISOString()});
+    secOpsActive=secOpsActive.filter(s=>s.id!==ctx.secActiveId);
+  }catch(e){ console.error(e); }
 }
 
 async function finishSecondary(){
   clearInterval(tickInterval);
-  const actualSec=Math.floor((Date.now()-ctx.secStart)/1000);
+  const actualSec=Math.max(1,Math.floor((Date.now()-ctx.secStartedAt)/1000));
   const _maxSec2=parseInt(document.getElementById('sec-piezas').max)||Math.max(1,(ctx.wo.qty||0)-(otScrap||[]).filter(s=>s.ot_id===ctx.wo.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0));
   const piezas=Math.min(parseInt(document.getElementById('sec-piezas').value)||0,_maxSec2);
   const rec={id:uid(),session_id:ctx.sessionId,ot_id:ctx.wo.id,ot_number:ctx.wo.number,product_id:ctx.product.id,product_name:ctx.product.name,product_code:ctx.product.code,operation_id:ctx.operation.id,operation_name:ctx.operation.name,op_number:ctx.operation.op_number,op_type:'secondary',machine_name:ctx.operation.machine_name,operator_id:ctx.operator.id,operator_name:ctx.operator.name,qty:ctx.wo.qty,type:'secondary_complete',actual_sec:actualSec,pieces_produced:piezas,recorded_at:new Date().toISOString(),date_label:dateStr(Date.now())};
   sessions.unshift(rec);
   try{ await sbInsert('sessions',rec); }catch(e){ console.error(e); }
+  await closeSecActiveRecord();
+  ctx.secActiveId=null;
   // Show result - DON'T go back to select yet, wait for "Operación Concluida"
   const mins=Math.floor(actualSec/60), secs=actualSec%60;
   const timeStr=mins>0?mins+'m '+secs+'s':secs+'s';
@@ -2067,14 +2186,17 @@ async function finishSecondary(){
     +'<div style="font-size:28px;font-weight:700;color:var(--green)">'+timeStr+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:4px">'+piezas+' pzas producidas</div>'
     +'<button class="btn btn-orange btn-xl" style="margin-top:14px;width:100%" onclick="completeSecondaryOp()">🏁 OPERACIÓN CONCLUIDA</button>'
+    +'<button class="btn btn-ghost btn-lg" style="margin-top:8px;width:100%" onclick="showStep(\'step-select\')">↩ Salir (no concluir operación)</button>'
     +'</div>';
 }
 
 async function completeSecondaryOp(){
   clearInterval(tickInterval);
-  const actualSec=ctx.secStart?Math.floor((Date.now()-ctx.secStart)/1000):0;
+  const actualSec=ctx.secStartedAt?Math.max(1,Math.floor((Date.now()-ctx.secStartedAt)/1000)):0;
   const _maxSec3=parseInt(document.getElementById('sec-piezas').max)||Math.max(1,(ctx.wo.qty||0)-(otScrap||[]).filter(s=>s.ot_id===ctx.wo.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0));
   const piezas=Math.min(parseInt(document.getElementById('sec-piezas').value)||0,_maxSec3);
+  await closeSecActiveRecord();
+  ctx.secActiveId=null;
   await markOpComplete(actualSec,piezas,true);
   showStep('step-select');
 }
