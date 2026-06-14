@@ -312,7 +312,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <!-- STEP SECONDARY (simple ops: rebabado, marcado, etc) -->
   <div id="step-secondary" class="hidden fade">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
-      <button class="btn btn-ghost btn-sm" onclick="backToSelect()">← Atrás</button>
+      <button class="btn btn-ghost btn-sm" onclick="backFromSecondary()">← Atrás</button>
       <div><div class="sec-h" style="margin-bottom:0;font-size:22px" id="sec-op-title">OPERACIÓN</div><div id="sec-sub" style="color:var(--muted);font-size:12px"></div></div>
     </div>
     <div class="card card-accent" style="max-width:580px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding:24px">
@@ -1898,6 +1898,20 @@ function goDirectProduction(){
 }
 
 function backToSelect(){ clearInterval(tickInterval); const s=document.getElementById('sec-summary'); if(s) s.innerHTML=''; showStep('step-select'); }
+
+// Botón "Atrás" desde step-secondary: si la operación está corriendo (secActiveId activo),
+// el registro queda en_curso en secondary_ops_active — no se pierde nada, solo se libera
+// la pantalla para que otro operador pueda usarla. Se reabre desde "Operaciones Secundarias en Curso".
+function backFromSecondary(){
+  if(ctx.secActiveId){
+    clearInterval(tickInterval);
+    const s=document.getElementById('sec-summary'); if(s) s.innerHTML='';
+    showStep('step-select');
+  } else {
+    backToSelect();
+  }
+}
+window.backFromSecondary=backFromSecondary;
 
 /* SETUP */
 async function startSetup(){
@@ -4841,7 +4855,7 @@ function renderReleasedOTs(){
         <span>GIF: <b style="color:#fb923c">$${totalGIF.toFixed(2)}</b></span>
         ${totalMOE>0?`<span>Serv.Ext: <b style="color:#f472b6">$${totalMOE.toFixed(2)}</b></span>`:''}
         <span style="margin-left:auto">Total: <b style="color:var(--accent);font-size:13px">$${costoTotal.toFixed(2)}</b></span>
-        <span>Unitario: <b style="color:var(--green);font-size:13px">${totalDel>0?'$'+costoUnitario.toFixed(2):'—'}</b></span>
+        <span>Unitario: <b style="color:var(--green);font-size:13px">${c.wo?.qty>0?'$'+costoUnitario.toFixed(2):'—'}</b></span>
       </div>`;
     }catch(e){ /* silencioso, no bloquea la vista */ }
   });
@@ -8973,7 +8987,11 @@ async function calcOTCosting(otId){
   const totalScrap=scraps.reduce((a,s)=>a+(parseInt(s.qty)||0),0);
 
   const costoTotal=totalMP+totalMOD+totalGIF+totalMOE;
-  const costoUnitario=totalDel>0?costoTotal/totalDel:0;
+  // Costo Unitario = Costo Total del lote / Cantidad del lote (wo.qty).
+  // NO se divide entre "entregadas" ni "pendientes": MP, MOD y GIF corresponden
+  // al lote completo independientemente de cuántas piezas ya se hayan entregado
+  // a Tránsito PT (eso evitaría división por 0 al inicio y un valor inflado al final).
+  const costoUnitario=(wo?.qty>0)?costoTotal/wo.qty:0;
 
   // Costo MP por pieza (asumiendo lote completo programado, ya que MP se consume por el lote completo)
   const mpUnitario=(wo?.qty>0)?totalMP/wo.qty:0;
@@ -9114,8 +9132,8 @@ async function showInfoOTDetail(otId){
         <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Costo Total</div><div style="font-size:18px;font-weight:700;color:var(--accent)">$${costoTotal.toFixed(2)}</div></div>
       </div>
       <div style="text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        <span style="font-size:12px;color:var(--muted)">Costo Unitario (÷ ${totalDel} entregadas): </span>
-        <span style="font-size:20px;font-weight:700;color:var(--green)">${totalDel>0?'$'+costoUnitario.toFixed(2):'— (sin entregas aún)'}</span>
+        <span style="font-size:12px;color:var(--muted)">Costo Unitario (÷ ${c.wo?.qty||0} pzas del lote): </span>
+        <span style="font-size:20px;font-weight:700;color:var(--green)">${c.wo?.qty>0?'$'+costoUnitario.toFixed(2):'— (sin lote)'}</span>
       </div>
     </div>`;
 
