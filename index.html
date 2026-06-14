@@ -7518,9 +7518,37 @@ function renderAlmHabilitar(){
       // Guardar datos en mapa global (sin pasar por HTML)
       window._habData[r.id]={stock,matCat,r,ot,prod,forma,dimStr,u,longSol,cantSol};
 
+      // ¿Este lote ya viene listo para Tránsito sin pasar por corte/habilitado?
+      // - Forja, Fundición, Corte en Pantógrafo/Láser, piezas compradas (O-Ring, Perno Hueco, Seguro, etc.)
+      // - Material de barra pre-cortado/habilitado por el proveedor (stock.pre_habilitado=true)
+      const yaHabilitado=FORMAS_PIEZA.includes(forma)||stock.pre_habilitado===true;
+
       const card=document.createElement('div');
       card.className='card';
       card.style.marginBottom='12px';
+      if(yaHabilitado){
+        const piezaLabel=FORMAS_PIEZA.includes(forma)?(forma==='N/A'?'Pieza comprada':forma):'Pre-habilitado (proveedor)';
+        card.innerHTML=
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+            +'<div style="flex:1;min-width:0">'
+              +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+                +'<span style="font-family:var(--font-display,sans-serif);font-size:16px;color:var(--accent)">'+(r.ot_number||'--')+'</span>'
+                +(prod.name?'<span style="font-weight:700">'+prod.name.toUpperCase()+'</span>':'')
+                +(prod.code?'<span class="tag" style="color:var(--accent);font-family:monospace">'+prod.code+'</span>':'')
+                +'<span class="tag" style="color:var(--green);background:rgba(16,185,129,.1)">🏷 '+piezaLabel+' — sin corte</span>'
+              +'</div>'
+              +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-bottom:8px">'
+                +'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">MATERIAL</div><div style="font-size:12px;font-weight:700">'+(stock.material||'--').toUpperCase()+'</div></div>'
+                +(dimStr?'<div style="background:var(--bg3);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">DIMENSIONES</div><div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+dimStr+(longSol?' × '+longSol.toFixed(3)+'"':'')+'</div></div>':'')
+                +'<div style="background:var(--bg2);border:1px solid rgba(0,212,255,.2);border-radius:6px;padding:6px 10px"><div style="font-size:9px;color:var(--muted)">CANTIDAD</div><div style="font-size:13px;font-weight:700;font-family:DM Mono,monospace;color:var(--accent)">'+cantSol+' pzas</div></div>'
+              +'</div>'
+            +'</div>'
+            +'<button class="btn btn-green hab-btn-directo" data-resid="'+r.id+'">✅ Confirmar Recepción</button>'
+          +'</div>';
+        card.querySelector('.hab-btn-directo').addEventListener('click',()=>confirmarRecepcionDirecta(r.id,stock.id));
+        list.appendChild(card);
+        return;
+      }
       card.innerHTML=
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'
           +'<div style="flex:1;min-width:0">'
@@ -7872,6 +7900,85 @@ async function confirmarHabilitado(resId,stockId,materialId,densidad,diam,dint,f
   }catch(e){console.error('confirmarHabilitado error:',e);alert('Error: '+e.message);}
 }
 window.confirmarHabilitado=confirmarHabilitado;
+
+// Confirmación directa (sin corte) para lotes que ya vienen listos para producción:
+// Forja, Fundición, Corte en Pantógrafo/Láser, piezas compradas (O-Ring, Perno Hueco, Seguro, etc.)
+// y material de barra pre-cortado/habilitado por el proveedor (stock.pre_habilitado=true).
+// No aplica cálculo de kg/volumen: descuenta CANTIDAD (piezas) directo y mueve a Tránsito.
+async function confirmarRecepcionDirecta(resId,stockId){
+  if(!confirm('¿Confirmar recepción de este material? Se moverá directo a Tránsito Producción sin proceso de corte/habilitado.')) return;
+  try{
+    await loadAlmData();
+    const stock=mpStock.find(s=>s.id===stockId);
+    const res=mpReservations.find(r=>r.id===resId);
+    if(!stock||!res) throw new Error('No se encontró el registro de stock o la reserva. Recarga la pestaña.');
+
+    const cantSol=parseInt(res.cantidad||1);
+    const cantActual=parseInt(stock.cantidad)||0;
+    const newCant=Math.max(0,cantActual-cantSol);
+    const precioUnit=parseFloat(stock.precio_kg)||0; // precio/pieza para materiales tipo pieza
+    const newKgTotal=newCant; // convención: 1 pieza = 1 "kg-equivalente" para valorización
+    const newValor=parseFloat((newKgTotal*precioUnit).toFixed(2));
+    const otrasResActivas=await sbSelect('mp_reservations','select=id&mp_stock_id=eq.'+encodeURIComponent(stockId)+'&id=neq.'+encodeURIComponent(resId)+'&status=in.(apartado,parcial)');
+    const newStatus=newCant<=0?'sin_stock':(otrasResActivas&&otrasResActivas.length>0)?'apartado':'disponible';
+
+    await sbUpdate('mp_stock',{id:stockId},{
+      cantidad:newCant,
+      kg_total:newKgTotal,
+      valor_total:newValor,
+      status:newStatus,
+      updated_at:new Date().toISOString()
+    });
+    const idx=mpStock.findIndex(s=>s.id===stockId);
+    if(idx>=0) mpStock[idx]={...mpStock[idx],cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus};
+
+    // Eliminar reservación
+    await sbDelete('mp_reservations',{id:resId});
+    const woForTransit=workOrders.find(o=>o.id===res.ot_id)||{};
+    const prodForTransit=getProduct(woForTransit.product_id)||{};
+
+    // Registrar en mp_transit
+    await sbInsert('mp_transit',{
+      id:uid(),
+      ot_id:res.ot_id||null,
+      ot_number:res.ot_number||'--',
+      product_id:woForTransit.product_id||null,
+      product_name:prodForTransit.name||res.product_name||'',
+      product_code:prodForTransit.code||res.product_code||'',
+      material:stock.material||'',
+      forma:stock.forma||'',
+      diametro:stock.diametro||null,
+      longitud_in:stock.longitud_in||null,
+      cantidad_barras:cantSol,
+      kg_real:cantSol,
+      precio_kg:precioUnit,
+      valor:parseFloat((cantSol*precioUnit).toFixed(2)),
+      status:'listo',
+      moved_by:'Almacenista',
+      moved_at:new Date().toISOString()
+    });
+
+    // Registrar movimiento
+    await sbInsert('mp_movements',{
+      id:uid(),
+      mp_stock_id:stockId,
+      tipo:'recepcion_directa',
+      cantidad:cantSol,
+      longitud_in:stock.longitud_in||null,
+      kg:cantSol,
+      origen:'Existencias',
+      destino:'Tránsito Producción',
+      ot_id:res.ot_id||null,
+      ot_number:res.ot_number||'--',
+      recorded_at:new Date().toISOString()
+    });
+
+    await loadAlmData();
+    renderAlmHabilitar();
+    alert('✅ Recepción confirmada y movida a Tránsito Producción.');
+  }catch(e){console.error('confirmarRecepcionDirecta error:',e);alert('Error: '+e.message);}
+}
+window.confirmarRecepcionDirecta=confirmarRecepcionDirecta;
 
 
 
