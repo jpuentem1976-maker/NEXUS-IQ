@@ -2996,13 +2996,10 @@ function showProductForm(id){
 
 function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
-  // Match exacto por nombre; si no hay match (ej. el usuario renombró "Inspección" -> "Inspección Final"),
-  // usar como fallback el primer catálogo cuyo type coincida con op.op_type, para no perder la categoría.
-  const exactMatch=opCatalog.some(o=>op.name===o.name);
-  const opCatOpts=opCatalog.map(o=>{
-    const sel=exactMatch?(op.name===o.name):(op.op_type&&o.type===op.op_type&&opCatalog.findIndex(x=>x.type===op.op_type)===opCatalog.indexOf(o));
-    return `<option value="${o.name}|${o.type}" ${sel?'selected':''}>${o.name}</option>`;
-  }).join('');
+  // Solo marcar "selected" si hay match EXACTO de nombre con el catálogo de operaciones.
+  // Si el usuario renombró la operación (ej. "Inspección" -> "Inspección Final"), el selector
+  // queda en "-- Operación --" (sin selección falsa) — el op_type real se preserva por separado en saveProduct().
+  const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
   const isSec=op.op_type==='secondary';
   return `<div class="op-row-wrap">
   <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
