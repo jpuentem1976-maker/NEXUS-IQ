@@ -666,6 +666,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <button class="ptab" onclick="setProgTab('p-machload',this)">⚙ Carga de Máquinas</button>
     <button class="ptab" onclick="setProgTab('p-existencias',this)">📊 Actualizar Existencias</button>
     <button class="ptab" onclick="setProgTab('p-info-ot',this)">📑 Información OT</button>
+    <button class="ptab" onclick="setProgTab('p-scrap-report',this)">📉 Reporte Scrap</button>
   </div>
 
   <!-- PROGRAMMING -->
@@ -725,6 +726,19 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
       <input type="text" id="info-ot-search" placeholder="🔍 Buscar OT o producto..." oninput="renderInfoOT()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:240px">
     </div>
     <div id="info-ot-list"></div>
+  </div>
+
+  <!-- REPORTE SCRAP -->
+  <div id="p-scrap-report" class="subpage">
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px">📉 Reporte de Scrap Valorizado</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Costo acumulado hasta la operación donde se generó el scrap (incluye MP completa + MOD/GIF de operaciones realizadas).</div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <div class="field" style="margin:0"><label>Desde</label><input type="date" id="scrap-rep-from" onchange="renderScrapReport()"></div>
+      <div class="field" style="margin:0"><label>Hasta</label><input type="date" id="scrap-rep-to" onchange="renderScrapReport()"></div>
+      <input type="text" id="scrap-rep-search" placeholder="🔍 Buscar OT o producto..." oninput="renderScrapReport()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:220px;align-self:flex-end">
+    </div>
+    <div id="scrap-rep-banner" style="margin-bottom:14px"></div>
+    <div id="scrap-rep-list"></div>
   </div>
 
   <!-- MACHINE LOAD -->
@@ -1065,6 +1079,55 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 </div>
 
+<!-- MODAL REGISTRAR SCRAP -->
+<div id="scrap-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:440px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--danger);margin-bottom:14px">⚠ Registrar Scrap — <span id="scrap-ot-label"></span></div>
+    <div class="field">
+      <label>Cantidad de Scrap</label>
+      <input id="scrap-qty" type="number" min="1" style="font-size:18px;text-align:center">
+    </div>
+    <div class="field">
+      <label>Operación donde se generó</label>
+      <select id="scrap-operation"></select>
+    </div>
+    <div class="field">
+      <label>Motivo (opcional)</label>
+      <input id="scrap-reason" placeholder="ej. Fuera de tolerancia, golpe, etc.">
+    </div>
+    <div id="scrap-remaining-note" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+    <div class="g2" style="margin-top:8px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('scrap-modal')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmAddScrap()">⚠ Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SERVICIOS EXTERNOS -->
+<div id="ext-service-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:480px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">🔥 Servicios Externos — <span id="ext-svc-ot-label"></span></div>
+    <div id="ext-svc-existing" style="margin-bottom:14px"></div>
+    <div style="font-weight:700;font-size:13px;color:var(--muted);margin-bottom:8px">+ Agregar Servicio</div>
+    <div class="field">
+      <label>Proveedor</label>
+      <input id="ext-svc-proveedor" placeholder="ej. Tratamientos Térmicos del Norte">
+    </div>
+    <div class="field">
+      <label>Concepto</label>
+      <input id="ext-svc-concepto" placeholder="ej. Carburizado, Niquelado, Cromado...">
+    </div>
+    <div class="field">
+      <label>Costo Total (MXN)</label>
+      <input id="ext-svc-costo" type="number" step="0.01" placeholder="ej. 3500.00">
+    </div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('ext-service-modal')">Cerrar</button>
+      <button class="btn btn-accent" onclick="saveExternalService()">💾 Agregar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL DETALLE INFORMACIÓN OT -->
 <div id="info-ot-modal" class="overlay hidden">
   <div class="card modal" style="max-width:760px;max-height:85vh;overflow-y:auto">
@@ -1132,7 +1195,7 @@ const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
 
 let SB_URL = '', SB_KEY = '';
-let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[];
+let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[], otExternalServices=[];
 let recursosProduccion=[];
 let reportsAuth=false, engAuth=false, progAuth=false, almPTAuth=false;
 
@@ -1511,7 +1574,7 @@ async function loadAlmDataSilent(){
 }
 
 async function loadAllData(){
-  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,prodMats,mpMatsData,recursosProdData]=await Promise.all([
+  const [prods,ops,ots,opsList,sess,sessComplete,mc,oc,ml,rm,del,scr,ext,prodMats,mpMatsData,recursosProdData]=await Promise.all([
     sbSelect('products','select=*&order=name.asc'),
     sbSelect('operations','select=*&order=sort_order'),
     sbSelect('work_orders','select=*&order=created_at.desc'),
@@ -1524,6 +1587,7 @@ async function loadAllData(){
     sbSelect('raw_material','select=*&status=eq.active&order=created_at.desc'),
     sbSelect('ot_deliveries','select=*&order=delivered_at.desc'),
     sbSelect('ot_scrap','select=*&order=recorded_at.desc'),
+    sbSelect('ot_external_services','select=*&order=created_at.desc'),
     sbSelect('product_materials','select=*'),
     sbSelect('mp_materials','select=*&active=eq.true&order=name.asc'),
     sbSelect('recursos_produccion','select=*&order=familia.asc,subfamilia.asc,nombre.asc'),
@@ -1543,6 +1607,7 @@ async function loadAllData(){
   rawMaterial=rm||[];
   otDeliveries=del||[];
   otScrap=scr||[];
+  otExternalServices=ext||[];
   // Catálogo de materiales dinámico
   mpMaterials=mpMatsData||[];
   if(mpMaterials.length){
@@ -1672,6 +1737,7 @@ window.setProgTab = function setProgTab(id,btn){
     if(id==='p-machload') renderMachineLoad();
     if(id==='p-existencias') renderExistencias();
     if(id==='p-info-ot') renderInfoOT();
+    if(id==='p-scrap-report') renderScrapReport();
   });
 }
 
@@ -3532,7 +3598,8 @@ window.deleteMachine=deleteMachine;
 /* ═══════════════════════════════════════════════════════
    ENGINEERING — TOOLING BY MACHINE
 ═══════════════════════════════════════════════════════ */
-const TARGET_MACHINES=['Torno CNC Cadet','Torno CNC Crown','Torno CNC Viwa','Centro de Maquinado Viwa','Centro de Maquinado V3016','Sander','Esmeril'];
+// Las 7 máquinas principales con computadora de reporte (Montaje + Producción)
+const TARGET_MACHINES=['Torno CNC Cadet','Torno CNC Crown','Torno CNC Viwa','Centro de Maquinado Viwa','Centro de Maquinado V3016','Rectificadora Bryant','Rectificadora BU-28'];
 
 function renderTooling(){
   const body=document.getElementById('tooling-body');
@@ -3607,11 +3674,7 @@ function fmtHM(totalMinutes){
 }
 
 function renderMachineTimes(){
-  const MAQUINAS = [
-    'Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa',
-    'Centro de Maquinado Viwa','Centro de Maquinado V3016',
-    'Rectificadora BU-28','Rectificadora Bryant','Sander','Esmeril'
-  ];
+  const MAQUINAS = TARGET_MACHINES;
   const body = document.getElementById('machine-times-body');
   if(!body) return;
 
@@ -4535,6 +4598,8 @@ function renderReleasedOTs(){
     const p=getProduct(o.product_id);
     const dels=safeDeliveries.filter(d=>d.ot_id===o.id).reduce((a,d)=>a+(parseInt(d.qty)||0),0);
     const scraps=safeScraps.filter(s=>s.ot_id===o.id).reduce((a,s)=>a+(parseInt(s.qty)||0),0);
+    const extSvcs=(otExternalServices||[]).filter(e=>e.ot_id===o.id);
+    const extTotal=extSvcs.reduce((a,e)=>a+(parseFloat(e.costo)||0),0);
     const pct=o.progress_pct||0;
     html_parts.push(`
       <div class="card fade" style="margin-bottom:10px">
@@ -4572,11 +4637,14 @@ function renderReleasedOTs(){
             <div><div style="font-size:10px;color:var(--muted)">ENTREGADAS</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--green)">${dels}</div></div>
             <div><div style="font-size:10px;color:var(--muted)">SCRAP</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--danger)">${scraps}</div></div>
             <div><div style="font-size:10px;color:var(--muted)">PENDIENTES</div><div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--warn)">${Math.max(0,o.qty-dels-scraps)}</div></div>
+            ${extSvcs.length?`<div><div style="font-size:10px;color:var(--muted)">SERV. EXT.</div><div style="font-family:var(--font-display,sans-serif);font-size:20px;color:#fb923c">$${extTotal.toFixed(0)}</div></div>`:''}
           </div>
         </div>
+        <div id="ot-costing-${o.id}" style="margin-top:10px"></div>
         <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
           <button class="btn btn-green btn-sm" onclick="addDelivery('${o.id}',${o.qty},${dels},${scraps})">+ Entrega</button>
           <button class="btn btn-sm" onclick="addScrap('${o.id}')" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)">+ Scrap</button>
+          <button class="btn btn-sm" onclick="addExternalService('${o.id}')" style="background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.3)">🔥 Servicio Externo</button>
           <button class="btn btn-warn btn-sm" onclick="closeOT('${o.id}',${o.qty},${dels},${scraps})">🔒 Cerrar O.T.</button>
           <button class="btn btn-sm btn-danger" onclick="deleteReleasedOT('${o.id}','${o.number}')">🗑 Eliminar</button>
         </div>
@@ -4584,6 +4652,26 @@ function renderReleasedOTs(){
     }catch(err){ console.error('Error rendering OT '+o.number+':', err); }
   }
   list.innerHTML=html_parts.join('');
+
+  // Cargar costeo en vivo por OT (MP, MOD, GIF, MOE, Total, Unitario)
+  released.forEach(async o=>{
+    const cell=document.getElementById('ot-costing-'+o.id);
+    if(!cell) return;
+    try{
+      const c=await calcOTCosting(o.id);
+      const {totalMP,totalMOD,totalGIF,totalMOE,totalDel,costoTotal,costoUnitario}=c;
+      if(totalMP===0&&totalMOD===0&&totalGIF===0&&totalMOE===0) return; // sin datos aún, no mostrar fila vacía
+      cell.innerHTML=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:11px">
+        <span style="color:var(--muted);text-transform:uppercase;font-size:10px;font-weight:700">💰 Costeo en vivo:</span>
+        <span>MP: <b style="color:var(--accent2)">$${totalMP.toFixed(2)}</b></span>
+        <span>MOD: <b style="color:#60a5fa">$${totalMOD.toFixed(2)}</b></span>
+        <span>GIF: <b style="color:#fb923c">$${totalGIF.toFixed(2)}</b></span>
+        ${totalMOE>0?`<span>Serv.Ext: <b style="color:#f472b6">$${totalMOE.toFixed(2)}</b></span>`:''}
+        <span style="margin-left:auto">Total: <b style="color:var(--accent);font-size:13px">$${costoTotal.toFixed(2)}</b></span>
+        <span>Unitario: <b style="color:var(--green);font-size:13px">${totalDel>0?'$'+costoUnitario.toFixed(2):'—'}</b></span>
+      </div>`;
+    }catch(e){ /* silencioso, no bloquea la vista */ }
+  });
 }
 
 function addDelivery(otId,qty,delivered,scrap){
@@ -4604,23 +4692,123 @@ function addDelivery(otId,qty,delivered,scrap){
     .catch(e=>{ alert('Error: '+e.message); hideLoading(); });
 }
 
+// ── Servicios Externos (Tratamiento Térmico, Niquelado, etc.) ──
+let _extSvcOtId=null;
+function addExternalService(otId){
+  _extSvcOtId=otId;
+  const wo=workOrders.find(w=>w.id===otId);
+  document.getElementById('ext-svc-ot-label').textContent=wo?.number||'';
+  document.getElementById('ext-svc-proveedor').value='';
+  document.getElementById('ext-svc-concepto').value='';
+  document.getElementById('ext-svc-costo').value='';
+  renderExtSvcExisting();
+  document.getElementById('ext-service-modal').classList.remove('hidden');
+}
+window.addExternalService=addExternalService;
+
+function renderExtSvcExisting(){
+  const cont=document.getElementById('ext-svc-existing');
+  const list=(otExternalServices||[]).filter(e=>e.ot_id===_extSvcOtId);
+  if(!list.length){ cont.innerHTML=`<div style="font-size:12px;color:var(--muted)">Sin servicios registrados para esta OT.</div>`; return; }
+  const total=list.reduce((a,e)=>a+(parseFloat(e.costo)||0),0);
+  cont.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+      <th style="padding:5px 8px;text-align:left">Proveedor</th>
+      <th style="padding:5px 8px;text-align:left">Concepto</th>
+      <th style="padding:5px 8px;text-align:center">Costo</th>
+      <th style="padding:5px 8px;text-align:center"></th>
+    </tr></thead><tbody>
+    ${list.map(e=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600">${e.proveedor||'—'}</td>
+      <td style="padding:5px 8px;color:var(--muted)">${e.concepto||'—'}</td>
+      <td style="padding:5px 8px;text-align:center;color:#fb923c;font-weight:700">$${parseFloat(e.costo||0).toFixed(2)}</td>
+      <td style="padding:5px 8px;text-align:center"><button class="btn btn-sm btn-danger" onclick="deleteExternalService('${e.id}')">🗑</button></td>
+    </tr>`).join('')}
+    </tbody></table>
+    <div style="text-align:right;margin-top:6px;font-size:12px;font-weight:700;color:#fb923c">Total: $${total.toFixed(2)}</div>`;
+}
+
+async function saveExternalService(){
+  const proveedor=document.getElementById('ext-svc-proveedor').value.trim();
+  const concepto=document.getElementById('ext-svc-concepto').value.trim();
+  const costo=parseFloat(document.getElementById('ext-svc-costo').value)||0;
+  if(!concepto||!costo){ alert('Concepto y costo son requeridos'); return; }
+  const wo=workOrders.find(w=>w.id===_extSvcOtId);
+  try{
+    await sbInsert('ot_external_services',{id:uid(),ot_id:_extSvcOtId,ot_number:wo?.number||'',proveedor,concepto,costo,created_at:new Date().toISOString()});
+    await loadAllData();
+    document.getElementById('ext-svc-proveedor').value='';
+    document.getElementById('ext-svc-concepto').value='';
+    document.getElementById('ext-svc-costo').value='';
+    renderExtSvcExisting();
+    renderReleasedOTs();
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.saveExternalService=saveExternalService;
+
+async function deleteExternalService(id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  try{
+    await sbDelete('ot_external_services',{id});
+    await loadAllData();
+    renderExtSvcExisting();
+    renderReleasedOTs();
+  }catch(e){ alert('Error: '+e.message); }
+}
+window.deleteExternalService=deleteExternalService;
+
+let _scrapCtx={};
 function addScrap(otId){
-  // Calculate current remaining to validate
   const wo=workOrders.find(w=>w.id===otId);
   const dels=(otDeliveries||[]).filter(d=>d.ot_id===otId).reduce((a,d)=>a+(parseInt(d.qty)||0),0);
   const scraps=(otScrap||[]).filter(s=>s.ot_id===otId).reduce((a,s)=>a+(parseInt(s.qty)||0),0);
   const remaining=Math.max(0,(wo?.qty||0)-dels-scraps);
   if(remaining<=0){ alert('No hay piezas pendientes para registrar scrap.'); return; }
-  const n=parseInt(prompt('Cantidad de scrap (quedan '+remaining+' pendientes):'));
-  if(!n||isNaN(n)||n<=0) return;
-  if(n>remaining){ alert('No puedes registrar '+n+' scrap. Solo quedan '+remaining+' pendientes.'); return; }
-  const reason=prompt('Motivo del scrap (opcional):')||'';
-  showLoading('REGISTRANDO...');
-  sbInsert('ot_scrap',{id:uid(),ot_id:otId,qty:n,reason,recorded_at:new Date().toISOString()})
-    .then(()=>loadAllData())
-    .then(()=>{ renderReleasedOTs(); renderRmtProd(); hideLoading(); })
-    .catch(e=>{ alert('Error: '+e.message); hideLoading(); });
+
+  const prod=products.find(p=>p.id===wo?.product_id);
+  const ops=(prod?.operations||[]).slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  if(!ops.length){ alert('Este producto no tiene operaciones definidas.'); return; }
+  const lastOp=ops[ops.length-1]; // mayor sort_order = última operación (típicamente Inspección Final)
+
+  _scrapCtx={otId,wo,remaining};
+  document.getElementById('scrap-ot-label').textContent=wo.number;
+  document.getElementById('scrap-qty').value='';
+  document.getElementById('scrap-reason').value='';
+  document.getElementById('scrap-remaining-note').textContent=`Quedan ${remaining} piezas pendientes.`;
+  const sel=document.getElementById('scrap-operation');
+  sel.innerHTML=ops.map(o=>`<option value="${o.id}|${o.op_number}|${o.sort_order}" ${o.id===lastOp.id?'selected':''}>Op.${o.op_number} — ${o.name}${o.id===lastOp.id?' (Inspección Final / última)':''}</option>`).join('');
+  document.getElementById('scrap-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('scrap-qty').focus(),80);
 }
+window.addScrap=addScrap;
+
+async function confirmAddScrap(){
+  const {otId,wo,remaining}=_scrapCtx;
+  const n=parseInt(document.getElementById('scrap-qty').value);
+  if(!n||isNaN(n)||n<=0){ alert('Ingresa una cantidad válida'); return; }
+  if(n>remaining){ alert('No puedes registrar '+n+' scrap. Solo quedan '+remaining+' pendientes.'); return; }
+  const reason=document.getElementById('scrap-reason').value.trim();
+  const [operation_id,op_number,sort_order]=(document.getElementById('scrap-operation').value||'').split('|');
+  const prod=products.find(p=>p.id===wo?.product_id);
+  const op=(prod?.operations||[]).find(o=>o.id===operation_id);
+
+  showLoading('REGISTRANDO...');
+  try{
+    await sbInsert('ot_scrap',{
+      id:uid(),ot_id:otId,ot_number:wo.number,product_id:wo.product_id,
+      product_name:prod?.name||'',product_code:prod?.code||'',
+      qty:n,reason,
+      operation_id,op_number,sort_order:parseInt(sort_order)||null,
+      operation_name:op?.name||'',
+      recorded_at:new Date().toISOString()
+    });
+    await loadAllData();
+    closeModal('scrap-modal');
+    renderReleasedOTs(); renderRmtProd();
+  }catch(e){ alert('Error: '+e.message); }
+  hideLoading();
+}
+window.confirmAddScrap=confirmAddScrap;
 
 async function closeOT(otId,qty,delivered,scrap){
   if(delivered+scrap!==qty){ alert(`No se puede cerrar: ${qty} programadas vs ${delivered} entregadas + ${scrap} scrap = ${delivered+scrap}.\nDeben cuadrar.`); return; }
@@ -4953,7 +5141,7 @@ window.toggleConsultaProd = function toggleConsultaProd(pid){
   if(a) a.style.transform=open?'':'rotate(90deg)';
 }
 
-const DASHBOARD_MACHINES=['Torno CNC Crown','Torno CNC Cadet','Torno CNC Viwa','Centro de Maquinado V3016','Centro de Maquinado Viwa','Rectificadora Bryant','Rectificadora BU-28','Sander','Esmeril'];
+const DASHBOARD_MACHINES=TARGET_MACHINES;
 let _dashInterval=null;
 
 async function loadDashboardData(){
@@ -8554,6 +8742,177 @@ function renderInfoOT(){
 }
 window.renderInfoOT=renderInfoOT;
 
+// ── Cálculo de costeo compartido (usado por Información OT y O.T. Liberadas) ──
+async function calcOTCosting(otId){
+  const wo=workOrders.find(w=>w.id===otId);
+  const prod=products.find(p=>p.id===wo?.product_id);
+  const prodOps=(prod?.operations||[]).slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+
+  // 1. Materia prima consumida (mp_transit, sin filtro de status)
+  const mpRows=await sbSelect('mp_transit','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
+  const totalMP=mpRows.reduce((a,t)=>a+(parseFloat(t.valor)||0),0);
+
+  // 2. Tiempos por operación (sessions)
+  const sessRows=await sbSelect('sessions','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
+  const byOp={};
+  sessRows.forEach(s=>{
+    if(!['setup','piece','secondary_complete','op_complete'].includes(s.type)) return;
+    const key=s.operation_id||s.op_number||s.operation_name;
+    if(!byOp[key]) byOp[key]={
+      name:s.operation_name||'Operación',
+      op_number:s.op_number,
+      operation_id:s.operation_id,
+      machine_name:s.machine_name||'',
+      operator_id:s.operator_id, operator_name:s.operator_name,
+      setupSec:0, prodSec:0, pieces:0
+    };
+    if(s.type==='setup') byOp[key].setupSec+=parseInt(s.actual_sec)||0;
+    if(s.type==='piece'){ byOp[key].prodSec+=parseInt(s.actual_sec)||0; byOp[key].pieces+=1; }
+    if(s.type==='secondary_complete'){ byOp[key].prodSec+=parseInt(s.actual_sec)||0; byOp[key].pieces+=parseInt(s.pieces_produced)||0; }
+  });
+  const ops=Object.values(byOp);
+
+  // 3. Costo MOD + GIF por operación (+ resolver sort_order desde catálogo de operaciones del producto)
+  let totalMOD=0, totalGIF=0;
+  ops.forEach(op=>{
+    const totalSec=op.setupSec+op.prodSec;
+    const hrs=totalSec/3600;
+    const operador=operators.find(x=>x.id===op.operator_id);
+    const maquina=machineCatalog.find(m=>m.name===op.machine_name);
+    op.totalSec=totalSec;
+    op.costoMOD=hrs*(parseFloat(operador?.costo_hora)||0);
+    op.costoGIF=hrs*(parseFloat(maquina?.tarifa_hora)||0);
+    totalMOD+=op.costoMOD;
+    totalGIF+=op.costoGIF;
+    // Resolver sort_order: por operation_id, o por op_number como fallback
+    const prodOp=prodOps.find(po=>po.id===op.operation_id)||prodOps.find(po=>String(po.op_number)===String(op.op_number));
+    op.sort_order=prodOp?.sort_order??null;
+  });
+
+  // 4. Servicios externos (Tratamiento Térmico, Niquelado, etc.)
+  const extRows=(otExternalServices||[]).filter(e=>e.ot_id===otId);
+  const totalMOE=extRows.reduce((a,e)=>a+(parseFloat(e.costo)||0),0);
+
+  // 5. Entregas y scrap
+  const dels=(otDeliveries||[]).filter(d=>d.ot_id===otId);
+  const totalDel=dels.reduce((a,d)=>a+(parseInt(d.qty)||0),0);
+  const scraps=(otScrap||[]).filter(s=>s.ot_id===otId);
+  const totalScrap=scraps.reduce((a,s)=>a+(parseInt(s.qty)||0),0);
+
+  const costoTotal=totalMP+totalMOD+totalGIF+totalMOE;
+  const costoUnitario=totalDel>0?costoTotal/totalDel:0;
+
+  // Costo MP por pieza (asumiendo lote completo programado, ya que MP se consume por el lote completo)
+  const mpUnitario=(wo?.qty>0)?totalMP/wo.qty:0;
+
+  return {mpRows,totalMP,mpUnitario,ops,prodOps,totalMOD,totalGIF,extRows,totalMOE,dels,totalDel,scraps,totalScrap,costoTotal,costoUnitario,wo,prod};
+}
+window.calcOTCosting=calcOTCosting;
+
+// ── Valoriza un registro individual de scrap según costo acumulado hasta su operación ──
+function valorizarScrapRecord(scrapRec, otc){
+  const {mpUnitario,ops}=otc;
+  const sortOrderScrap=scrapRec.sort_order!=null?parseInt(scrapRec.sort_order):null;
+  let costoUnit=mpUnitario; // siempre incluye MP completa del lote
+  if(sortOrderScrap!=null){
+    ops.forEach(op=>{
+      if(op.sort_order!=null && op.sort_order<=sortOrderScrap){
+        const hrs=(op.totalSec||0)/3600;
+        const totalSecAllPieces=op.pieces>0?op.totalSec:0;
+        // Costo por pieza de esta operación = (costoMOD+costoGIF) / piezas procesadas en esa operación
+        const piezasOp=op.pieces||otc.totalDel||1;
+        costoUnit += ((op.costoMOD+op.costoGIF)/piezasOp);
+      }
+    });
+  } else {
+    // Sin operación registrada (datos legacy) → usar costo unitario total de la OT
+    costoUnit=otc.costoUnitario;
+  }
+  return costoUnit*(parseInt(scrapRec.qty)||0);
+}
+window.valorizarScrapRecord=valorizarScrapRecord;
+
+// ── Reporte de Scrap Valorizado ──
+async function renderScrapReport(){
+  const el=document.getElementById('scrap-rep-list');
+  const banner=document.getElementById('scrap-rep-banner');
+  if(!el) return;
+  const from=document.getElementById('scrap-rep-from')?.value;
+  const to=document.getElementById('scrap-rep-to')?.value;
+  const q=(document.getElementById('scrap-rep-search')?.value||'').toLowerCase();
+
+  let scraps=[...(otScrap||[])];
+  if(from) scraps=scraps.filter(s=>s.recorded_at&&s.recorded_at>=from);
+  if(to)   scraps=scraps.filter(s=>s.recorded_at&&s.recorded_at<=to+'T23:59:59');
+  if(q){
+    scraps=scraps.filter(s=>{
+      const wo=workOrders.find(w=>w.id===s.ot_id);
+      const prod=products.find(p=>p.id===(s.product_id||wo?.product_id));
+      return (s.ot_number||wo?.number||'').toLowerCase().includes(q)||(prod?.name||'').toLowerCase().includes(q)||(prod?.code||'').toLowerCase().includes(q);
+    });
+  }
+  scraps.sort((a,b)=>(b.recorded_at||'').localeCompare(a.recorded_at||''));
+
+  if(!scraps.length){
+    banner.innerHTML='';
+    el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:40px;font-size:14px">Sin registros de scrap en el período</div>`;
+    return;
+  }
+
+  el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted)">Calculando valorización...</div>`;
+
+  // Calcular costeo por OT una sola vez (cache)
+  const otIds=[...new Set(scraps.map(s=>s.ot_id))];
+  const costingCache={};
+  for(const otId of otIds){
+    try{ costingCache[otId]=await calcOTCosting(otId); }catch(e){ costingCache[otId]=null; }
+  }
+
+  let totalPzas=0, totalValor=0;
+  let html=`<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
+      <th style="padding:8px 10px;text-align:left">Fecha</th>
+      <th style="padding:8px 10px;text-align:left">OT</th>
+      <th style="padding:8px 10px;text-align:left">Producto</th>
+      <th style="padding:8px 10px;text-align:left">Operación</th>
+      <th style="padding:8px 10px;text-align:left">Motivo</th>
+      <th style="padding:8px 10px;text-align:center">Cant.</th>
+      <th style="padding:8px 10px;text-align:center">Costo Unit.</th>
+      <th style="padding:8px 10px;text-align:center">Valor</th>
+    </tr></thead><tbody>`;
+
+  scraps.forEach(s=>{
+    const wo=workOrders.find(w=>w.id===s.ot_id);
+    const prod=products.find(p=>p.id===(s.product_id||wo?.product_id));
+    const otc=costingCache[s.ot_id];
+    const valor=otc?valorizarScrapRecord(s,otc):0;
+    const costoUnit=parseInt(s.qty)>0?valor/parseInt(s.qty):0;
+    const fecha=s.recorded_at?new Date(s.recorded_at).toLocaleDateString('es-MX'):'—';
+    const opLabel=s.op_number?`Op.${s.op_number}${s.operation_name?' — '+s.operation_name:''}`:'—';
+    totalPzas+=parseInt(s.qty)||0;
+    totalValor+=valor;
+    html+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${fecha}</td>
+      <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${s.ot_number||wo?.number||'—'}</td>
+      <td style="padding:8px 10px;font-weight:600">${prod?.name||s.product_name||'—'} <span style="color:var(--muted);font-size:11px">(${prod?.code||s.product_code||'—'})</span></td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${opLabel}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${s.reason||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--danger)">${s.qty||0}</td>
+      <td style="padding:8px 10px;text-align:center">$${costoUnit.toFixed(2)}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--danger)">$${valor.toFixed(2)}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+
+  banner.innerHTML=`<div style="display:flex;gap:24px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content;flex-wrap:wrap">
+    <span style="font-size:13px">📉 Piezas Scrap: <b style="color:var(--danger);font-size:16px">${totalPzas}</b></span>
+    <span style="font-size:13px">💰 Valor Total: <b style="color:var(--danger);font-size:16px">$${totalValor.toFixed(2)}</b></span>
+  </div>`;
+
+  el.innerHTML=html;
+}
+window.renderScrapReport=renderScrapReport;
+
 // ── Detalle de OT ──
 async function showInfoOTDetail(otId){
   const o=workOrders.find(w=>w.id===otId);
@@ -8566,62 +8925,19 @@ async function showInfoOTDetail(otId){
   document.getElementById('info-ot-modal').classList.remove('hidden');
 
   try{
-    // 1. Materia prima consumida (mp_transit, sin filtro de status)
-    const mpRows=await sbSelect('mp_transit','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
-    const totalMP=mpRows.reduce((a,t)=>a+(parseFloat(t.valor)||0),0);
-
-    // 2. Tiempos por operación (sessions)
-    const sessRows=await sbSelect('sessions','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
-    // Agrupar tiempos por operación: setup + piece + secondary_complete
-    const byOp={};
-    sessRows.forEach(s=>{
-      if(!['setup','piece','secondary_complete','op_complete'].includes(s.type)) return;
-      const key=s.operation_id||s.op_number||s.operation_name;
-      if(!byOp[key]) byOp[key]={
-        name:s.operation_name||'Operación',
-        op_number:s.op_number,
-        machine_name:s.machine_name||'',
-        operator_id:s.operator_id, operator_name:s.operator_name,
-        setupSec:0, prodSec:0, pieces:0
-      };
-      if(s.type==='setup') byOp[key].setupSec+=parseInt(s.actual_sec)||0;
-      if(s.type==='piece'){ byOp[key].prodSec+=parseInt(s.actual_sec)||0; byOp[key].pieces+=1; }
-      if(s.type==='secondary_complete'){ byOp[key].prodSec+=parseInt(s.actual_sec)||0; byOp[key].pieces+=parseInt(s.pieces_produced)||0; }
-    });
-    const ops=Object.values(byOp);
-
-    // 3. Costo MOD + GIF por operación
-    let totalMOD=0, totalGIF=0;
-    ops.forEach(op=>{
-      const totalSec=op.setupSec+op.prodSec;
-      const hrs=totalSec/3600;
-      const operador=operators.find(x=>x.id===op.operator_id);
-      const maquina=machineCatalog.find(m=>m.name===op.machine_name);
-      op.totalSec=totalSec;
-      op.costoMOD=hrs*(parseFloat(operador?.costo_hora)||0);
-      op.costoGIF=hrs*(parseFloat(maquina?.tarifa_hora)||0);
-      totalMOD+=op.costoMOD;
-      totalGIF+=op.costoGIF;
-    });
-
-    // 4. Entregas y scrap
-    const dels=(otDeliveries||[]).filter(d=>d.ot_id===otId);
-    const totalDel=dels.reduce((a,d)=>a+(parseInt(d.qty)||0),0);
-    const scraps=(otScrap||[]).filter(s=>s.ot_id===otId);
-    const totalScrap=scraps.reduce((a,s)=>a+(parseInt(s.qty)||0),0);
-
-    const costoTotal=totalMP+totalMOD+totalGIF;
-    const costoUnitario=totalDel>0?costoTotal/totalDel:0;
+    const c=await calcOTCosting(otId);
+    const {mpRows,totalMP,ops,totalMOD,totalGIF,extRows,totalMOE,dels,totalDel,scraps,totalScrap,costoTotal,costoUnitario}=c;
 
     // ── Render ──
     let html='';
 
     // Resumen costo
     html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:center">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;text-align:center">
         <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Costo MP</div><div style="font-size:18px;font-weight:700;color:var(--accent2)">$${totalMP.toFixed(2)}</div></div>
         <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Costo MOD</div><div style="font-size:18px;font-weight:700;color:#60a5fa">$${totalMOD.toFixed(2)}</div></div>
         <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Costo GIF</div><div style="font-size:18px;font-weight:700;color:#fb923c">$${totalGIF.toFixed(2)}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Serv. Externos</div><div style="font-size:18px;font-weight:700;color:#f472b6">$${totalMOE.toFixed(2)}</div></div>
         <div><div style="font-size:11px;color:var(--muted);text-transform:uppercase">Costo Total</div><div style="font-size:18px;font-weight:700;color:var(--accent)">$${costoTotal.toFixed(2)}</div></div>
       </div>
       <div style="text-align:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
@@ -8679,6 +8995,27 @@ async function showInfoOTDetail(otId){
           <td style="padding:5px 8px;text-align:center;font-family:'DM Mono',monospace">${fmtSec(op.totalSec)}</td>
           <td style="padding:5px 8px;text-align:center;color:#60a5fa">$${op.costoMOD.toFixed(2)}</td>
           <td style="padding:5px 8px;text-align:center;color:#fb923c">$${op.costoGIF.toFixed(2)}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table>`;
+    }
+
+    // Servicios externos
+    html+=`<div style="font-weight:700;font-size:13px;color:var(--accent);margin-bottom:8px">🔥 Servicios Externos</div>`;
+    if(!extRows.length){
+      html+=`<div style="color:var(--muted);font-size:12px;margin-bottom:16px">Sin servicios externos registrados.</div>`;
+    } else {
+      html+=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+        <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+          <th style="padding:5px 8px;text-align:left">Proveedor</th>
+          <th style="padding:5px 8px;text-align:left">Concepto</th>
+          <th style="padding:5px 8px;text-align:center">Costo</th>
+        </tr></thead><tbody>`;
+      extRows.forEach(e=>{
+        html+=`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:5px 8px;font-weight:600">${e.proveedor||'—'}</td>
+          <td style="padding:5px 8px;color:var(--muted)">${e.concepto||'—'}</td>
+          <td style="padding:5px 8px;text-align:center;font-weight:700;color:#f472b6">$${parseFloat(e.costo||0).toFixed(2)}</td>
         </tr>`;
       });
       html+=`</tbody></table>`;
