@@ -4498,9 +4498,14 @@ function addDelivery(otId,qty,delivered,scrap){
   if(!n||isNaN(n)||n<=0) return;
   if(n>remaining){ alert('No puedes entregar '+n+' pzas. Solo quedan '+remaining+' pendientes.'); return; }
   showLoading('REGISTRANDO...');
+  const wo=workOrders.find(w=>w.id===otId);
+  const prod=products.find(p=>p.id===wo?.product_id);
   sbInsert('ot_deliveries',{id:uid(),ot_id:otId,qty:n,delivered_at:new Date().toISOString()})
     .then(()=>{ sbUpdate('work_orders',{id:otId},{delivered_qty:delivered+n}); return loadAllData(); })
-    .then(()=>{ renderReleasedOTs(); renderRawMaterial(); hideLoading(); })
+    .then(()=>{
+      renderReleasedOTs(); renderRawMaterial(); hideLoading();
+      if(wo) registrarEntregaEnPTTransit(otId, wo.number, wo.product_id, prod?.name||'', n);
+    })
     .catch(e=>{ alert('Error: '+e.message); hideLoading(); });
 }
 
@@ -8470,8 +8475,12 @@ function renderPTTransit(){
   }
   let html=`<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase">
-      <th style="padding:8px 10px;text-align:left">OT</th>
+      <th style="padding:8px 10px;text-align:left">Código</th>
       <th style="padding:8px 10px;text-align:left">Producto</th>
+      <th style="padding:8px 10px;text-align:left">Familia</th>
+      <th style="padding:8px 10px;text-align:center">Tipo</th>
+      <th style="padding:8px 10px;text-align:left">Ubicación</th>
+      <th style="padding:8px 10px;text-align:left">OT</th>
       <th style="padding:8px 10px;text-align:center">Entregadas</th>
       <th style="padding:8px 10px;text-align:center">Movidas</th>
       <th style="padding:8px 10px;text-align:center">Pendiente</th>
@@ -8480,13 +8489,22 @@ function renderPTTransit(){
     </tr></thead><tbody>`;
   pendientes.forEach(t=>{
     const pend=t.cantidad-(t.cantidad_movida||0);
+    const prod=products.find(p=>p.id===t.producto_id);
+    const codigo=prod?.code||'—';
+    const familia=prod?.familia||'—';
+    const ubicacion=prod?.ubicacion_pt||'—';
+    const tipoLabel=(prod?.tipo_producto==='pedido')?'🔧 Pedido':'📦 Stock';
     const st=t.status==='parcial'?'<span style="color:var(--warning);font-weight:700">⏳ Parcial</span>':'<span style="color:var(--danger);font-weight:700">🔴 Pendiente</span>';
     const btnId='pt-tr-btn-'+t.id;
     window._ptMoverMap=window._ptMoverMap||{};
     window._ptMoverMap[t.id]=t;
     html+=`<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${t.ot_number||'-'}</td>
-      <td style="padding:8px 10px">${t.producto_nombre||'-'}</td>
+      <td style="padding:8px 10px;font-weight:700;color:var(--accent)">${codigo}</td>
+      <td style="padding:8px 10px;font-weight:600">${t.producto_nombre||'-'}</td>
+      <td style="padding:8px 10px;color:var(--muted);font-size:12px">${familia}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:12px">${tipoLabel}</td>
+      <td style="padding:8px 10px;color:var(--muted)">${ubicacion}</td>
+      <td style="padding:8px 10px;color:var(--accent2);font-weight:700">${t.ot_number||'-'}</td>
       <td style="padding:8px 10px;text-align:center">${t.cantidad}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--muted)">${t.cantidad_movida||0}</td>
       <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--accent2)">${pend}</td>
