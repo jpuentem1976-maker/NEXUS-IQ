@@ -4552,7 +4552,7 @@ function checkOTMaterialDisponible(p){
   // por corte/habilitado). NO deben mezclarse con "Existencia total" del stock genérico de Almacén,
   // y el stock "Por Producto" de OTROS productos tampoco debe contar aquí.
   const porProductoItems=mpStock.filter(s=>s.producto_id===p.id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
-  const matsPorProducto=[];
+  const porProductoByBom={};
   (p.materials||[]).forEach((m,i)=>{
     const bomId=m.id||i;
     const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
@@ -4562,8 +4562,9 @@ function checkOTMaterialDisponible(p){
     const yaApartado=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
     const dispReal=Math.max(0,totalCant-yaApartado);
     const reqLote=parseInt(m.cantidad)||0;
-    matsPorProducto.push({m,matCat,totalCant,yaApartado,dispReal,reqLote});
+    porProductoByBom[bomId]={m,matCat,totalCant,yaApartado,dispReal,reqLote,bomId};
   });
+  const matsPorProducto=Object.values(porProductoByBom);
 
   if(!mats.length&&!matsPorProducto.length){
     // Mostrar aviso en vez de ocultar silenciosamente
@@ -4577,12 +4578,25 @@ function checkOTMaterialDisponible(p){
   if(mats.length){
     html+='<div class="card" style="padding:12px 16px;margin-bottom:8px;border-color:rgba(0,212,255,.2)">';
     html+='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📦 MATERIAL REQUERIDO VS. INVENTARIO DISPONIBLE (Almacén General)</div>';
-    mats.forEach(m=>{
+    mats.forEach((m,i)=>{
       const matCat=MAT_TYPES.find(t=>t.val===m.tipo)||{};
       const u=(matCat.categoria==='Acero'&&matCat.forma==='Barra Hueca')?'mm':'"';
       const longReq=parseFloat(m.longitud)||0;
       const cantReq=parseInt(m.cantidad)||1;
-      const totalReq=(longReq*cantReq).toFixed(3);
+      const totalReqOriginal=longReq*cantReq;
+
+      // Si este renglón del BOM tiene un lote "Por Producto" pre-habilitado vinculado,
+      // la cobertura de ese lote reemplaza la necesidad de Almacén General para este renglón
+      // (cada unidad pre-habilitada cubre proporcionalmente parte del lote requerido).
+      const bomId=m.id||i;
+      const pp=porProductoByBom[bomId];
+      let cubierto=0,totalReq=totalReqOriginal;
+      if(pp&&pp.reqLote>0){
+        const fraccionCubierta=Math.min(1,pp.dispReal/pp.reqLote);
+        cubierto=totalReqOriginal*fraccionCubierta;
+        totalReq=Math.max(0,totalReqOriginal-cubierto);
+      }
+
       // Excluir lotes "Por Producto" (vinculados a un producto+renglón específico) — esos NO
       // forman parte del stock genérico de Almacén, aunque coincida el material_id.
       const stockItems=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
@@ -4592,9 +4606,9 @@ function checkOTMaterialDisponible(p){
       // Calcular ya apartado
       const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
       const dispReal=Math.max(0,totalDisp-yaApartado);
-      const sobrara=dispReal-parseFloat(totalReq);
-      const colorReal=dispReal>=parseFloat(totalReq)?'var(--green)':'var(--danger)';
-      const icon=dispReal>=parseFloat(totalReq)?'✅':'❌';
+      const sobrara=dispReal-totalReq;
+      const colorReal=dispReal>=totalReq?'var(--green)':'var(--danger)';
+      const icon=dispReal>=totalReq?'✅':'❌';
       const dimStr=matCat.diametro?'Ø '+parseFloat(matCat.diametro).toFixed(3)+u:'';
       html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px">';
       html+=icon+' <strong>'+(matCat.label||m.tipo)+(dimStr?' — '+dimStr:'')+'</strong><br>';
@@ -4602,12 +4616,17 @@ function checkOTMaterialDisponible(p){
       html+='<div><div style="color:var(--muted)">Existencia total</div><strong>'+totalDisp.toFixed(3)+'"</strong></div>';
       html+='<div><div style="color:var(--muted)">Ya apartado</div><strong style="color:var(--warn)">'+yaApartado.toFixed(3)+'"</strong></div>';
       html+='<div><div style="color:var(--muted)">Disponible real</div><strong style="color:'+colorReal+'">'+dispReal.toFixed(3)+'"</strong></div>';
-      html+='<div><div style="color:var(--muted)">Esta OT necesita</div><strong style="color:var(--accent2)">'+totalReq+'"</strong></div>';
+      html+='<div><div style="color:var(--muted)">Esta OT necesita</div><strong style="color:var(--accent2)">'+totalReq.toFixed(3)+'"</strong></div>';
       html+='</div>';
-      if(sobrara>=0) html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Sobrará: '+sobrara.toFixed(3)+'"</div>';
+      if(cubierto>0){
+        html+='<div style="font-size:11px;color:var(--green);margin-top:4px">🏷 Cubierto por Material Pre-habilitado: '+cubierto.toFixed(3)+'" (de '+totalReqOriginal.toFixed(3)+'" originales)</div>';
+      }
+      if(totalReq<=0){
+        html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Cubierto totalmente por Material Pre-habilitado — no requiere Almacén General</div>';
+      } else if(sobrara>=0) html+='<div style="font-size:11px;color:var(--green);margin-top:4px">✅ Sobrará: '+sobrara.toFixed(3)+'"</div>';
       else html+='<div style="font-size:11px;color:var(--danger);margin-top:4px">❌ Falta: '+Math.abs(sobrara).toFixed(3)+'"</div>';
       html+='</div>';
-      if(dispReal>=parseFloat(totalReq)) hayDisponible=true;
+      if(dispReal>=totalReq) hayDisponible=true;
     });
     html+='</div>';
   }
@@ -4671,9 +4690,23 @@ async function saveNewOT(){
     workOrders.push(rec);
 
     if(apartar&&p?.materials?.length){
-      const barras=(p.materials||[]).filter(m=>{
+      // Renglones cubiertos al 100% por Material Pre-habilitado (Por Producto) no requieren
+      // apartado de Almacén General.
+      const porProductoItems=mpStock.filter(s=>s.producto_id===prodId&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+      const cubiertoTotal=(m,i)=>{
+        const bomId=m.id||i;
+        const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
+        if(!stockItems.length) return false;
+        const totalCant=stockItems.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
+        const yaApt=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
+        const dispReal=Math.max(0,totalCant-yaApt);
+        const reqLote=parseInt(m.cantidad)||0;
+        return reqLote>0&&dispReal>=reqLote;
+      };
+      const barras=(p.materials||[]).filter((m,i)=>{
         const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
-        return matCat&&(matCat.grupo==='barra'||matCat.grupo==='tubing');
+        if(!matCat||!(matCat.grupo==='barra'||matCat.grupo==='tubing')) return false;
+        return !cubiertoTotal(m,i);
       });
       const sinStock=barras.filter(m=>!mpStock.some(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial')));
       if(sinStock.length){
