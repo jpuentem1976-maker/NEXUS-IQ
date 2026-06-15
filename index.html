@@ -5000,6 +5000,17 @@ async function releaseOT(id){
             origen:'Material Pre-habilitado',destino:'OT '+o.number+' (Liberada)',usuario:'Sistema',
             ot_id:id,ot_number:o.number,
             recorded_at:now});
+          // Registrar en mp_transit (status='consumido') para que aparezca en "MP en Proceso"
+          // y se incluya en el costeo de la OT, igual que el material habilitado normal.
+          await sbInsert('mp_transit',{
+            id:uid(),ot_id:id,ot_number:o.number,
+            product_id:o.product_id,product_name:prod.name||'',product_code:prod.code||'',
+            material:s.material,forma:s.forma,diametro:s.diametro,
+            longitud_in:0,cantidad_barras:consumo,
+            kg_real:consumo,precio_kg:precioUnit,valor:parseFloat((consumo*precioUnit).toFixed(2)),
+            notas_habilitado:'Material Pre-habilitado consumido al liberar OT',
+            status:'consumido',moved_by:'Sistema',moved_at:now,released_at:now
+          });
           porConsumir-=consumo;
         }
       }
@@ -7894,6 +7905,7 @@ function renderAlmReport(){
 
   // Solo mostrar materiales en mínimo o por debajo (incluyendo los apartados)
   const filtered=mpStock.filter(s=>{
+    if(s.status==='consumido') return false;
     const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
     if(!matCat||matCat.reposicion===false) return false;
     const minimo=s.producto_id?0:(matCat.cantidad_min||0);
@@ -9773,7 +9785,10 @@ async function calcOTCosting(otId){
 
   // 1. Materia prima consumida (mp_transit, sin filtro de status)
   const mpRows=await sbSelect('mp_transit','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
-  const totalMP=mpRows.reduce((a,t)=>a+(parseFloat(t.valor)||0),0);
+  const totalMP=mpRows.reduce((a,t)=>{
+    const v=(t.valor!=null&&t.valor!=='')?parseFloat(t.valor):((parseFloat(t.kg_real)||0)*(parseFloat(t.precio_kg)||0));
+    return a+(v||0);
+  },0);
 
   // 2. Tiempos por operación (sessions)
   const sessRows=await sbSelect('sessions','select=*&ot_id=eq.'+encodeURIComponent(otId))||[];
