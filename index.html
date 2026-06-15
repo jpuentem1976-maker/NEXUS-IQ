@@ -2671,7 +2671,7 @@ function bomRowHTML(m, prodId, idx){
   const totalKg=parseFloat((kgBar*(parseInt(m.cantidad)||0)).toFixed(2));
   const mid=m.id||uid();
   return `<div id="bom-row-${mid}" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
-    <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end">
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end">
       <div class="field" style="margin:0"><label style="font-size:9px">MATERIAL</label>
         <select id="bom-tipo-${mid}" onchange="onBomTypeChange('${mid}')" style="font-size:11px">
           <option value="">-- Selecciona material --</option>
@@ -2714,6 +2714,9 @@ function bomRowHTML(m, prodId, idx){
           <option value="1" ${m.critico!==false?'selected':''}>Sí - bloquea liberación</option>
           <option value="0" ${m.critico===false?'selected':''}>No - confirmar después</option>
         </select>
+      </div>
+      <div class="field" style="margin:0"><label style="font-size:9px">MÍN. REPOSICIÓN <span style="color:var(--muted);font-size:9px">(Por Producto)</span></label>
+        <input type="number" id="bom-stockmin-${mid}" value="${m.stock_min_pp||''}" placeholder="0 = solo SIN STOCK" style="font-size:11px">
       </div>
       <button type="button" onclick="removeBomRow('${mid}')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;height:32px">✕</button>
     </div>
@@ -2860,6 +2863,7 @@ function readBomRows(prodId){
         return parseInt(el?.value)||0;
       })(),
       unidad:isBarra?'kg':(document.getElementById('bom-unidad-'+mid)?.value||'piezas'),
+      stock_min_pp:parseInt(document.getElementById('bom-stockmin-'+mid)?.value)||0,
     });
   });
   return rows;
@@ -2900,8 +2904,15 @@ function showProductForm(id){
       </div>
       <div class="g4" style="margin-bottom:12px">
         <div class="field">
-          <label>Precio de Venta (MXN)</label>
+          <label>Precio de Venta</label>
           <input type="number" step="0.01" id="pf-precio-venta" value="${p.precio_venta||''}" placeholder="ej. 1250.00">
+        </div>
+        <div class="field">
+          <label>Moneda</label>
+          <select id="pf-precio-venta-moneda">
+            <option value="MXN" ${(p.precio_venta_moneda||'MXN')==='MXN'?'selected':''}>MXN — Peso Mexicano</option>
+            <option value="USD" ${p.precio_venta_moneda==='USD'?'selected':''}>USD — Dólar Americano</option>
+          </select>
         </div>
       </div>
 
@@ -3628,6 +3639,7 @@ async function saveProduct(id,isNew){
     stock_min:parseInt(document.getElementById('pf-stock-min')?.value)||0,
     ubicacion_pt:document.getElementById('pf-ubicacion-pt')?.value.trim().toUpperCase()||null,
     precio_venta:parseFloat(document.getElementById('pf-precio-venta')?.value)||null,
+    precio_venta_moneda:document.getElementById('pf-precio-venta-moneda')?.value||'MXN',
     sort_number:parseFloat(document.getElementById('pf-sort-number')?.value)||null,
     drawing_url:document.getElementById('pf-drawing-url')?.value.trim()||null,
   };
@@ -7923,12 +7935,21 @@ function renderAlmReport(){
     apartadosPorMat[key]=(apartadosPorMat[key]||0)+barrasApartadas;
   });
 
+  // Mínimo de reposición para lotes "Por Producto": viene del renglón del BOM (m.stock_min_pp),
+  // definido en Ingeniería; si no se definió, queda 0 (solo avisa en SIN STOCK, como antes).
+  function getMinForStock(s,matCat){
+    if(!s.producto_id) return matCat?.cantidad_min||0;
+    const p=products.find(pr=>pr.id===s.producto_id);
+    const bomRow=(p?.materials||[]).find((m,i)=>String(m.id||i)===String(s.bom_item_id));
+    return parseInt(bomRow?.stock_min_pp)||0;
+  }
+
   // Solo mostrar materiales en mínimo o por debajo (incluyendo los apartados)
   const filtered=mpStock.filter(s=>{
     if(s.status==='consumido'&&!s.producto_id) return false;
     const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
     if(!matCat||matCat.reposicion===false) return false;
-    const minimo=s.producto_id?0:(matCat.cantidad_min||0);
+    const minimo=getMinForStock(s,matCat);
     if(!s.producto_id&&!minimo) return false;
     const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.producto_id||'')+'||'+(s.bom_item_id||'');
     const cantApartada=apartadosPorMat[key]||0;
@@ -7943,8 +7964,8 @@ function renderAlmReport(){
     const keyB=(b.material||'')+'||'+(b.forma||'')+'||'+(b.diametro||'')+'||'+(b.producto_id||'')+'||'+(b.bom_item_id||'');
     const realA=Math.max(0,stockBarrasDecimal(a)-(apartadosPorMat[keyA]||0));
     const realB=Math.max(0,stockBarrasDecimal(b)-(apartadosPorMat[keyB]||0));
-    const sa=semaforo(realA,a.producto_id?0:(matA?.cantidad_min||0));
-    const sb=semaforo(realB,b.producto_id?0:(matB?.cantidad_min||0));
+    const sa=semaforo(realA,getMinForStock(a,matA));
+    const sb=semaforo(realB,getMinForStock(b,matB));
     const order={'SIN STOCK':0,'BAJO MÍNIMO':1,'EN MÍNIMO':2,'OK':3};
     return (order[sa.label]||3)-(order[sb.label]||3);
   });
@@ -7955,7 +7976,7 @@ function renderAlmReport(){
       <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist. Disp.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th><th>Acciones</th>
     </tr></thead><tbody>${sorted.map(s=>{
       const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
-      const minimo=s.producto_id?0:(matCat?.cantidad_min||0);
+      const minimo=getMinForStock(s,matCat);
       const key=(s.material||'')+'||'+(s.forma||'')+'||'+(s.diametro||'')+'||'+(s.producto_id||'')+'||'+(s.bom_item_id||'');
       const cantApartada=apartadosPorMat[key]||0;
       const cantReal=Math.max(0,stockBarrasDecimal(s)-cantApartada);
@@ -10117,6 +10138,7 @@ window.showInfoOTDetail=showInfoOTDetail;
 let ptAuth = false;
 let ptTransit = [];      // pt_transit
 let ptStock = [];        // pt_stock (General + destinos)
+let usdMxnRate = 0;       // Tipo de cambio USD->MXN (app_settings)
 let ptWarehouses = [];   // pt_warehouses
 let ptWHFields = [];     // pt_warehouse_fields
 let ptMovements = [];    // pt_movements
@@ -10181,18 +10203,20 @@ function renderPTActive(){
 // ── Carga de datos ──
 async function loadPTData(){
   try{
-    const [tr, st, wh, whf, mv] = await Promise.all([
+    const [tr, st, wh, whf, mv, settings] = await Promise.all([
       sbFetch('pt_transit','order=created_at.desc'),
       sbFetch('pt_stock','order=created_at.desc'),
       sbFetch('pt_warehouses','order=nombre.asc'),
       sbFetch('pt_warehouse_fields','order=orden.asc'),
       sbFetch('pt_movements','order=created_at.desc&limit=500'),
+      sbFetch('app_settings','select=*&key=eq.usd_mxn_rate').catch(()=>[]),
     ]);
     ptTransit   = tr  || [];
     ptStock     = st  || [];
     ptWarehouses= wh  || [];
     ptWHFields  = whf || [];
     ptMovements = mv  || [];
+    usdMxnRate  = parseFloat(settings?.[0]?.value?.rate)||0;
 
     // Poblar selector de almacenes destino en filtro
     const sel=document.getElementById('pt-almacen-filter');
@@ -10203,6 +10227,23 @@ async function loadPTData(){
   }catch(e){ console.error('loadPTData:',e); }
 }
 window.loadPTData=loadPTData;
+
+async function saveUsdMxnRate(){
+  const val=parseFloat(document.getElementById('pt-usd-rate')?.value);
+  if(!val||val<=0){alert('Ingresa un tipo de cambio válido.');return;}
+  showLoading('GUARDANDO TIPO DE CAMBIO...');
+  try{
+    const existing=await sbSelect('app_settings','select=key&key=eq.usd_mxn_rate');
+    if(existing&&existing.length){
+      await sbUpdate('app_settings',{key:'usd_mxn_rate'},{value:{rate:val},updated_at:new Date().toISOString(),updated_by:'Almacenista'});
+    }else{
+      await sbInsert('app_settings',{key:'usd_mxn_rate',value:{rate:val},updated_by:'Almacenista'});
+    }
+    usdMxnRate=val;
+    renderPTGeneral();
+  }catch(e){alert('Error al guardar tipo de cambio: '+e.message);}finally{hideLoading();}
+}
+window.saveUsdMxnRate=saveUsdMxnRate;
 
 // ── Render Tránsito Producción PT ──
 function renderPTTransit(){
@@ -10362,9 +10403,12 @@ function renderPTGeneral(){
       sumCantCosto+=q*c; sumCant+=q;
     });
     const costoPromedio=sumCant>0?(sumCantCosto/sumCant):0;
-    const precioVenta=parseFloat(p.precio_venta)||0;
+    const precioVentaRaw=parseFloat(p.precio_venta)||0;
+    const moneda=p.precio_venta_moneda==='USD'?'USD':'MXN';
+    const precioVentaUSD=moneda==='USD'?precioVentaRaw:0;
+    const precioVentaMXN=moneda==='USD'?(precioVentaRaw*(usdMxnRate||0)):precioVentaRaw;
     const valorCosto=total*costoPromedio;
-    const valorVenta=total*precioVenta;
+    const valorVenta=total*precioVentaMXN;
     return {
       producto_id:p.id,
       nombre:p.name||'Sin nombre',
@@ -10374,7 +10418,9 @@ function renderPTGeneral(){
       tipo_producto:p.tipo_producto||'stock',
       ubicacion:p.ubicacion_pt||'',
       stock_min:p.stock_min||0,
-      precio_venta:precioVenta,
+      precio_venta_moneda:moneda,
+      precio_venta_usd:precioVentaUSD,
+      precio_venta_mxn:precioVentaMXN,
       costo_promedio:costoPromedio,
       valor_costo:valorCosto,
       valor_venta:valorVenta,
@@ -10393,12 +10439,17 @@ function renderPTGeneral(){
   const totalValorVenta=lista.reduce((a,g)=>a+g.valor_venta,0);
   const bajoMin=stockItems.filter(g=>g.stock_min>0&&g.total<g.stock_min).length;
   if(banner) banner.innerHTML=
-    `<div style="display:flex;gap:24px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content;flex-wrap:wrap">
+    `<div style="display:flex;gap:24px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 18px;width:fit-content;flex-wrap:wrap;align-items:center">
       <span style="font-size:13px">📦 Total en General: <b style="color:var(--accent2);font-size:16px">${totalPzas}</b> piezas</span>
       <span style="font-size:13px">🗂 Productos: <b style="color:var(--accent);font-size:16px">${lista.length}</b></span>
       <span style="font-size:13px">💲 Valor a Costo: <b style="color:var(--accent2);font-size:16px">$${totalValorCosto.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
-      <span style="font-size:13px">🏷 Valor a Venta: <b style="color:var(--green);font-size:16px">$${totalValorVenta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
+      <span style="font-size:13px">🏷 Valor a Venta (MXN): <b style="color:var(--green);font-size:16px">$${totalValorVenta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></span>
       ${bajoMin>0?`<span style="font-size:13px">🔴 Bajo mínimo: <b style="color:var(--danger);font-size:16px">${bajoMin}</b></span>`:''}
+      <span style="font-size:13px;display:flex;align-items:center;gap:6px;border-left:1px solid var(--border);padding-left:18px">
+        💱 Tipo de Cambio USD→MXN:
+        <input type="number" step="0.01" id="pt-usd-rate" value="${usdMxnRate||''}" placeholder="ej. 20.50" style="width:90px;padding:4px 6px;text-align:center">
+        <button class="btn btn-sm btn-accent" onclick="saveUsdMxnRate()">Guardar</button>
+      </span>
     </div>`;
 
   if(!lista.length){
@@ -10419,7 +10470,8 @@ function renderPTGeneral(){
       <th style="padding:8px 10px;text-align:center">Existencia</th>
       <th style="padding:8px 10px;text-align:center">Costo Prom.</th>
       <th style="padding:8px 10px;text-align:center">Valor Costo</th>
-      <th style="padding:8px 10px;text-align:center">Precio Venta</th>
+      <th style="padding:8px 10px;text-align:center">Precio Venta (USD)</th>
+      <th style="padding:8px 10px;text-align:center">Precio Venta (MXN)</th>
       <th style="padding:8px 10px;text-align:center">Valor Venta</th>
       <th style="padding:8px 10px;text-align:center">Estado</th>
     </tr></thead><tbody>`;
@@ -10444,13 +10496,14 @@ function renderPTGeneral(){
       <td style="padding:8px 10px;text-align:center;font-weight:700;font-size:15px;color:${bajo?'var(--danger)':'var(--text)'}">${g.total}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.costo_promedio>0?'$'+g.costo_promedio.toFixed(2):'—'}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--accent2)">${g.valor_costo>0?'$'+g.valor_costo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
-      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.precio_venta>0?'$'+g.precio_venta.toFixed(2):'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.precio_venta_usd>0?'$'+g.precio_venta_usd.toFixed(2)+' USD':'—'}</td>
+      <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.precio_venta_mxn>0?'$'+g.precio_venta_mxn.toFixed(2):'—'}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--green)">${g.valor_venta>0?'$'+g.valor_venta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
       <td style="padding:8px 10px;text-align:center">${semaforo}</td>
     </tr>`;
     if(hasLotes){
       html+=`<tr id="${gid}-detail" style="display:none;background:var(--bg3)">
-        <td colspan="14" style="padding:0">
+        <td colspan="15" style="padding:0">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
             <th style="padding:6px 10px 6px 40px;text-align:left">OT</th>
