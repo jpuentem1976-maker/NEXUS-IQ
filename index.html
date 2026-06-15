@@ -4373,13 +4373,14 @@ function getOTBomMaterialStatus(o,p){
 
     const bomId=m.id||i;
     const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
-    let cubierto=0;
+    let cubierto=0,cantConsumir=0,dispPP=0;
+    const reqLote=parseInt(m.cantidad)||0;
     if(stockItems.length){
       const totalCant=stockItems.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
       const yaApt=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
-      const dispPP=Math.max(0,totalCant-yaApt);
-      const reqLote=parseInt(m.cantidad)||0;
+      dispPP=Math.max(0,totalCant-yaApt);
       if(reqLote>0){
+        cantConsumir=Math.min(dispPP,reqLote);
         const fraccion=Math.min(1,dispPP/reqLote);
         cubierto=totalReqOriginal*fraccion;
       }
@@ -4395,7 +4396,7 @@ function getOTBomMaterialStatus(o,p){
 
     out.push({
       m,matCat,i,bomId,
-      totalReqOriginal,cubierto,totalReq,
+      totalReqOriginal,cubierto,totalReq,cantConsumir,dispPP,
       totalDisp,dispReal,yaApartado,enTransito,
       cubiertoTotal,
       critico:m.critico!==false
@@ -4974,6 +4975,35 @@ async function releaseOT(id){
     }
     // Actualizar mp_transit a 'consumido' para que salga de Tránsito Producción
     await fetch(SB_URL+'/rest/v1/mp_transit?ot_id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:H,body:JSON.stringify({status:'consumido',released_at:now})});
+
+    // ── Descontar Material Pre-habilitado / Piezas (Por Producto) consumido por esta OT ──
+    if(p){
+      const estado=getOTBomMaterialStatus(o,p);
+      for(const b of estado){
+        if(b.cantConsumir<=0) continue;
+        const bomId=b.bomId;
+        const stockItems=mpStock.filter(s=>s.producto_id===p.id&&String(s.bom_item_id)===String(bomId)&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+        let porConsumir=b.cantConsumir;
+        for(const s of stockItems){
+          if(porConsumir<=0) break;
+          const cantActual=parseInt(s.cantidad)||0;
+          const consumo=Math.min(cantActual,porConsumir);
+          const nuevaCant=cantActual-consumo;
+          const precioUnit=parseFloat(s.precio_kg)||0; // precio/pieza en lotes pre-habilitado
+          const nuevoKgTotal=parseFloat(((parseFloat(s.kg_total)||0)*(cantActual>0?nuevaCant/cantActual:0)).toFixed(2));
+          const nuevoValor=parseFloat((nuevaCant*precioUnit).toFixed(2));
+          await sbUpdate('mp_stock',{id:s.id},{cantidad:nuevaCant,kg_total:nuevoKgTotal,valor_total:nuevoValor,status:nuevaCant<=0?'consumido':s.status,updated_at:now});
+          await sbInsert('mp_movements',{id:uid(),tipo:'salida',mp_stock_id:s.id,
+            material:s.material,forma:s.forma,diametro:s.diametro,
+            cantidad:consumo,kg:parseFloat(((parseFloat(s.kg_total)||0)*(cantActual>0?consumo/cantActual:0)).toFixed(2)),
+            valor:parseFloat((consumo*precioUnit).toFixed(2)),
+            origen:'Material Pre-habilitado',destino:'OT '+o.number+' (Liberada)',usuario:'Sistema',
+            ot_id:id,ot_number:o.number,
+            recorded_at:now});
+          porConsumir-=consumo;
+        }
+      }
+    }
     await loadAllData();
     renderProgrammingList();
     renderReleasedOTs();
@@ -9230,7 +9260,9 @@ function calcAlmKg(){
   }
 
   const kgTotal=parseFloat((kgUnit*cant).toFixed(2));
-  const valor=parseFloat((kgTotal*precio).toFixed(2));
+  const tipoEntrada=document.querySelector('input[name="mpf-tipo-entrada"]:checked')?.value||'almacen';
+  const preHabilitado=tipoEntrada==='producto';
+  const valor=preHabilitado?parseFloat((cant*precio).toFixed(2)):parseFloat((kgTotal*precio).toFixed(2));
   const ku=document.getElementById('mpf-kg-unit');
   const kt=document.getElementById('mpf-kg-total');
   const vl=document.getElementById('mpf-valor');
