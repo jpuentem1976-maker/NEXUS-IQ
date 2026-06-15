@@ -567,6 +567,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <div style="font-size:15px;font-weight:700">Catálogo de Productos</div>
       <span id="products-counter" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25);border-radius:20px;padding:2px 10px;font-size:12px;font-family:'DM Mono',monospace;font-weight:700"></span>
+      <input type="text" id="products-search" placeholder="🔍 Buscar por nombre, código o familia..." oninput="renderProducts()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:260px">
       <div style="margin-left:auto"><button class="btn btn-accent btn-sm" onclick="showProductForm(null)">+ Nuevo Producto</button></div>
     </div>
     <div class="ptabs" style="margin-bottom:14px">
@@ -681,10 +682,6 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
       <div style="font-size:15px;font-weight:700">Órdenes de Trabajo</div>
       <button class="btn btn-accent btn-sm" onclick="showNewOTForm()">+ Nueva O.T.</button>
       <button class="btn btn-ghost btn-sm" onclick="setOTStart()" style="margin-left:4px">🔢 O.T. Inicial</button>
-      <label class="btn btn-sm" style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:var(--accent2);cursor:pointer;margin-left:4px">
-        📄 Cargar PDF Inventario
-        <input type="file" accept="application/pdf" style="display:none" onchange="importInventoryPDF(this)">
-      </label>
       <div style="margin-left:auto;font-size:12px;color:var(--muted)">Siguiente O.T.: <span id="next-ot-number" style="color:var(--accent);font-family:'DM Mono',monospace;font-weight:700"></span></div>
     </div>
     <div id="new-ot-form-wrap"></div>
@@ -1004,6 +1001,39 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
     <div class="g2" style="margin-top:14px;gap:10px">
       <button class="btn btn-ghost" onclick="closeModal('pt-mover-destino-modal')">Cancelar</button>
       <button class="btn btn-accent" onclick="confirmarMoverADestino()">✓ Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENTRADA/SALIDA MANUAL PT -->
+<div id="pt-manual-mov-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:480px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:6px" id="pt-manual-mov-title">📋 Movimiento Manual PT</div>
+    <div id="pt-manual-mov-info" style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <button id="pt-manual-btn-entrada" onclick="setPTManualTipo('entrada')" style="flex:1;padding:10px;font-size:13px;font-weight:700;background:rgba(34,197,94,.2);color:#4ade80;border:none;cursor:pointer;transition:all .2s">
+        ➕ ENTRADA
+      </button>
+      <button id="pt-manual-btn-salida" onclick="setPTManualTipo('salida')" style="flex:1;padding:10px;font-size:13px;font-weight:700;background:var(--bg2);color:var(--muted);border:none;cursor:pointer;transition:all .2s">
+        ➖ SALIDA
+      </button>
+    </div>
+    <div class="field">
+      <label>Cantidad <span style="color:var(--danger)">*</span></label>
+      <input type="number" id="pt-manual-cant" min="1" style="font-size:18px;text-align:center" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Motivo / Referencia</label>
+      <input type="text" id="pt-manual-motivo" placeholder="Ej: Ajuste inventario, Devolución cliente, Corrección..." style="font-size:13px">
+    </div>
+    <div id="pt-manual-costo-wrap" class="field" style="display:none">
+      <label>Costo unitario (opcional)</label>
+      <input type="number" id="pt-manual-costo" step="0.01" min="0" placeholder="$0.00" style="font-size:14px">
+    </div>
+    <div id="pt-manual-disponible" style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:10px"></div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('pt-manual-mov-modal')">Cancelar</button>
+      <button class="btn btn-accent" id="pt-manual-confirm-btn" onclick="confirmarMovManualPT()">✓ Registrar</button>
     </div>
   </div>
 </div>
@@ -2488,11 +2518,17 @@ window.setProductTipoTab=setProductTipoTab;
 
 function renderProducts(){
   const list=document.getElementById('products-list');
-  const filtered=products.filter(p=>(p.tipo_producto||'stock')===_productTipoTab);
+  const q=(document.getElementById('products-search')?.value||'').trim().toLowerCase();
+  let filtered=products.filter(p=>(p.tipo_producto||'stock')===_productTipoTab);
+  if(q) filtered=filtered.filter(p=>
+    (p.name||'').toLowerCase().includes(q)||
+    (p.code||'').toLowerCase().includes(q)||
+    (p.familia||'').toLowerCase().includes(q)
+  );
   // Actualizar contador
   const counter=document.getElementById('products-counter');
   if(counter) counter.textContent=filtered.length+' producto'+(filtered.length!==1?'s':'');
-  if(!filtered.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin productos ${_productTipoTab==='pedido'?'bajo pedido':'de stock'}</div>`; return; }
+  if(!filtered.length){ list.innerHTML=`<div class="card" style="color:var(--muted);text-align:center;padding:40px">${q?`Sin resultados para "<b>${q}</b>"`:`Sin productos ${_productTipoTab==='pedido'?'bajo pedido':'de stock'}`}</div>`; return; }
   const sorted=[...filtered].sort((a,b)=>{const an=a.sort_number??99999,bn=b.sort_number??99999;return an-bn;});
   list.innerHTML=sorted.map(p=>{
 
@@ -5413,8 +5449,12 @@ async function deleteReleasedOT(id, number){
 }
 
 async function deleteClosedOT(id){
-  if(!confirm('¿Eliminar esta O.T. cerrada? Esta acción es permanente.')) return;
-  showLoading('ELIMINANDO...');
+  const ot=workOrders.find(o=>o.id===id);
+  const otNum=ot?.number||id;
+  const esCerrada=ot?.status==='closed';
+  const label=esCerrada?'cerrada':'liberada';
+  if(!confirm(`¿Eliminar la OT ${otNum} (${label})?\n\nSe eliminarán también sus sesiones, entregas, scrap, tránsito de MP y PT asociados.\n\nEsta acción es permanente.`)) return;
+  showLoading('ELIMINANDO OT '+otNum+'...');
   const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'};
   try{
     await fetch(`${SB_URL}/rest/v1/ot_deliveries?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
@@ -5422,9 +5462,16 @@ async function deleteClosedOT(id){
     await fetch(`${SB_URL}/rest/v1/machine_load?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/sessions?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/raw_material?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/mp_transit?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/mp_reservations?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/ot_external_services?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
+    await fetch(`${SB_URL}/rest/v1/pt_stock?ot_id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
     await fetch(`${SB_URL}/rest/v1/work_orders?id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:H});
-    await loadAllData(); renderClosedOTs();
-  }catch(e){ alert('Error: '+e.message); }
+    await loadAllData();
+    renderClosedOTs();
+    if(typeof renderInfoOT==='function') renderInfoOT();
+    if(typeof renderReleasedOTs==='function') renderReleasedOTs();
+  }catch(e){ alert('Error al eliminar OT: '+e.message); }
   hideLoading();
 }
 
@@ -9778,6 +9825,7 @@ function renderInfoOT(){
       <th style="padding:8px 10px;text-align:center">Scrap</th>
       <th style="padding:8px 10px;text-align:center">Costo MP</th>
       <th style="padding:8px 10px;text-align:center">Estado</th>
+      <th style="padding:8px 10px;text-align:center;width:60px"></th>
     </tr></thead><tbody>`;
 
   list.forEach(o=>{
@@ -9795,6 +9843,7 @@ function renderInfoOT(){
       <td style="padding:8px 10px;text-align:center;color:var(--danger)">${scraps}</td>
       <td style="padding:8px 10px;text-align:center" id="info-ot-mp-${o.id}">…</td>
       <td style="padding:8px 10px;text-align:center">${statusLabel}</td>
+      <td style="padding:8px 6px;text-align:center" id="info-ot-del-${o.id}"></td>
     </tr>`;
   });
   html+=`</tbody></table>`;
@@ -9803,6 +9852,19 @@ function renderInfoOT(){
   // Doble click → detalle
   el.querySelectorAll('.info-ot-row').forEach(row=>{
     row.addEventListener('dblclick',()=>showInfoOTDetail(row.dataset.id));
+  });
+
+  // Botones eliminar por fila (se agregan después del render para evitar onclick con objetos)
+  list.forEach(o=>{
+    const cell=document.getElementById('info-ot-del-'+o.id);
+    if(!cell) return;
+    const btn=document.createElement('button');
+    btn.className='btn btn-sm';
+    btn.style.cssText='background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3);font-size:11px;padding:3px 8px';
+    btn.textContent='🗑';
+    btn.title='Eliminar OT';
+    btn.addEventListener('click',(ev)=>{ ev.stopPropagation(); deleteClosedOT(o.id); });
+    cell.appendChild(btn);
   });
 
   // Cargar costo MP por OT en segundo plano (mp_transit sin filtro de status)
@@ -10474,6 +10536,7 @@ function renderPTGeneral(){
       <th style="padding:8px 10px;text-align:center">Precio Venta (MXN)</th>
       <th style="padding:8px 10px;text-align:center">Valor Venta</th>
       <th style="padding:8px 10px;text-align:center">Estado</th>
+      <th style="padding:8px 10px;text-align:center">Acciones</th>
     </tr></thead><tbody>`;
 
   lista.forEach((g,gi)=>{
@@ -10484,6 +10547,8 @@ function renderPTGeneral(){
     const tipoLabel=esStock?'📦 Stock':'🔧 Pedido';
     const gid='ptg-'+gi;
     const hasLotes=g.lotes.length>0;
+    window._ptProductMap=window._ptProductMap||{};
+    window._ptProductMap[g.producto_id]=g;
     html+=`<tr style="border-bottom:1px solid var(--border);${hasLotes?'cursor:pointer':''}" class="${hasLotes?'ptg-toggle':''}" data-gid="${gid}">
       <td style="padding:8px 10px;color:var(--muted)" id="${gid}-arrow">${hasLotes?'▶':''}</td>
       <td style="padding:8px 10px;color:var(--muted)">${g.sort_number??'—'}</td>
@@ -10500,10 +10565,14 @@ function renderPTGeneral(){
       <td style="padding:8px 10px;text-align:center;color:var(--muted)">${g.precio_venta_mxn>0?'$'+g.precio_venta_mxn.toFixed(2):'—'}</td>
       <td style="padding:8px 10px;text-align:center;color:var(--green)">${g.valor_venta>0?'$'+g.valor_venta.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'}</td>
       <td style="padding:8px 10px;text-align:center">${semaforo}</td>
+      <td style="padding:8px 4px;text-align:center" id="ptg-act-${g.producto_id}">
+        <button class="btn btn-sm" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);font-size:11px;padding:3px 8px" data-prodid="${g.producto_id}">➕ Entrada</button>
+        <button class="btn btn-sm" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.3);font-size:11px;padding:3px 8px;margin-top:3px" data-prodid="${g.producto_id}">➖ Salida</button>
+      </td>
     </tr>`;
     if(hasLotes){
       html+=`<tr id="${gid}-detail" style="display:none;background:var(--bg3)">
-        <td colspan="15" style="padding:0">
+        <td colspan="16" style="padding:0">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
             <th style="padding:6px 10px 6px 40px;text-align:left">OT</th>
@@ -10554,10 +10623,143 @@ function renderPTGeneral(){
     const btn=document.getElementById('pt-gen-btn-'+s.id);
     if(btn) btn.addEventListener('click',(ev)=>{ ev.stopPropagation(); showMoverADestino(s.id); });
   }));
+
+  // Eventos botones Entrada/Salida manual por producto
+  lista.forEach(g=>{
+    const cell=document.getElementById('ptg-act-'+g.producto_id);
+    if(!cell) return;
+    const [btnE,btnS]=cell.querySelectorAll('button');
+    if(btnE) btnE.addEventListener('click',(ev)=>{ ev.stopPropagation(); showPTManualMov(g.producto_id,'entrada'); });
+    if(btnS) btnS.addEventListener('click',(ev)=>{ ev.stopPropagation(); showPTManualMov(g.producto_id,'salida'); });
+  });
 }
 window.renderPTGeneral=renderPTGeneral;
 
-// ── Modal Mover a Almacén Destino ──
+// ── Movimiento Manual PT (Entrada / Salida) ──
+let _ptManualCtx={productoId:null,tipo:'entrada'};
+
+function showPTManualMov(productoId, tipo){
+  const g=(window._ptProductMap||{})[productoId];
+  if(!g) return;
+  _ptManualCtx={productoId, tipo};
+  // Info
+  document.getElementById('pt-manual-mov-info').innerHTML=
+    `<div style="font-weight:700">${g.nombre}</div>
+     <div style="color:var(--muted);margin-top:4px">Código: <b style="color:var(--accent)">${g.codigo}</b> &nbsp;|&nbsp; Existencia actual: <b style="color:var(--accent2)">${g.total} pzas</b></div>`;
+  document.getElementById('pt-manual-cant').value='';
+  document.getElementById('pt-manual-motivo').value='';
+  document.getElementById('pt-manual-costo').value='';
+  document.getElementById('pt-manual-disponible').textContent=tipo==='salida'?`Máximo a dar de baja: ${g.total} pzas`:'';
+  setPTManualTipo(tipo);
+  document.getElementById('pt-manual-mov-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('pt-manual-cant').focus(),80);
+}
+window.showPTManualMov=showPTManualMov;
+
+function setPTManualTipo(tipo){
+  _ptManualCtx.tipo=tipo;
+  const btnE=document.getElementById('pt-manual-btn-entrada');
+  const btnS=document.getElementById('pt-manual-btn-salida');
+  const costoWrap=document.getElementById('pt-manual-costo-wrap');
+  const confirmBtn=document.getElementById('pt-manual-confirm-btn');
+  if(tipo==='entrada'){
+    btnE.style.background='rgba(34,197,94,.25)'; btnE.style.color='#4ade80';
+    btnS.style.background='var(--bg2)'; btnS.style.color='var(--muted)';
+    costoWrap.style.display='block';
+    confirmBtn.textContent='✓ Registrar Entrada';
+    confirmBtn.style.background='rgba(34,197,94,.3)';
+    document.getElementById('pt-manual-mov-title').textContent='➕ Entrada Manual PT';
+  } else {
+    btnS.style.background='rgba(239,68,68,.2)'; btnS.style.color='#f87171';
+    btnE.style.background='var(--bg2)'; btnE.style.color='var(--muted)';
+    costoWrap.style.display='none';
+    confirmBtn.textContent='✓ Registrar Salida';
+    confirmBtn.style.background='rgba(239,68,68,.25)';
+    document.getElementById('pt-manual-mov-title').textContent='➖ Salida Manual PT';
+  }
+}
+window.setPTManualTipo=setPTManualTipo;
+
+async function confirmarMovManualPT(){
+  const {productoId, tipo}=_ptManualCtx;
+  const cant=parseInt(document.getElementById('pt-manual-cant').value)||0;
+  const motivo=(document.getElementById('pt-manual-motivo').value||'').trim()||'Ajuste manual';
+  const costo=parseFloat(document.getElementById('pt-manual-costo').value)||0;
+  if(!cant||cant<1){ alert('Ingresa una cantidad válida.'); return; }
+
+  const g=(window._ptProductMap||{})[productoId];
+  if(!g) return;
+
+  if(tipo==='salida'&&cant>g.total){
+    alert(`No hay suficiente existencia. Disponible: ${g.total} pzas.`); return;
+  }
+
+  const confirmBtn=document.getElementById('pt-manual-confirm-btn');
+  confirmBtn.disabled=true; confirmBtn.textContent='Guardando...';
+  const now=new Date().toISOString();
+
+  try{
+    if(tipo==='entrada'){
+      // Crea un lote nuevo en pt_stock (sin ot_id — movimiento manual)
+      await sbInsert('pt_stock',{
+        warehouse_id:null,
+        producto_id:productoId,
+        producto_nombre:g.nombre,
+        ot_id:null, ot_number:'MANUAL',
+        cantidad:cant,
+        costo_fabricacion:costo||null,
+        status:'disponible',
+        created_at:now
+      });
+      await sbInsert('pt_movements',{
+        tipo:'entrada',
+        ot_number:'MANUAL',
+        producto_nombre:g.nombre,
+        cantidad:cant,
+        origen:motivo,
+        destino:'Almacén General PT',
+        created_at:now
+      });
+    } else {
+      // Salida: descuenta de lotes existentes FIFO
+      const lotes=[...g.lotes].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+      let restante=cant;
+      for(const lote of lotes){
+        if(restante<=0) break;
+        const cantLote=parseInt(lote.cantidad)||0;
+        if(cantLote<=0) continue;
+        const descuento=Math.min(restante,cantLote);
+        const nuevaCant=cantLote-descuento;
+        if(nuevaCant<=0){
+          await sbUpdate('pt_stock',{id:lote.id},{cantidad:0,status:'agotado'});
+        } else {
+          await sbUpdate('pt_stock',{id:lote.id},{cantidad:nuevaCant});
+        }
+        restante-=descuento;
+      }
+      await sbInsert('pt_movements',{
+        tipo:'salida',
+        ot_number:'MANUAL',
+        producto_nombre:g.nombre,
+        cantidad:cant,
+        origen:'Almacén General PT',
+        destino:motivo,
+        created_at:now
+      });
+    }
+    closeModal('pt-manual-mov-modal');
+    await loadPTData();
+    renderPTGeneral();
+    alert(`✅ ${tipo==='entrada'?'Entrada':'Salida'} de ${cant} pza${cant!==1?'s':''} registrada para ${g.nombre}.`);
+  } catch(e){
+    console.error('confirmarMovManualPT:',e);
+    alert('Error al guardar: '+e.message);
+  } finally {
+    confirmBtn.disabled=false;
+    setPTManualTipo(_ptManualCtx.tipo);
+  }
+}
+window.confirmarMovManualPT=confirmarMovManualPT;
 function showMoverADestino(stockId){
   const s=(window._ptStockMap||{})[stockId];
   if(!s) return;
