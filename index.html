@@ -7952,7 +7952,7 @@ function renderAlmReport(){
   body.innerHTML=`<div class="card">
     <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent2);margin-bottom:12px">REPORTE DE EXISTENCIAS VS MÍNIMOS</div>
     <table class="tbl"><thead><tr>
-      <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist. Disp.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th>
+      <th>Estado</th><th>Material</th><th>Forma</th><th>Ø</th><th>Long.</th><th>Exist. Disp.</th><th>Mín.</th><th>Ubicación</th><th>Proveedor</th><th>Acciones</th>
     </tr></thead><tbody>${sorted.map(s=>{
       const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
       const minimo=s.producto_id?0:(matCat?.cantidad_min||0);
@@ -7971,6 +7971,7 @@ function renderAlmReport(){
         <td style="color:var(--muted);font-weight:700">${minimo}</td>
         <td style="font-size:11px;color:var(--muted)">${s.ubicacion||'--'}</td>
         <td style="font-size:11px;color:var(--muted)">${s.supplier_name||'--'}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteMpStock('${s.id}')">🗑️</button></td>
       </tr>`;
     }).join('')}</tbody></table>
   </div>`;
@@ -9673,6 +9674,7 @@ async function deleteMpStock(id){
         mpStock=mpStock.filter(x=>x.id!==id);
         mpReservations=mpReservations.filter(r=>r.mp_stock_id!==id);
         renderAlmGeneral();
+        renderAlmReport();
       }catch(e){alert('Error: '+e.message);}
     })();
   };
