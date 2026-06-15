@@ -4365,38 +4365,45 @@ function getOTBomMaterialStatus(o,p){
   (p.materials||[]).forEach((m,i)=>{
     const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
     if(!matCat) return;
+    const reqLote=parseInt(m.cantidad)||0;
+    if(reqLote<=0) return; // sin cantidad definida en el BOM, nada que evaluar
     const esBarra=matCat.grupo==='barra'||matCat.grupo==='tubing'||(matCat.forma&&['Redondo','Hexagonal','Barra Hueca','Cuadrado/Solera','Tubo'].includes(matCat.forma));
-    if(!esBarra) return;
     const longReq=parseFloat(m.longitud)||0;
-    const cantReqBOM=parseInt(m.cantidad)||1;
-    const totalReqOriginal=longReq*cantReqBOM*factor;
+    const cantReqBOM=reqLote;
+    const totalReqOriginal=esBarra?(longReq*cantReqBOM*factor):0;
 
     const bomId=m.id||i;
     const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
     let cubierto=0,cantConsumir=0,dispPP=0;
-    const reqLote=parseInt(m.cantidad)||0;
     if(stockItems.length){
       const totalCant=stockItems.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
       const yaApt=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
       dispPP=Math.max(0,totalCant-yaApt);
-      if(reqLote>0){
-        cantConsumir=Math.min(dispPP,reqLote);
-        const fraccion=Math.min(1,dispPP/reqLote);
-        cubierto=totalReqOriginal*fraccion;
-      }
+      cantConsumir=Math.min(dispPP,reqLote);
+      const fraccion=Math.min(1,dispPP/reqLote);
+      cubierto=esBarra?(totalReqOriginal*fraccion):fraccion;
     }
     const totalReq=Math.max(0,totalReqOriginal-cubierto);
 
-    const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
-    const totalDisp=stockGen.reduce((a,s)=>a+stockLongTotal(s),0);
-    const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&r.ot_id===o.id&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
-    const enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
-    const dispReal=Math.max(0,totalDisp-yaApartado);
-    const cubiertoTotal=totalReq<=0.001||enTransito||yaApartado>=totalReq;
+    let totalDisp=0,dispReal=0,yaApartado=0,enTransito=false,cubiertoTotal;
+    if(esBarra){
+      const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+      totalDisp=stockGen.reduce((a,s)=>a+stockLongTotal(s),0);
+      yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&r.ot_id===o.id&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
+      enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
+      dispReal=Math.max(0,totalDisp-yaApartado);
+      cubiertoTotal=totalReq<=0.001||enTransito||yaApartado>=totalReq;
+    } else {
+      // Renglones tipo pieza/fundición/forja sin stock genérico de Almacén — su única fuente
+      // posible es el lote "Por Producto". Cobertura binaria: ¿el lote disponible alcanza?
+      dispReal=cubierto>=1?reqLote:dispPP; // informativo
+      enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
+      cubiertoTotal=cubierto>=1||enTransito;
+    }
 
     out.push({
-      m,matCat,i,bomId,
-      totalReqOriginal,cubierto,totalReq,cantConsumir,dispPP,
+      m,matCat,i,bomId,esBarra,
+      totalReqOriginal,cubierto,totalReq,cantConsumir,dispPP,reqLote,
       totalDisp,dispReal,yaApartado,enTransito,
       cubiertoTotal,
       critico:m.critico!==false
@@ -4415,7 +4422,7 @@ function showApartarOTPanel(otId){
   if(!p){alert('Producto no encontrado');return;}
   const estado=getOTBomMaterialStatus(o,p);
   const barras=estado;
-  if(!barras.length){alert('Este producto no tiene materiales de barra en el BOM.');return;}
+  if(!barras.length){alert('Este producto no tiene materiales con cantidad definida en el BOM.');return;}
 
   const tr=document.querySelector('#prog-tbody tr td:first-child');
   // Insertar fila debajo de la OT correspondiente
@@ -4430,18 +4437,24 @@ function showApartarOTPanel(otId){
   barras.forEach(b=>{
     const u=(b.matCat.categoria==='Acero'&&b.matCat.forma==='Barra Hueca')?'mm':'"';
     const dimStr=b.matCat.diametro?'Ø '+parseFloat(b.matCat.diametro).toFixed(3)+u:'';
-    const icon=b.cubiertoTotal?'✅':(b.dispReal>=b.totalReq?'✅':'❌');
+    const icon=b.cubiertoTotal?'✅':'❌';
     html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
     html+='<div style="flex:1;min-width:200px">';
     html+=icon+' <strong>'+(b.matCat.label||b.m.tipo)+(dimStr?' — '+dimStr:'')+'</strong>'
       +(b.critico?'<span class="tag" style="color:var(--danger);font-size:10px;margin-left:6px">CRÍTICO</span>':'<span class="tag" style="color:var(--muted);font-size:10px;margin-left:6px">no bloquea</span>');
     html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">';
-    if(b.cubierto>0) html+='Cubierto por Pre-habilitado: '+b.cubierto.toFixed(3)+'" · ';
-    if(b.enTransito) html+='<span style="color:var(--green)">Ya en Tránsito (Habilitado)</span>';
-    else if(b.cubiertoTotal) html+='<span style="color:var(--green)">Cubierto totalmente por Pre-habilitado</span>';
-    else html+='Necesita: '+b.totalReq.toFixed(3)+'" · Disponible: '+b.dispReal.toFixed(3)+'"'+(b.yaApartado>0?' (ya apartado: '+b.yaApartado.toFixed(3)+'")':'');
+    if(b.esBarra){
+      if(b.cubierto>0) html+='Cubierto por Pre-habilitado: '+b.cubierto.toFixed(3)+'" · ';
+      if(b.enTransito) html+='<span style="color:var(--green)">Ya en Tránsito (Habilitado)</span>';
+      else if(b.cubiertoTotal) html+='<span style="color:var(--green)">Cubierto totalmente por Pre-habilitado</span>';
+      else html+='Necesita: '+b.totalReq.toFixed(3)+'" · Disponible: '+b.dispReal.toFixed(3)+'"'+(b.yaApartado>0?' (ya apartado: '+b.yaApartado.toFixed(3)+'")':'');
+    } else {
+      if(b.enTransito) html+='<span style="color:var(--green)">Ya en Tránsito (Habilitado)</span>';
+      else if(b.cubiertoTotal) html+='<span style="color:var(--green)">Cubierto por Material Pre-habilitado: '+b.dispPP+' / '+b.reqLote+' pzas</span>';
+      else html+='<span style="color:var(--danger)">Pre-habilitado insuficiente: '+b.dispPP+' / '+b.reqLote+' pzas — sin fuente en Almacén General</span>';
+    }
     html+='</div></div>';
-    if(!b.cubiertoTotal&&b.dispReal>0&&b.yaApartado<=0){
+    if(b.esBarra&&!b.cubiertoTotal&&b.dispReal>0&&b.yaApartado<=0){
       html+='<button class="btn btn-sm btn-warn apt-bom-btn" data-mid="'+b.m.tipo+'" data-long="'+b.totalReq+'" data-cant="'+(parseInt(b.m.cantidad)||1)+'">📌 Apartar</button>';
     }
     html+='</div>';
@@ -4923,12 +4936,19 @@ async function releaseOT(id){
   // Pre-habilitado y stock en Tránsito ya habilitado.
   if(p){
     const estado=getOTBomMaterialStatus(o,p);
-    const faltantes=estado.filter(b=>b.critico&&!b.cubiertoTotal&&b.dispReal<b.totalReq&&b.yaApartado<b.totalReq);
+    const faltantes=estado.filter(b=>{
+      if(!b.critico||b.cubiertoTotal) return false;
+      if(b.esBarra) return b.dispReal<b.totalReq&&b.yaApartado<b.totalReq;
+      return b.dispPP<b.reqLote; // pieza/fundición: no alcanza el lote pre-habilitado
+    });
     if(faltantes.length){
       const lista=faltantes.map(b=>{
-        const u=(b.matCat.categoria==='Acero'&&b.matCat.forma==='Barra Hueca')?'mm':'"';
-        const dimStr=b.matCat.diametro?'Ø '+parseFloat(b.matCat.diametro).toFixed(3)+u:'';
-        return '• '+(b.matCat.label||b.m.tipo)+(dimStr?' — '+dimStr:'')+' (falta '+(b.totalReq-b.dispReal).toFixed(3)+'")';
+        if(b.esBarra){
+          const u=(b.matCat.categoria==='Acero'&&b.matCat.forma==='Barra Hueca')?'mm':'"';
+          const dimStr=b.matCat.diametro?'Ø '+parseFloat(b.matCat.diametro).toFixed(3)+u:'';
+          return '• '+(b.matCat.label||b.m.tipo)+(dimStr?' — '+dimStr:'')+' (falta '+(b.totalReq-b.dispReal).toFixed(3)+'")';
+        }
+        return '• '+(b.matCat.label||b.m.tipo)+' — Pre-habilitado: '+b.dispPP+' / '+b.reqLote+' pzas (faltan '+(b.reqLote-b.dispPP)+')';
       }).join('\n');
       alert('🔴 No se puede liberar esta OT — material crítico sin existencia suficiente:\n\n'+lista+'\n\nUsa "📌 Apartar" en Programación o "✏ Editar" para solicitar el material cuando llegue a Almacén.');
       return;
