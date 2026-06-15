@@ -4351,6 +4351,118 @@ async function ejecutarApartarOT(otId,materialId,longReq,cantReq){
 }
 window.ejecutarApartarOT=ejecutarApartarOT;
 
+// ── Estado de materiales del BOM para una OT existente (cantidad ya ajustada por o.qty) ──
+// Devuelve, por cada renglón de barra/tubing del BOM: requerido, disponible (almacén general,
+// excluyendo lotes "Por Producto"), cobertura por Material Pre-habilitado, y si es crítico
+// (bloquea liberación).
+function getOTBomMaterialStatus(o,p){
+  const out=[];
+  if(!p||!o) return out;
+  const cantOT=parseInt(o.qty)||1;
+  const cantLote=parseInt(p.batch)||cantOT; // factor de escala si el BOM está definido por lote
+  const factor=cantLote>0?(cantOT/cantLote):1;
+  const porProductoItems=mpStock.filter(s=>s.producto_id===p.id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+  (p.materials||[]).forEach((m,i)=>{
+    const matCat=MAT_TYPES.find(t=>t.val===m.tipo);
+    if(!matCat) return;
+    const esBarra=matCat.grupo==='barra'||matCat.grupo==='tubing'||(matCat.forma&&['Redondo','Hexagonal','Barra Hueca','Cuadrado/Solera','Tubo'].includes(matCat.forma));
+    if(!esBarra) return;
+    const longReq=parseFloat(m.longitud)||0;
+    const cantReqBOM=parseInt(m.cantidad)||1;
+    const totalReqOriginal=longReq*cantReqBOM*factor;
+
+    const bomId=m.id||i;
+    const stockItems=porProductoItems.filter(s=>String(s.bom_item_id)===String(bomId));
+    let cubierto=0;
+    if(stockItems.length){
+      const totalCant=stockItems.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
+      const yaApt=mpReservations.filter(r=>(r.status==='apartado'||r.status==='parcial')&&stockItems.some(s=>s.id===r.mp_stock_id)).reduce((a,r)=>a+(parseInt(r.cantidad)||0),0);
+      const dispPP=Math.max(0,totalCant-yaApt);
+      const reqLote=parseInt(m.cantidad)||0;
+      if(reqLote>0){
+        const fraccion=Math.min(1,dispPP/reqLote);
+        cubierto=totalReqOriginal*fraccion;
+      }
+    }
+    const totalReq=Math.max(0,totalReqOriginal-cubierto);
+
+    const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
+    const totalDisp=stockGen.reduce((a,s)=>a+stockLongTotal(s),0);
+    const yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&r.ot_id===o.id&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
+    const enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
+    const dispReal=Math.max(0,totalDisp-yaApartado);
+    const cubiertoTotal=totalReq<=0.001||enTransito||yaApartado>=totalReq;
+
+    out.push({
+      m,matCat,i,bomId,
+      totalReqOriginal,cubierto,totalReq,
+      totalDisp,dispReal,yaApartado,enTransito,
+      cubiertoTotal,
+      critico:m.critico!==false
+    });
+  });
+  return out;
+}
+
+// ── Panel "Apartar material" para una OT ya creada en Programación ──
+function showApartarOTPanel(otId){
+  // Cerrar otros paneles abiertos
+  document.querySelectorAll('[id^="apartar-panel-"]').forEach(el=>el.remove());
+  const o=workOrders.find(w=>w.id===otId);
+  if(!o){alert('OT no encontrada');return;}
+  const p=getProduct(o.product_id);
+  if(!p){alert('Producto no encontrado');return;}
+  const estado=getOTBomMaterialStatus(o,p);
+  const barras=estado;
+  if(!barras.length){alert('Este producto no tiene materiales de barra en el BOM.');return;}
+
+  const tr=document.querySelector('#prog-tbody tr td:first-child');
+  // Insertar fila debajo de la OT correspondiente
+  const rows=[...document.querySelectorAll('#prog-tbody tr')];
+  const targetRow=rows.find(r=>r.querySelector('td')?.textContent===o.number);
+  const panelRow=document.createElement('tr');
+  panelRow.id='apartar-panel-'+otId;
+  const td=document.createElement('td');
+  td.colSpan=7;
+  td.style.cssText='padding:10px;background:var(--bg2)';
+  let html='<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">📌 APARTAR MATERIAL — '+o.number+' ('+p.name+')</div>';
+  barras.forEach(b=>{
+    const u=(b.matCat.categoria==='Acero'&&b.matCat.forma==='Barra Hueca')?'mm':'"';
+    const dimStr=b.matCat.diametro?'Ø '+parseFloat(b.matCat.diametro).toFixed(3)+u:'';
+    const icon=b.cubiertoTotal?'✅':(b.dispReal>=b.totalReq?'✅':'❌');
+    html+='<div style="background:var(--bg3);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+    html+='<div style="flex:1;min-width:200px">';
+    html+=icon+' <strong>'+(b.matCat.label||b.m.tipo)+(dimStr?' — '+dimStr:'')+'</strong>'
+      +(b.critico?'<span class="tag" style="color:var(--danger);font-size:10px;margin-left:6px">CRÍTICO</span>':'<span class="tag" style="color:var(--muted);font-size:10px;margin-left:6px">no bloquea</span>');
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">';
+    if(b.cubierto>0) html+='Cubierto por Pre-habilitado: '+b.cubierto.toFixed(3)+'" · ';
+    if(b.enTransito) html+='<span style="color:var(--green)">Ya en Tránsito (Habilitado)</span>';
+    else if(b.cubiertoTotal) html+='<span style="color:var(--green)">Cubierto totalmente por Pre-habilitado</span>';
+    else html+='Necesita: '+b.totalReq.toFixed(3)+'" · Disponible: '+b.dispReal.toFixed(3)+'"'+(b.yaApartado>0?' (ya apartado: '+b.yaApartado.toFixed(3)+'")':'');
+    html+='</div></div>';
+    if(!b.cubiertoTotal&&b.dispReal>0&&b.yaApartado<=0){
+      html+='<button class="btn btn-sm btn-warn apt-bom-btn" data-mid="'+b.m.tipo+'" data-long="'+b.totalReq+'" data-cant="'+(parseInt(b.m.cantidad)||1)+'">📌 Apartar</button>';
+    }
+    html+='</div>';
+  });
+  html+='<div style="text-align:right;margin-top:6px"><button class="btn btn-ghost btn-sm" id="apt-close-'+otId+'">Cerrar</button></div>';
+  td.innerHTML=html;
+  panelRow.appendChild(td);
+  if(targetRow) targetRow.after(panelRow);
+  else document.getElementById('prog-tbody')?.appendChild(panelRow);
+
+  td.querySelectorAll('.apt-bom-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const materialId=btn.dataset.mid;
+      const longReq=parseFloat(btn.dataset.long)||0;
+      const cantReq=parseInt(btn.dataset.cant)||1;
+      ejecutarApartarOT(otId,materialId,longReq,cantReq);
+    });
+  });
+  document.getElementById('apt-close-'+otId)?.addEventListener('click',()=>panelRow.remove());
+}
+window.showApartarOTPanel=showApartarOTPanel;
+
 
 // ═══════════════════════════════════════════════════════
 //  MÓDULO PROGRAMACIÓN — funciones reconstruidas
@@ -4805,6 +4917,22 @@ window.deleteOT=deleteOT;
 async function releaseOT(id){
   const o=workOrders.find(w=>w.id===id);
   if(!o){alert('OT no encontrada.');return;}
+  const p=getProduct(o.product_id);
+  // Validar materiales críticos (bloquean liberación) — incluye cobertura por Material
+  // Pre-habilitado y stock en Tránsito ya habilitado.
+  if(p){
+    const estado=getOTBomMaterialStatus(o,p);
+    const faltantes=estado.filter(b=>b.critico&&!b.cubiertoTotal&&b.dispReal<b.totalReq&&b.yaApartado<b.totalReq);
+    if(faltantes.length){
+      const lista=faltantes.map(b=>{
+        const u=(b.matCat.categoria==='Acero'&&b.matCat.forma==='Barra Hueca')?'mm':'"';
+        const dimStr=b.matCat.diametro?'Ø '+parseFloat(b.matCat.diametro).toFixed(3)+u:'';
+        return '• '+(b.matCat.label||b.m.tipo)+(dimStr?' — '+dimStr:'')+' (falta '+(b.totalReq-b.dispReal).toFixed(3)+'")';
+      }).join('\n');
+      alert('🔴 No se puede liberar esta OT — material crítico sin existencia suficiente:\n\n'+lista+'\n\nUsa "📌 Apartar" en Programación o "✏ Editar" para solicitar el material cuando llegue a Almacén.');
+      return;
+    }
+  }
   // Verificar que el material esté en tránsito (en_transito)
   const resList=await sbSelect('mp_reservations','select=id,status&ot_id=eq.'+encodeURIComponent(id));
   const transitList=await sbSelect('mp_transit','select=id,status&ot_id=eq.'+encodeURIComponent(id)); const hasTransito=(transitList||[]).some(t=>t.status==='listo');
@@ -4860,9 +4988,97 @@ function editProgrammingOT(id){
   const o=workOrders.find(w=>w.id===id);
   if(!o) return;
   const p=getProduct(o.product_id);
-  alert('Editar OT — En construcción. OT: '+o.number+(p?' — '+p.name:''));
+  const wrap=document.getElementById('new-ot-form-wrap');
+  if(!wrap) return;
+
+  const div=document.createElement('div');
+  div.className='card';
+  div.style.cssText='margin-bottom:14px;border-color:rgba(245,158,11,.35)';
+  div.innerHTML=
+    '<div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--warn);margin-bottom:14px">✏ EDITAR ORDEN DE TRABAJO — '+o.number+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:12px">'+
+      '<div class="field"><label>NÚMERO DE O.T.</label><input id="otf-num" value="'+o.number+'" disabled style="opacity:.6"></div>'+
+      '<div class="field"><label>PRODUCTO</label><input value="'+((p?.sort_number!=null?p.sort_number+'. ':'')+(p?.name||'--')+(p?.code?' — '+p.code:''))+'" disabled style="opacity:.6"></div>'+
+      '<div class="field"><label>CANTIDAD (pzas)</label><input type="number" id="otf-qty" value="'+(o.qty||0)+'"></div>'+
+      '<div class="field"><label>EXISTENCIA ACTUAL (pzas)</label><input type="number" id="otf-exist" value="'+(o.stock_current??0)+'"></div>'+
+    '</div>'+
+    '<div id="otf-material-info" style="margin-bottom:12px"></div>'+
+    '<div id="otf-apartar-wrap" style="display:none;margin-bottom:12px">'+
+      '<div class="card" style="background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2);padding:12px 16px">'+
+        '<label style="display:flex;align-items:center;gap:10px;cursor:pointer">'+
+          '<input type="checkbox" id="otf-apartar-check" style="width:16px;height:16px">'+
+          '<span style="font-size:13px;font-weight:700">Apartar material disponible faltante</span>'+
+        '</label>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn btn-ghost" id="otf-cancel">Cancelar</button>'+
+      '<button class="btn btn-accent" id="otf-save">💾 Guardar Cambios</button>'+
+    '</div>';
+
+  div.querySelector('#otf-cancel').addEventListener('click',()=>{wrap.innerHTML='';});
+  div.querySelector('#otf-save').addEventListener('click',()=>saveEditedOT(o.id));
+  wrap.innerHTML='';
+  wrap.appendChild(div);
+
+  if(p) checkOTMaterialDisponible(p);
 }
 window.editProgrammingOT=editProgrammingOT;
+
+async function saveEditedOT(id){
+  const o=workOrders.find(w=>w.id===id);
+  if(!o){alert('OT no encontrada.');return;}
+  const p=getProduct(o.product_id);
+  const qty=parseInt(document.getElementById('otf-qty')?.value)||0;
+  const stockCurrent=parseInt(document.getElementById('otf-exist')?.value)||0;
+  const apartar=document.getElementById('otf-apartar-check')?.checked||false;
+  if(!qty){alert('Ingresa la cantidad.');return;}
+
+  showLoading('GUARDANDO O.T...');
+  try{
+    await sbUpdate('work_orders',{id},{qty,stock_current:stockCurrent});
+    const idx=workOrders.findIndex(w=>w.id===id);
+    if(idx>=0) workOrders[idx]={...workOrders[idx],qty,stock_current:stockCurrent};
+
+    if(apartar&&p){
+      const estado=getOTBomMaterialStatus({...o,qty},p);
+      for(const b of estado){
+        if(!b.cubiertoTotal&&b.dispReal>0&&b.yaApartado<=0&&b.dispReal>=b.totalReq){
+          try{ await ejecutarApartarOTSilencioso(id,b.m.tipo,b.totalReq,parseInt(b.m.cantidad)||1); }
+          catch(eRes){console.warn('Reservación fallida:',eRes?.message);}
+        }
+      }
+    }
+
+    await loadAllData();
+    renderProgrammingList();
+    document.getElementById('new-ot-form-wrap').innerHTML='';
+    alert('✅ OT '+o.number+' actualizada correctamente.');
+  }catch(e){alert('Error al guardar: '+e.message);}finally{hideLoading();}
+}
+window.saveEditedOT=saveEditedOT;
+
+// Variante de ejecutarApartarOT sin alert/recarga — para uso en lote desde Editar OT
+async function ejecutarApartarOTSilencioso(otId,materialId,longReq,cantReq){
+  const wo=workOrders.find(o=>o.id===otId);
+  if(!wo) return;
+  const stockDisp=mpStock.filter(s=>s.material_id===materialId&&!s.producto_id&&s.status==='disponible');
+  if(!stockDisp.length) return;
+  const s=stockDisp[0];
+  const resRec={
+    id:uid(),mp_stock_id:s.id,material_id:materialId,
+    ot_id:otId,ot_number:wo.number,
+    longitud_solicitada:longReq,cantidad:cantReq,
+    cantidad_req:cantReq,cantidad_apt:cantReq,cantidad_falta:0,
+    material:s.material,forma:s.forma,diametro:s.diametro,longitud_in:s.longitud_in,
+    status:'apartado',requested_by:'Programación',
+    requested_at:new Date().toISOString(),created_at:new Date().toISOString()
+  };
+  await sbInsert('mp_reservations',resRec);
+  await sbUpdate('mp_stock',{id:s.id},{status:'apartado'});
+  mpReservations.push(resRec);
+}
+window.ejecutarApartarOTSilencioso=ejecutarApartarOTSilencioso;
 
 
 function renderReleasedOTs(){
@@ -6966,18 +7182,16 @@ function renderAlmGeneralPorProducto(items,list){
       const btnWrap=document.createElement('div');
       btnWrap.style.cssText='display:flex;gap:6px';
       bg.items.forEach(s=>{
-        if(s.status==='disponible'||s.status==='parcial'){
-          const btnApt=document.createElement('button');
-          btnApt.className='btn btn-sm btn-warn';
-          btnApt.textContent='📌 Apartar';
-          btnApt.addEventListener('click',()=>showApartarForm(s.id));
-          btnWrap.appendChild(btnApt);
-        }
         const btnEdit=document.createElement('button');
         btnEdit.className='btn btn-sm btn-ghost';
         btnEdit.textContent='✏️';
         btnEdit.addEventListener('click',()=>showMpStockForm(s.id));
         btnWrap.appendChild(btnEdit);
+        const btnDel=document.createElement('button');
+        btnDel.className='btn btn-sm btn-danger';
+        btnDel.textContent='🗑️';
+        btnDel.addEventListener('click',()=>deleteMpStock(s.id));
+        btnWrap.appendChild(btnDel);
       });
       row.appendChild(btnWrap);
       prodCard.appendChild(row);
@@ -8627,7 +8841,7 @@ function showMpStockForm(id){
           <div class="field" style="margin:0"><label>PRODUCTO</label>
             <select id="mpf-prod" onchange="onMpfProdChange()">
               <option value="">-- Selecciona producto --</option>
-              ${[...products].filter(p=>p.active!==false).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(p=>`<option value="${p.id}" ${s?.producto_id===p.id?'selected':''}>${p.name}${p.code?' ('+p.code+')':''}</option>`).join('')}
+              ${[...products].filter(p=>p.active!==false).sort((a,b)=>(a.sort_number??99999)-(b.sort_number??99999)||(a.name||'').localeCompare(b.name||'')).map(p=>`<option value="${p.id}" ${s?.producto_id===p.id?'selected':''}>${(p.sort_number!=null?p.sort_number+'. ':'')}${p.name}${p.code?' ('+p.code+')':''}</option>`).join('')}
             </select>
           </div>
           <div class="field" style="margin:0"><label>RENGLÓN DEL BOM</label>
