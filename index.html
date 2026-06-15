@@ -5012,7 +5012,7 @@ async function releaseOT(id){
           const precioUnit=parseFloat(s.precio_kg)||0; // precio/pieza en lotes pre-habilitado
           const nuevoKgTotal=parseFloat(((parseFloat(s.kg_total)||0)*(cantActual>0?nuevaCant/cantActual:0)).toFixed(2));
           const nuevoValor=parseFloat((nuevaCant*precioUnit).toFixed(2));
-          await sbUpdate('mp_stock',{id:s.id},{cantidad:nuevaCant,kg_total:nuevoKgTotal,valor_total:nuevoValor,status:nuevaCant<=0?'consumido':s.status,updated_at:now});
+          await sbUpdate('mp_stock',{id:s.id},{cantidad:nuevaCant,kg_total:nuevoKgTotal,valor_total:nuevoValor,status:'disponible',updated_at:now});
           await sbInsert('mp_movements',{id:uid(),tipo:'salida',mp_stock_id:s.id,
             material:s.material,forma:s.forma,diametro:s.diametro,
             cantidad:consumo,kg:parseFloat(((parseFloat(s.kg_total)||0)*(cantActual>0?consumo/cantActual:0)).toFixed(2)),
@@ -7925,7 +7925,7 @@ function renderAlmReport(){
 
   // Solo mostrar materiales en mínimo o por debajo (incluyendo los apartados)
   const filtered=mpStock.filter(s=>{
-    if(s.status==='consumido') return false;
+    if(s.status==='consumido'&&!s.producto_id) return false;
     const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
     if(!matCat||matCat.reposicion===false) return false;
     const minimo=s.producto_id?0:(matCat.cantidad_min||0);
