@@ -1834,7 +1834,9 @@ function onOpChange(){
   document.getElementById('oi-unit').textContent=op.op_type==='machining'?fmtMin(op.unit_time):'N/A';
   const badge=document.getElementById('op-type-badge');
   badge.innerHTML=op.op_type==='machining'
-    ?'<span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">MAQUINADO — Registra eficiencia pieza por pieza</span>'
+    ?'<span class="tag" style="background:rgba(0,212,255,.12);color:var(--accent);border:1px solid rgba(0,212,255,.25)">PRIMARIA — Registra eficiencia pieza por pieza</span>'
+    :op.op_type==='external'
+    ?'<span class="tag" style="background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.25)">SERVICIO EXTERNO — Solo inicio / fin / piezas</span>'
     :'<span class="tag" style="background:rgba(245,158,11,.12);color:var(--warn);border:1px solid rgba(245,158,11,.25)">OPERACIÓN SECUNDARIA — Solo inicio / fin / piezas</span>';
   box.classList.remove('hidden');
   checkSelectReady();
@@ -1850,7 +1852,7 @@ function checkSelectReady(){
   if(ok&&woId){
     const wo=getWO(woId); const prod=getProduct(wo.product_id);
     const op=prod?.operations.find(o=>o.id===opId);
-    if(op&&op.op_type==='secondary'){
+    if(op&&op.op_type!=='machining'){
       document.getElementById('btn-go-setup').disabled=true;
     }
   }
@@ -1891,7 +1893,7 @@ function goSetup(){
 function goDirectProduction(){
   buildCtx();
   ctx.prodStart=Date.now();
-  if(ctx.operation.op_type==='secondary'){
+  if(ctx.operation.op_type!=='machining'){
     // ¿Ya hay una operación secundaria en curso de este operador para esta OT/operación?
     const existing=(secOpsActive||[]).find(s=>s.status==='en_curso'&&s.ot_id===ctx.wo.id&&s.operation_id===ctx.operation.id&&s.operator_id===ctx.operator.id);
     if(existing){ reopenSecondaryOp(existing.id); return; }
@@ -2597,7 +2599,7 @@ function renderProducts(){
               <span class="badge-op">Op.${o.op_number}</span>
               <span style="font-weight:600">${o.name}</span>
               <span style="color:var(--accent2)">· ${o.machine_name||'--'}</span>
-              ${o.op_type==='machining'?`<span style="color:var(--muted)">|</span><span style="color:var(--warn)">Mont:${o.setup_time}min</span><span style="color:var(--green)">Unit:${o.unit_time}min</span>`:'<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn)">Secundaria</span>'}
+              ${o.op_type==='machining'?`<span style="color:var(--muted)">|</span><span style="color:var(--warn)">Mont:${o.setup_time}min</span><span style="color:var(--green)">Unit:${o.unit_time}min</span>`:o.op_type==='external'?'<span class="tag" style="background:rgba(168,85,247,.1);color:#a855f7">Externo</span>':'<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn)">Secundaria</span>'}
               ${(o.tools||[]).length?`<span style="color:var(--muted)">🔧${(o.tools||[]).length}</span>`:''}
               ${(o.gages||[]).length?`<span style="color:var(--muted)">📏${(o.gages||[]).length}</span>`:''}
               ${(o.devices||[]).length?`<span style="color:var(--muted)">🔩${(o.devices||[]).length}</span>`:''}
@@ -3025,26 +3027,29 @@ function showProductForm(id){
 
 function opRowPF(op,i,prodId){
   const machOpts=machineCatalog.map(m=>`<option value="${m.id}|${m.name}" ${op.machine_id===m.id?'selected':''}>${m.name}</option>`).join('');
-  // El dropdown de Categoría es solo para CAMBIAR el tipo si el usuario lo desea.
-  // El op_type real/actual se guarda en el hidden pfop-optype-${op.id} (fuente de verdad),
-  // independiente de si el nombre coincide con el catálogo o fue personalizado.
-  const opCatOpts=opCatalog.map(o=>`<option value="${o.name}|${o.type}" ${op.name===o.name?'selected':''}>${o.name}</option>`).join('');
-  const isSec=op.op_type==='secondary';
+  // Tipo de operación: Primaria (machining, registra pieza por pieza sin importar la máquina),
+  // Secundaria (solo inicio/fin/piezas), Externo (servicio externo, costo se captura en OT Liberada).
+  // El op_type real/actual se guarda en el hidden pfop-optype-${op.id} (fuente de verdad).
+  const curType=op.op_type||'machining';
+  const isSec=curType==='secondary';
+  const isExt=curType==='external';
+  const noTimes=isSec||isExt;
   return `<div class="op-row-wrap">
-  <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 160px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
+  <div id="pfop-${op.id}" style="display:grid;grid-template-columns:60px 130px 1fr 1fr 90px 90px 36px;gap:6px;align-items:center;background:var(--bg3);padding:8px;border-radius:8px 8px 0 0;border:1px solid var(--border);margin-top:8px">
     <input value="${op.op_number||''}" placeholder="10" id="pfop-num-${op.id}" style="text-align:center;font-weight:700;font-family:'DM Mono',monospace">
-    <input type="hidden" id="pfop-optype-${op.id}" value="${op.op_type||'machining'}">
-    <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')" title="Tipo actual: ${isSec?'Secundaria':'Maquinado'}. Selecciona aquí solo si quieres CAMBIARLO.">
-      <option value="">${isSec?'Secundaria':'Maquinado'} (actual)</option>
-      ${opCatOpts}
+    <input type="hidden" id="pfop-optype-${op.id}" value="${curType}">
+    <select id="pfop-cat-${op.id}" onchange="onOpCatChange('${op.id}')" title="Tipo de operación">
+      <option value="machining" ${curType==='machining'?'selected':''}>Primaria</option>
+      <option value="secondary" ${isSec?'selected':''}>Secundaria</option>
+      <option value="external" ${isExt?'selected':''}>Externo</option>
     </select>
     <select id="pfop-mach-${op.id}" onchange="onOpMachChange('${op.id}')">
       <option value="">-- Máquina --</option>
       ${machOpts}
     </select>
     <input value="${op.name||''}" placeholder="Nombre personalizado" id="pfop-name-${op.id}">
-    <input type="number" value="${isSec?'':op.setup_time||''}" placeholder="${isSec?'N/A':'25'}" id="pfop-setup-${op.id}" style="text-align:center" ${isSec?'disabled':''}>
-    <input type="number" value="${isSec?'':op.unit_time||''}" placeholder="${isSec?'N/A':'8.5'}" id="pfop-unit-${op.id}" style="text-align:center" ${isSec?'disabled':''}>
+    <input type="number" value="${noTimes?'':op.setup_time||''}" placeholder="${noTimes?'N/A':'25'}" id="pfop-setup-${op.id}" style="text-align:center" ${noTimes?'disabled':''}>
+    <input type="number" value="${noTimes?'':op.unit_time||''}" placeholder="${noTimes?'N/A':'8.5'}" id="pfop-unit-${op.id}" style="text-align:center" ${noTimes?'disabled':''}>
     <button onclick="removePFOpRow('${op.id}')" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:6px;font-size:12px;cursor:pointer">✕</button>
   </div>
   <div style="background:var(--bg4);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;margin-bottom:2px">
@@ -3121,19 +3126,14 @@ function opRowPF(op,i,prodId){
 }
 
 function onOpCatChange(id){
-  const val=document.getElementById('pfop-cat-'+id)?.value||'';
-  if(!val) return; // "(actual)" — usuario no cambió nada, se preserva op_type del hidden
-  const [name,type]=val.split('|');
-  const nameInput=document.getElementById('pfop-name-'+id);
-  if(nameInput&&!nameInput.value) nameInput.value=name;
-  // Usuario eligió explícitamente un nuevo tipo -> actualizar la fuente de verdad
+  const type=document.getElementById('pfop-cat-'+id)?.value||'machining';
   const optypeInp=document.getElementById('pfop-optype-'+id);
   if(optypeInp) optypeInp.value=type;
-  const isSec=type==='secondary';
+  const noTimes=type==='secondary'||type==='external';
   const setupInp=document.getElementById('pfop-setup-'+id);
   const unitInp=document.getElementById('pfop-unit-'+id);
-  if(setupInp){ setupInp.disabled=isSec; if(isSec){setupInp.value='';setupInp.placeholder='N/A';} }
-  if(unitInp){ unitInp.disabled=isSec; if(isSec){unitInp.value='';unitInp.placeholder='N/A';} }
+  if(setupInp){ setupInp.disabled=noTimes; if(noTimes){setupInp.value='';setupInp.placeholder='N/A';} else setupInp.placeholder='25'; }
+  if(unitInp){ unitInp.disabled=noTimes; if(noTimes){unitInp.value='';unitInp.placeholder='N/A';} else unitInp.placeholder='8.5'; }
 }
 
 function onOpMachChange(id){
@@ -6182,7 +6182,7 @@ function renderConsulta(){
                   <span class="badge-op">Op.${o.op_number}</span>
                   <span style="font-weight:600">${o.name}</span>
                   <span style="color:var(--accent2)">· ${o.machine_name||'--'}</span>
-                  ${o.op_type==='machining'?`<span style="color:var(--muted)">|</span><span style="color:var(--warn)">Mont:${o.setup_time}min</span><span style="color:var(--green)">Unit:${o.unit_time}min</span>`:'<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn)">Secundaria</span>'}
+                  ${o.op_type==='machining'?`<span style="color:var(--muted)">|</span><span style="color:var(--warn)">Mont:${o.setup_time}min</span><span style="color:var(--green)">Unit:${o.unit_time}min</span>`:o.op_type==='external'?'<span class="tag" style="background:rgba(168,85,247,.1);color:#a855f7">Externo</span>':'<span class="tag" style="background:rgba(245,158,11,.1);color:var(--warn)">Secundaria</span>'}
                   ${(o.tools||[]).length?`<span style="color:var(--muted)">🔧${(o.tools||[]).length} herramientas</span>`:''}
                 </div>
               </div>`).join('')}
