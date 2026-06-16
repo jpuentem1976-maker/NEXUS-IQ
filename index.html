@@ -5344,7 +5344,7 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
     });
   }
 
-  // Helper: ya en transit para esta OT para este material
+  // Helper: ya en transit para esta OT para este material (incluye consumido — ya fue tomado del almacén)
   function cantEnTransit(matTipo, matLabel, esBarra){
     return transitOT
       .filter(t=>{
@@ -5355,6 +5355,16 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
       .reduce((a,t)=>a+(esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
   }
 
+  // Helper: material ya consumido al liberar OT (status='consumido' en mp_transit)
+  function yaConsumidoEnLiberar(matTipo, matLabel){
+    return transitOT.some(t=>{
+      if(t.status!=='consumido') return false;
+      const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&(s.material_id===matTipo||(s.material||'').toLowerCase()===(matLabel||'').toLowerCase()));
+      const byName = !t.mp_stock_id && (t.material||'').toLowerCase().includes((matLabel||'').substring(0,5).toLowerCase());
+      return byStockId||byName;
+    });
+  }
+
   // Filtrar solo ítems que NO están completamente cubiertos con material asignado a la OT
   const itemsConProblema=[];
   const allRows=estado.map(b=>{
@@ -5362,6 +5372,9 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
     const nombre=matCat?.label||m.tipo||'—';
     const matTipo=m.tipo;
     const matLabel=matCat?.label||'';
+
+    // Piezas no-críticas sin fuente en Almacén General no se muestran en panel pendiente
+    if(!esBarra && m.critico===false) return {html:'',pendiente:false};
 
     // Stock disponible en Almacén General (match robusto)
     const stockGen=stockGeneral(matTipo, matLabel);
@@ -5371,13 +5384,16 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
 
     // Cuánto ya tiene asignado esta OT en mp_transit
     const cantTransit=cantEnTransit(matTipo, matLabel, esBarra);
+    // ¿Ya fue consumido al momento de liberar la OT?
+    const consumidoAlLiberar = yaConsumidoEnLiberar(matTipo, matLabel);
 
     // ── Determinar estado real ──
     // Para barras: cubierto si ya hay transit consumido (se descuentó al liberar o se solicitó)
     // Para piezas: cubierto si ya hay transit consumido para este material en esta OT
-    const yaCubierto = esBarra
-      ? (cantTransit >= totalReq*0.99 || cubiertoTotal)  // 99% para tolerancia de decimales
-      : (cantTransit >= reqLote || cubiertoTotal);
+    const yaCubierto = consumidoAlLiberar
+      || (esBarra
+        ? (cantTransit >= totalReq*0.99 || cubiertoTotal)
+        : (cantTransit >= reqLote || cubiertoTotal));
 
     let estadoTag, puedeSolicitar=false;
     if(yaCubierto){
