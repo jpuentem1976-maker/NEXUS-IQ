@@ -4463,6 +4463,11 @@ function getOTBomMaterialStatus(o,p){
     }
     const totalReq=Math.max(0,totalReqOriginal-cubierto);
 
+    const otLiberada=o.status==='released'||o.status==='closed';
+    const yaEnTransitConsumed=mpTransit.some(t=>t.ot_id===o.id&&t.status==='consumido'&&(
+      (t.mp_stock_id&&mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===m.tipo))||
+      (t.material||'').toLowerCase()===(matCat?.label||'').toLowerCase()
+    ));
     let totalDisp=0,dispReal=0,yaApartado=0,enTransito=false,cubiertoTotal;
     if(esBarra){
       const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='apartado'||s.status==='parcial'));
@@ -4470,13 +4475,13 @@ function getOTBomMaterialStatus(o,p){
       yaApartado=mpReservations.filter(r=>r.material_id===m.tipo&&r.ot_id===o.id&&(r.status==='apartado'||r.status==='parcial')).reduce((a,r)=>a+(parseFloat(r.longitud_solicitada)||0)*(parseInt(r.cantidad)||1),0);
       enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
       dispReal=Math.max(0,totalDisp-yaApartado);
-      cubiertoTotal=totalReq<=0.001||enTransito||yaApartado>=totalReq;
+      cubiertoTotal=otLiberada?(yaEnTransitConsumed||enTransito):(totalReq<=0.001||enTransito||yaApartado>=totalReq);
     } else {
       // Renglones tipo pieza/fundición/forja sin stock genérico de Almacén — su única fuente
       // posible es el lote "Por Producto". Cobertura binaria: ¿el lote disponible alcanza?
       dispReal=cubierto>=1?reqLote:dispPP; // informativo
       enTransito=mpTransit.some(t=>t.ot_id===o.id&&(t.status==='listo'||t.status==='liberado')&&(t.material||'').toUpperCase().startsWith((matCat.label||'').toUpperCase()));
-      cubiertoTotal=cubierto>=1||enTransito;
+      cubiertoTotal=otLiberada?(yaEnTransitConsumed||enTransito):(cubierto>=1||enTransito);
     }
 
     out.push({
@@ -5348,19 +5353,21 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
   function cantEnTransit(matTipo, matLabel, esBarra){
     return transitOT
       .filter(t=>{
-        const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&(s.material_id===matTipo||(s.material||'').toLowerCase()===(matLabel||'').toLowerCase()));
-        const byName = !t.mp_stock_id && (t.material||'').toLowerCase().includes((matLabel||'').substring(0,5).toLowerCase());
+        const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===matTipo);
+        const byName = !byStockId && (t.material||'').toLowerCase()===(matLabel||'').toLowerCase();
         return byStockId||byName;
       })
       .reduce((a,t)=>a+(esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
   }
 
   // Helper: material ya consumido al liberar OT (status='consumido' en mp_transit)
-  function yaConsumidoEnLiberar(matTipo, matLabel){
+  // Para barras: require longitud_in>0 (los registros Por Producto tienen longitud_in=0)
+  function yaConsumidoEnLiberar(matTipo, matLabel, esBarra){
     return transitOT.some(t=>{
       if(t.status!=='consumido') return false;
-      const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&(s.material_id===matTipo||(s.material||'').toLowerCase()===(matLabel||'').toLowerCase()));
-      const byName = !t.mp_stock_id && (t.material||'').toLowerCase().includes((matLabel||'').substring(0,5).toLowerCase());
+      if(esBarra && !(parseFloat(t.longitud_in)>0)) return false; // excluir registros Por Producto (longitud_in=0)
+      const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===matTipo);
+      const byName = !byStockId && (t.material||'').toLowerCase()===(matLabel||'').toLowerCase(); // match exacto
       return byStockId||byName;
     });
   }
@@ -5373,9 +5380,6 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
     const matTipo=m.tipo;
     const matLabel=matCat?.label||'';
 
-    // Piezas no-críticas sin fuente en Almacén General no se muestran en panel pendiente
-    if(!esBarra && m.critico===false) return {html:'',pendiente:false};
-
     // Stock disponible en Almacén General (match robusto)
     const stockGen=stockGeneral(matTipo, matLabel);
     const dispGeneral=esBarra
@@ -5385,7 +5389,7 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
     // Cuánto ya tiene asignado esta OT en mp_transit
     const cantTransit=cantEnTransit(matTipo, matLabel, esBarra);
     // ¿Ya fue consumido al momento de liberar la OT?
-    const consumidoAlLiberar = yaConsumidoEnLiberar(matTipo, matLabel);
+    const consumidoAlLiberar = yaConsumidoEnLiberar(matTipo, matLabel, esBarra);
 
     // ── Determinar estado real ──
     // Para barras: cubierto si ya hay transit consumido (se descuentó al liberar o se solicitó)
@@ -5399,6 +5403,11 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
     if(yaCubierto){
       estadoTag=`<span style="background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✅ Cubierto</span>`;
     } else if(dispGeneral>0){
+      estadoTag=`<span style="background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">⚠ Pendiente</span>`;
+      puedeSolicitar=true;
+      itemsConProblema.push(b);
+    } else if(!esBarra && b.dispPP>=b.reqLote){
+      // Pieza con stock Por Producto suficiente — se puede solicitar/asignar
       estadoTag=`<span style="background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">⚠ Pendiente</span>`;
       puedeSolicitar=true;
       itemsConProblema.push(b);
