@@ -179,6 +179,8 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   <button class="nav-btn" id="nb-alm-logout" onclick="almLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" id="nb-almacen-pt" onclick="almPTClick()" style="display:flex;align-items:center;gap:4px"><span id="alm-pt-lock">🔒</span> Almacén PT</button>
   <button class="nav-btn" id="nb-alm-pt-logout" onclick="almPTLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
+  <button class="nav-btn" id="nb-compras" onclick="comprasClick()" style="display:flex;align-items:center;gap:4px"><span id="compras-lock">🔒</span> Compras</button>
+  <button class="nav-btn" id="nb-compras-logout" onclick="comprasLogout()" style="display:none;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--danger);font-size:11px;padding:4px 10px">⏻ Salir</button>
   <button class="nav-btn" onclick="reconectar()" style="font-size:11px;margin-left:4px">🔄</button>
   <div style="margin-left:6px;font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px;white-space:nowrap"><div class="live-dot"></div>EN LÍNEA</div>
   <button onclick="showDebug()" style="margin-left:6px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);padding:4px 8px;border-radius:6px;font-size:10px;cursor:pointer">🔍</button>
@@ -809,6 +811,41 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 </div>
 
+<!-- MODAL AUTH COMPRAS -->
+<div id="compras-modal" class="overlay hidden">
+  <div class="card modal card-accent" style="text-align:center">
+    <div style="font-size:32px;margin-bottom:12px">📦</div>
+    <div style="font-family:var(--font-display,sans-serif);font-size:24px;color:var(--accent)">ACCESO A COMPRAS</div>
+    <div style="color:var(--muted);font-size:12px;margin:6px 0 18px">Solo personal autorizado</div>
+    <div class="field" style="text-align:left;margin-bottom:6px">
+      <label>Contraseña</label>
+      <input type="password" id="compras-pass" style="text-align:center;letter-spacing:6px;font-size:20px" onkeydown="if(event.key==='Enter')tryComprasLogin()">
+    </div>
+    <div id="compras-error" class="hidden" style="color:var(--danger);font-size:12px;font-weight:700;margin:6px 0">✕ Contraseña incorrecta</div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('compras-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="tryComprasLogin()">🔓 Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NUEVA REQUISICIÓN -->
+<div id="requi-modal" class="overlay hidden">
+  <div class="card modal" style="width:680px;max-width:98%;max-height:90vh;overflow-y:auto">
+    <div style="font-family:var(--font-display,sans-serif);font-size:20px;color:var(--accent2);margin-bottom:4px">📋 NUEVA REQUISICIÓN DE COMPRA</div>
+    <div id="requi-modal-sub" style="color:var(--muted);font-size:12px;margin-bottom:14px"></div>
+    <div id="requi-modal-items"></div>
+    <div class="field" style="margin-top:14px">
+      <label>OBSERVACIONES</label>
+      <textarea id="requi-obs" rows="2" placeholder="Notas para el proveedor, urgencia, especificaciones adicionales..." style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;resize:vertical"></textarea>
+    </div>
+    <div class="g2" style="margin-top:16px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('requi-modal')">Cancelar</button>
+      <button class="btn btn-accent" onclick="confirmarRequisicion()">📤 Enviar a Compras</button>
+    </div>
+  </div>
+</div>
+
 <!-- RAW MATERIAL CONFIRMATION MODAL -->
 <div id="rawmat-modal" class="overlay hidden">
   <div class="card modal card-accent" style="width:640px;max-width:100%">
@@ -1119,6 +1156,46 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!--  MÓDULO COMPRAS                                         -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div id="page-compras" class="page" style="padding:20px;max-width:1200px;margin:0 auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:28px;color:var(--accent2)">📦 COMPRAS</div>
+    <button class="btn btn-sm btn-ghost" onclick="loadComprasData().then(renderCompras)">↻ Actualizar</button>
+  </div>
+
+  <div class="ptabs" style="margin-bottom:16px">
+    <button class="ptab active" onclick="setComprasTab('cmp-requisiciones',this)">📋 Requisiciones</button>
+    <button class="ptab" onclick="setComprasTab('cmp-historial',this)">📁 Historial</button>
+  </div>
+
+  <!-- REQUISICIONES ACTIVAS -->
+  <div id="cmp-requisiciones" class="subpage active">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="cmp-search" placeholder="🔍 Buscar por producto, material o N° requisición..." oninput="renderComprasRequisiciones()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:5px 12px;font-size:12px;width:340px">
+      <select id="cmp-status-filter" onchange="renderComprasRequisiciones()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+        <option value="">Todos los estados</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="completada">Completada</option>
+        <option value="cancelada">Cancelada</option>
+      </select>
+    </div>
+    <div id="cmp-banner" style="margin-bottom:14px"></div>
+    <div id="cmp-requisiciones-list"></div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div id="cmp-historial" class="subpage">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <input type="date" id="cmp-hist-from" onchange="renderComprasHistorial()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+      <input type="date" id="cmp-hist-to" onchange="renderComprasHistorial()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 10px;font-size:12px">
+    </div>
+    <div id="cmp-historial-list"></div>
+  </div>
+</div>
+
 <!-- MODAL REGISTRAR SCRAP -->
 <div id="scrap-modal" class="overlay hidden">
   <div class="card modal" style="max-width:440px">
@@ -1262,13 +1339,14 @@ const PASS_PROGRAMMING = '8620';
 const PASS_ALMACEN     = '4340';
 const PASS_ALMACEN_PT  = '7720';
 const PASS_INVENTARIOS = '52100';
+const PASS_COMPRAS     = '3560';
 const CFG_KEY = 'niq2_config';
 const OT_START_KEY = 'niq2_ot_start';
 
 let SB_URL = '', SB_KEY = '';
 let products=[], operators=[], workOrders=[], sessions=[], machineCatalog=[], opCatalog=[], machineLoad=[], rawMaterial=[], otDeliveries=[], otScrap=[], otExternalServices=[], secOpsActive=[];
 let recursosProduccion=[];
-let reportsAuth=false, engAuth=false, progAuth=false, almPTAuth=false;
+let reportsAuth=false, engAuth=false, progAuth=false, almPTAuth=false, comprasAuth=false;
 
 function getConfig(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY))||null; }catch{ return null; } }
 
@@ -1720,6 +1798,7 @@ function goPage(p){
   if(p==='reports'){ loadAllData().then(()=>{ refreshReportSelects(); renderOpReport(); }); }
   if(p==='almacen'){ loadAlmData(); }
   if(p==='almacen-pt'){ Promise.all([loadAllData(),loadPTData()]).then(renderPTActive); }
+  if(p==='compras'){ loadComprasData().then(renderCompras); }
   if(p==='engineering'){ loadAllData().then(renderEngineering); }
   if(p==='programming'){ loadAllData().then(renderProgramming); }
   if(p==='consulta'){ loadAllData().then(renderConsulta); }
@@ -2784,6 +2863,17 @@ function bomRowHTML(m, prodId, idx){
       <div class="field" style="margin:0"><label style="font-size:9px">MÍN. REPOSICIÓN <span style="color:var(--muted);font-size:9px">(Por Producto)</span></label>
         <input type="number" id="bom-stockmin-${mid}" value="${m.stock_min_pp||''}" placeholder="0 = solo SIN STOCK" style="font-size:11px">
       </div>
+      <div class="field" style="margin:0"><label style="font-size:9px">TIPO REPOSICIÓN</label>
+        <select id="bom-tiporep-${mid}" onchange="onBomTipoRepChange('${mid}')" style="font-size:11px">
+          <option value="lote_exacto" ${(m.tipo_reposicion||'lote_exacto')==='lote_exacto'?'selected':''}>Lote exacto</option>
+          <option value="multiplo" ${m.tipo_reposicion==='multiplo'?'selected':''}>Múltiplo fijo</option>
+          <option value="bajo_pedido" ${m.tipo_reposicion==='bajo_pedido'?'selected':''}>Bajo pedido especial</option>
+        </select>
+      </div>
+      <div class="field" id="bom-lotecompra-wrap-${mid}" style="margin:0;${(m.tipo_reposicion==='multiplo')?'':'display:none'}">
+        <label style="font-size:9px">LOTE COMPRA <span style="color:var(--muted);font-size:9px">(múltiplo)</span></label>
+        <input type="number" id="bom-lotecompra-${mid}" value="${m.lote_compra||1}" min="1" placeholder="ej. 100" style="font-size:11px">
+      </div>
       <button type="button" onclick="removeBomRow('${mid}')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--danger);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;height:32px">✕</button>
     </div>
     <div id="bom-barra-${mid}" style="${(()=>{const mc=MAT_TYPES.find(x=>x.val===m.tipo);return mc&&(mc.grupo==='barra'||mc.grupo==='tubing')?'':'display:none';})()}">
@@ -2871,6 +2961,13 @@ function onBomFormaChange(mid){
   calcBomRowKg(mid);
 }
 
+function onBomTipoRepChange(mid){
+  const tipo=document.getElementById('bom-tiporep-'+mid)?.value;
+  const wrap=document.getElementById('bom-lotecompra-wrap-'+mid);
+  if(wrap) wrap.style.display=tipo==='multiplo'?'':'none';
+}
+window.onBomTipoRepChange=onBomTipoRepChange;
+
 function calcBomRowKg(mid){
   const tipo=document.getElementById('bom-tipo-'+mid)?.value||'acero';
   const forma=document.getElementById('bom-forma-'+mid)?.value||'redondo';
@@ -2930,6 +3027,8 @@ function readBomRows(prodId){
       })(),
       unidad:isBarra?'kg':(document.getElementById('bom-unidad-'+mid)?.value||'piezas'),
       stock_min_pp:parseInt(document.getElementById('bom-stockmin-'+mid)?.value)||0,
+      tipo_reposicion:document.getElementById('bom-tiporep-'+mid)?.value||'lote_exacto',
+      lote_compra:parseInt(document.getElementById('bom-lotecompra-'+mid)?.value)||1,
     });
   });
   return rows;
@@ -8443,7 +8542,7 @@ function renderAlmReport(){
         <td style="color:var(--muted);font-weight:700">${minimo}</td>
         <td style="font-size:11px;color:var(--muted)">${s.ubicacion||'--'}</td>
         <td style="font-size:11px;color:var(--muted)">${s.supplier_name||'--'}</td>
-        <td><button class="btn btn-sm btn-danger" onclick="deleteMpStock('${s.id}')">🗑️</button></td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteMpStock('${s.id}')">🗑️</button> <button class="btn btn-sm btn-accent" onclick="showRequiModal('${s.id}')" title="Generar Requisición de Compra">📋 Requi</button></td>
       </tr>`;
     }).join('')}</tbody></table>
   </div>`;
@@ -11507,7 +11606,431 @@ async function registrarEntregaEnPTTransit(otId, otNumber, productoId, productoN
 window.registrarEntregaEnPTTransit=registrarEntregaEnPTTransit;
 
 // ════════════════════════════════════════════════════════
-//  FIN MÓDULO ALMACÉN PT
+//  MÓDULO COMPRAS
+// ════════════════════════════════════════════════════════
+
+let purchaseRequests=[], purchaseRequestItems=[], comprasLoaded=false;
+let _requiPendingStock=null; // stock item pendiente para modal requisición
+
+/* AUTH */
+function comprasClick(){
+  if(comprasAuth){ goPage('compras'); return; }
+  openModal('compras-modal','compras-pass','compras-error');
+}
+function tryComprasLogin(){
+  tryAuth('compras-pass','compras-error',PASS_COMPRAS,()=>{
+    comprasAuth=true;
+    document.getElementById('compras-lock').textContent='🔓';
+    document.getElementById('nb-compras-logout').style.display='';
+    closeModal('compras-modal');
+    goPage('compras');
+  });
+}
+function comprasLogout(){
+  comprasAuth=false;
+  document.getElementById('compras-lock').textContent='🔒';
+  document.getElementById('nb-compras-logout').style.display='none';
+  goPage('operator');
+}
+window.comprasClick=comprasClick;
+window.tryComprasLogin=tryComprasLogin;
+window.comprasLogout=comprasLogout;
+
+/* TABS */
+function setComprasTab(id,btn){
+  document.querySelectorAll('#page-compras .subpage').forEach(el=>{ el.classList.remove('active'); el.style.display='none'; });
+  document.querySelectorAll('#page-compras .ptab').forEach(b=>b.classList.remove('active'));
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.style.display=''; void el.offsetWidth; el.classList.add('active'); btn.classList.add('active');
+  if(id==='cmp-requisiciones') renderComprasRequisiciones();
+  if(id==='cmp-historial') renderComprasHistorial();
+}
+window.setComprasTab=setComprasTab;
+
+/* CARGA DE DATOS */
+async function loadComprasData(){
+  try{
+    purchaseRequests=await sbFetch('purchase_requests','order=created_at.desc')||[];
+    purchaseRequestItems=await sbFetch('purchase_request_items','order=created_at.asc')||[];
+    comprasLoaded=true;
+  }catch(e){ console.error('loadComprasData:',e); }
+}
+window.loadComprasData=loadComprasData;
+
+/* RENDER PRINCIPAL */
+function renderCompras(){
+  renderComprasRequisiciones();
+}
+window.renderCompras=renderCompras;
+
+/* BANNER RESUMEN */
+function renderComprasBanner(){
+  const banner=document.getElementById('cmp-banner');
+  if(!banner) return;
+  const activas=purchaseRequests.filter(r=>r.status==='pendiente'||r.status==='en_proceso');
+  const pendientes=purchaseRequests.filter(r=>r.status==='pendiente').length;
+  const enProceso=purchaseRequests.filter(r=>r.status==='en_proceso').length;
+  banner.innerHTML=`<div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:11px;color:var(--muted)">PENDIENTES</div>
+      <div style="font-size:22px;font-weight:700;color:var(--warn)">${pendientes}</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:11px;color:var(--muted)">EN PROCESO</div>
+      <div style="font-size:22px;font-weight:700;color:var(--accent)">${enProceso}</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 18px;text-align:center">
+      <div style="font-size:11px;color:var(--muted)">TOTAL ACTIVAS</div>
+      <div style="font-size:22px;font-weight:700;color:var(--accent2)">${activas.length}</div>
+    </div>
+  </div>`;
+}
+
+/* REQUISICIONES ACTIVAS */
+function renderComprasRequisiciones(){
+  renderComprasBanner();
+  const list=document.getElementById('cmp-requisiciones-list');
+  if(!list) return;
+  const q=(document.getElementById('cmp-search')?.value||'').toLowerCase();
+  const st=document.getElementById('cmp-status-filter')?.value||'';
+  const activos=['pendiente','en_proceso','completada','cancelada'];
+  let reqs=purchaseRequests.filter(r=>{
+    if(st&&r.status!==st) return false;
+    if(q){
+      const hay=(r.numero||'').toLowerCase()+(r.producto_nombre||'').toLowerCase()+(r.observaciones||'').toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if(!reqs.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin requisiciones que coincidan.</div>'; return; }
+  const statusColor={pendiente:'var(--warn)',en_proceso:'var(--accent)',completada:'var(--green)',cancelada:'var(--muted)'};
+  const statusLabel={pendiente:'PENDIENTE',en_proceso:'EN PROCESO',completada:'COMPLETADA',cancelada:'CANCELADA'};
+  list.innerHTML=reqs.map(r=>{
+    const items=purchaseRequestItems.filter(i=>i.request_id===r.id);
+    const fecha=r.created_at?new Date(r.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—';
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${r.numero||'—'}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:10px">${fecha}</span>
+          ${r.solicitante?`<span style="font-size:11px;color:var(--muted);margin-left:6px">· ${r.solicitante}</span>`:''}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:10px;font-weight:700;color:${statusColor[r.status]||'var(--muted)'};border:1px solid ${statusColor[r.status]||'var(--muted)'};background:${statusColor[r.status]||'var(--muted)'}22;border-radius:4px;padding:2px 8px">${statusLabel[r.status]||r.status}</span>
+          <select onchange="cambiarStatusRequi('${r.id}',this.value)" style="font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:3px 8px">
+            <option value="pendiente" ${r.status==='pendiente'?'selected':''}>Pendiente</option>
+            <option value="en_proceso" ${r.status==='en_proceso'?'selected':''}>En proceso</option>
+            <option value="completada" ${r.status==='completada'?'selected':''}>Completada</option>
+            <option value="cancelada" ${r.status==='cancelada'?'selected':''}>Cancelada</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="imprimirRequi('${r.id}')">🖨 PDF</button>
+        </div>
+      </div>
+      ${r.producto_nombre?`<div style="font-size:12px;color:var(--green);margin-bottom:8px">🏷 ${r.producto_nombre}${r.producto_codigo?' ('+r.producto_codigo+')':''}</div>`:''}
+      <table class="tbl" style="font-size:11px">
+        <thead><tr><th>Material</th><th>Forma / Ø</th><th>Cant. Solicitada</th><th>Unidad</th><th>Tipo Repos.</th><th>Proveedor Sugerido</th></tr></thead>
+        <tbody>${items.map(i=>`<tr>
+          <td style="font-weight:600">${i.material_nombre||'—'}</td>
+          <td style="color:var(--muted)">${i.forma||'—'}${i.diametro?' Ø'+parseFloat(i.diametro).toFixed(3)+'"':''}</td>
+          <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent2)">${i.cantidad_solicitada||'—'}</td>
+          <td style="color:var(--muted)">${i.unidad||'piezas'}</td>
+          <td style="color:var(--muted)">${i.tipo_reposicion==='multiplo'?'Múltiplo ×'+i.lote_compra:i.tipo_reposicion==='bajo_pedido'?'Bajo pedido':'Lote exacto'}</td>
+          <td style="color:var(--muted)">${i.proveedor_sugerido||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      ${r.observaciones?`<div style="font-size:11px;color:var(--muted);margin-top:8px;padding:8px;background:var(--bg3);border-radius:6px">📝 ${r.observaciones}</div>`:''}
+    </div>`;
+  }).join('');
+}
+window.renderComprasRequisiciones=renderComprasRequisiciones;
+
+/* HISTORIAL */
+function renderComprasHistorial(){
+  const list=document.getElementById('cmp-historial-list');
+  if(!list) return;
+  const from=document.getElementById('cmp-hist-from')?.value;
+  const to=document.getElementById('cmp-hist-to')?.value;
+  let reqs=purchaseRequests.filter(r=>r.status==='completada'||r.status==='cancelada');
+  if(from) reqs=reqs.filter(r=>r.created_at>=from);
+  if(to) reqs=reqs.filter(r=>r.created_at<=to+'T23:59:59');
+  if(!reqs.length){ list.innerHTML='<div class="card" style="color:var(--muted);text-align:center;padding:40px">Sin historial en el período.</div>'; return; }
+  list.innerHTML=`<div class="card"><table class="tbl"><thead><tr><th>N° Requi</th><th>Fecha</th><th>Producto</th><th>Materiales</th><th>Estado</th></tr></thead><tbody>
+    ${reqs.map(r=>{
+      const items=purchaseRequestItems.filter(i=>i.request_id===r.id);
+      const fecha=r.created_at?new Date(r.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—';
+      return `<tr>
+        <td style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent2)">${r.numero||'—'}</td>
+        <td style="color:var(--muted)">${fecha}</td>
+        <td>${r.producto_nombre||'—'}</td>
+        <td style="color:var(--muted)">${items.length} material(es)</td>
+        <td><span style="font-size:10px;font-weight:700;color:${r.status==='completada'?'var(--green)':'var(--muted)'}">${r.status==='completada'?'COMPLETADA':'CANCELADA'}</span></td>
+      </tr>`;
+    }).join('')}
+  </tbody></table></div>`;
+}
+window.renderComprasHistorial=renderComprasHistorial;
+
+/* CAMBIAR STATUS */
+async function cambiarStatusRequi(id,newStatus){
+  try{
+    await sbUpdate('purchase_requests',{status:newStatus,updated_at:new Date().toISOString()},`id=eq.${id}`);
+    await loadComprasData();
+    renderComprasRequisiciones();
+  }catch(e){ alert('Error al actualizar: '+e.message); }
+}
+window.cambiarStatusRequi=cambiarStatusRequi;
+
+/* ══════════════════════════════════════════
+   MODAL NUEVA REQUISICIÓN desde Reporte Mínimos
+   ══════════════════════════════════════════ */
+function showRequiModal(stockId){
+  const s=mpStock.find(x=>x.id===stockId);
+  if(!s){ alert('No se encontró el lote.'); return; }
+  _requiPendingStock=s;
+
+  // Obtener producto y BOM si es lote Por Producto
+  const prod=s.producto_id?products.find(p=>p.id===s.producto_id):null;
+  const matCat=mpMaterials.find(m=>m.id===s.material_id||m.name===s.material);
+
+  // Título del modal
+  const sub=document.getElementById('requi-modal-sub');
+  if(sub) sub.textContent=prod?`Producto: ${prod.name} (${prod.code||''})`:(`Material: ${s.material||'—'}`);
+
+  // Construir lista de ítems
+  // Si tiene producto: cargar TODOS los materiales del BOM que necesiten reposición
+  // Si no: solo este material
+  let bomItems=[];
+  if(prod&&prod.materials&&prod.materials.length){
+    bomItems=prod.materials.map((m,i)=>{
+      const mc=mpMaterials.find(x=>x.id===m.tipo||x.name===m.tipo);
+      return {
+        bom_index:i,
+        material_id:m.tipo,
+        material_nombre:mc?.name||m.tipo||'—',
+        forma:m.forma||mc?.forma||'—',
+        diametro:m.diametro??mc?.diametro,
+        diametro_int:m.diametro_int??mc?.diametro_int,
+        longitud:m.longitud,
+        cantidad_bom:m.cantidad||0,
+        unidad:m.unidad||'piezas',
+        tipo_reposicion:m.tipo_reposicion||'lote_exacto',
+        lote_compra:m.lote_compra||1,
+        proveedor:mc?mc.proveedor_sugerido||matCat?.proveedor_sugerido||'':s.supplier_name||'',
+      };
+    });
+  } else {
+    bomItems=[{
+      bom_index:0,
+      material_id:s.material_id||s.material,
+      material_nombre:matCat?.name||s.material||'—',
+      forma:s.forma||matCat?.forma||'—',
+      diametro:s.diametro??matCat?.diametro,
+      diametro_int:s.diametro_int??matCat?.diametro_int,
+      longitud:null,
+      cantidad_bom:s.cantidad||1,
+      unidad:'piezas',
+      tipo_reposicion:'lote_exacto',
+      lote_compra:1,
+      proveedor:s.supplier_name||'',
+    }];
+  }
+
+  const itemsEl=document.getElementById('requi-modal-items');
+  if(itemsEl) itemsEl.innerHTML=bomItems.map((it,idx)=>{
+    const esMultiplo=it.tipo_reposicion==='multiplo';
+    const esBajoPedido=it.tipo_reposicion==='bajo_pedido';
+    const cantBase=esMultiplo?it.lote_compra:it.cantidad_bom;
+    return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        <div>
+          <span style="font-weight:700;font-size:13px">${it.material_nombre}</span>
+          ${it.forma&&it.forma!=='pieza'?`<span style="font-size:11px;color:var(--muted);margin-left:8px">${it.forma}${it.diametro?' Ø'+parseFloat(it.diametro).toFixed(3)+'"':''}</span>`:''}
+          ${esBajoPedido?'<span style="font-size:10px;font-weight:700;color:var(--warn);margin-left:8px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 6px">BAJO PEDIDO ESPECIAL</span>':''}
+        </div>
+        <span style="font-size:10px;color:var(--muted)">${it.unidad}</span>
+      </div>
+      ${esMultiplo?`
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--muted)">Múltiplo de compra: <strong style="color:var(--accent2)">${it.lote_compra} ${it.unidad}</strong></span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--muted)">¿Cuántos lotes cubrir?</span>
+            <div style="display:flex;gap:4px">
+              ${[1,2,3].map(n=>`<button type="button" onclick="selectLotesReqItem(${idx},${n},${it.lote_compra},'requi-cant-${idx}')" id="requi-lote-btn-${idx}-${n}" class="btn btn-sm" style="font-size:12px;padding:4px 10px;${n===1?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${n}</button>`).join('')}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--muted)">Cantidad:</span>
+            <input type="number" id="requi-cant-${idx}" value="${cantBase}" readonly style="width:80px;font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--accent2);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;text-align:center">
+          </div>
+        </div>`
+      :`<div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:var(--muted)">Cantidad solicitada:</span>
+          <input type="number" id="requi-cant-${idx}" value="${cantBase}" min="1" style="width:100px;font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--accent2);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;text-align:center">
+        </div>`}
+      <input type="hidden" id="requi-tipo-${idx}" value="${it.tipo_reposicion}">
+      <input type="hidden" id="requi-lote-${idx}" value="${it.lote_compra}">
+      <input type="hidden" id="requi-matid-${idx}" value="${it.material_id||''}">
+      <input type="hidden" id="requi-matnom-${idx}" value="${it.material_nombre}">
+      <input type="hidden" id="requi-forma-${idx}" value="${it.forma||''}">
+      <input type="hidden" id="requi-diam-${idx}" value="${it.diametro||''}">
+      <input type="hidden" id="requi-diamint-${idx}" value="${it.diametro_int||''}">
+      <input type="hidden" id="requi-long-${idx}" value="${it.longitud||''}">
+      <input type="hidden" id="requi-unidad-${idx}" value="${it.unidad}">
+      <input type="hidden" id="requi-prov-${idx}" value="${it.proveedor||''}">
+    </div>`;
+  }).join('');
+
+  // Guardar count de items para confirmarRequisicion
+  window._requiBomCount=bomItems.length;
+  window._requiProd=prod;
+
+  document.getElementById('requi-obs').value='';
+  document.getElementById('requi-modal').classList.remove('hidden');
+}
+window.showRequiModal=showRequiModal;
+
+function selectLotesReqItem(idx,n,loteCompra,cantId){
+  // Resaltar botón seleccionado
+  [1,2,3].forEach(x=>{
+    const btn=document.getElementById(`requi-lote-btn-${idx}-${x}`);
+    if(btn){
+      btn.style.background=x===n?'var(--accent)':'';
+      btn.style.color=x===n?'#fff':'';
+      btn.style.borderColor=x===n?'var(--accent)':'';
+    }
+  });
+  const cantEl=document.getElementById(cantId);
+  if(cantEl) cantEl.value=loteCompra*n;
+}
+window.selectLotesReqItem=selectLotesReqItem;
+
+async function confirmarRequisicion(){
+  const prod=window._requiProd;
+  const count=window._requiBomCount||0;
+  const obs=document.getElementById('requi-obs')?.value||'';
+
+  // Generar número de requisición
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const numero=`REQ-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${String(purchaseRequests.length+1).padStart(4,'0')}`;
+
+  // Crear cabecera
+  let reqId;
+  try{
+    const header={
+      numero,
+      producto_id:prod?.id||null,
+      producto_nombre:prod?.name||null,
+      producto_codigo:prod?.code||null,
+      status:'pendiente',
+      observaciones:obs||null,
+      solicitante:'Almacén',
+      created_at:now.toISOString(),
+      updated_at:now.toISOString(),
+    };
+    const res=await sbInsert('purchase_requests',header);
+    reqId=res?.id||res?.[0]?.id;
+    if(!reqId) throw new Error('No se obtuvo ID de la requisición');
+  }catch(e){ alert('Error al crear requisición: '+e.message); return; }
+
+  // Crear renglones
+  try{
+    for(let i=0;i<count;i++){
+      const cant=parseFloat(document.getElementById(`requi-cant-${i}`)?.value)||0;
+      if(cant<=0) continue;
+      await sbInsert('purchase_request_items',{
+        request_id:reqId,
+        material_id:document.getElementById(`requi-matid-${i}`)?.value||null,
+        material_nombre:document.getElementById(`requi-matnom-${i}`)?.value||null,
+        forma:document.getElementById(`requi-forma-${i}`)?.value||null,
+        diametro:parseFloat(document.getElementById(`requi-diam-${i}`)?.value)||null,
+        diametro_int:parseFloat(document.getElementById(`requi-diamint-${i}`)?.value)||null,
+        longitud:parseFloat(document.getElementById(`requi-long-${i}`)?.value)||null,
+        cantidad_solicitada:cant,
+        unidad:document.getElementById(`requi-unidad-${i}`)?.value||'piezas',
+        tipo_reposicion:document.getElementById(`requi-tipo-${i}`)?.value||'lote_exacto',
+        lote_compra:parseInt(document.getElementById(`requi-lote-${i}`)?.value)||1,
+        lotes_a_cubrir:1,
+        proveedor_sugerido:document.getElementById(`requi-prov-${i}`)?.value||null,
+        created_at:now.toISOString(),
+      });
+    }
+  }catch(e){ alert('Error al guardar materiales: '+e.message); return; }
+
+  closeModal('requi-modal');
+  await loadComprasData();
+  // Notificar éxito
+  const banner=document.getElementById('alm-report-body');
+  if(banner){
+    const nota=document.createElement('div');
+    nota.style.cssText='background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:12px 18px;margin-bottom:14px;color:var(--green);font-weight:700';
+    nota.textContent=`✅ Requisición ${numero} enviada a Compras correctamente.`;
+    banner.prepend(nota);
+    setTimeout(()=>nota.remove(),5000);
+  }
+  renderAlmReport();
+}
+window.confirmarRequisicion=confirmarRequisicion;
+
+/* IMPRIMIR / PDF placeholder */
+function imprimirRequi(id){
+  const r=purchaseRequests.find(x=>x.id===id);
+  const items=purchaseRequestItems.filter(i=>i.request_id===id);
+  if(!r){ alert('Requisición no encontrada'); return; }
+  const fecha=r.created_at?new Date(r.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}):'—';
+  const win=window.open('','_blank','width=800,height:600');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Requisición ${r.numero}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:40px;color:#222}
+      h1{font-size:20px;margin:0}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:20px}
+      .meta{font-size:12px;color:#666;margin-bottom:4px}
+      .num{font-size:18px;font-weight:700;color:#7c3aed}
+      table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}
+      th{background:#f3f4f6;padding:8px;text-align:left;border:1px solid #ddd;font-size:11px}
+      td{padding:7px 8px;border:1px solid #ddd}
+      .obs{margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px;font-size:12px}
+      .footer{margin-top:40px;display:flex;justify-content:space-around;font-size:11px;color:#888}
+      .sig{text-align:center;border-top:1px solid #999;padding-top:4px;min-width:160px}
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px">REPEMEX S.A. DE C.V. — Matehuala, S.L.P.</div>
+        <h1>REQUISICIÓN DE COMPRA</h1>
+        ${r.producto_nombre?`<div style="font-size:12px;color:#059669;margin-top:4px">Producto: ${r.producto_nombre}${r.producto_codigo?' ('+r.producto_codigo+')':''}</div>`:''}
+      </div>
+      <div style="text-align:right">
+        <div class="num">${r.numero}</div>
+        <div class="meta">Fecha: ${fecha}</div>
+        <div class="meta">Solicitante: ${r.solicitante||'Almacén'}</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Material</th><th>Forma / Ø</th><th>Cantidad</th><th>Unidad</th><th>Tipo Reposición</th><th>Proveedor Sugerido</th></tr></thead>
+      <tbody>${items.map((it,i)=>`<tr>
+        <td>${i+1}</td>
+        <td><strong>${it.material_nombre||'—'}</strong></td>
+        <td>${it.forma||'—'}${it.diametro?' Ø'+parseFloat(it.diametro).toFixed(3)+'"':''}</td>
+        <td style="font-weight:700;color:#7c3aed">${it.cantidad_solicitada||'—'}</td>
+        <td>${it.unidad||'piezas'}</td>
+        <td style="font-size:11px">${it.tipo_reposicion==='multiplo'?'Múltiplo ×'+it.lote_compra:it.tipo_reposicion==='bajo_pedido'?'Bajo pedido especial':'Lote exacto'}</td>
+        <td style="font-size:11px;color:#666">${it.proveedor_sugerido||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    ${r.observaciones?`<div class="obs"><strong>Observaciones:</strong> ${r.observaciones}</div>`:''}
+    <div class="footer">
+      <div class="sig">Solicitó</div>
+      <div class="sig">Autorizó</div>
+      <div class="sig">Proveedor / Recibió</div>
+    </div>
+    <script>window.print();<\/script>
+    </body></html>`);
+  win.document.close();
+}
+window.imprimirRequi=imprimirRequi;
+
 // ════════════════════════════════════════════════════════
 
 if(typeof reconectar!=='undefined') window.reconectar=reconectar;
@@ -11534,6 +12057,7 @@ if(typeof toggleRawMaterialOK!=='undefined') window.toggleRawMaterialOK=toggleRa
 if(typeof tryEngLogin!=='undefined') window.tryEngLogin=tryEngLogin;
 if(typeof tryProgLogin!=='undefined') window.tryProgLogin=tryProgLogin;
 if(typeof tryReportsLogin!=='undefined') window.tryReportsLogin=tryReportsLogin;
+if(typeof tryComprasLogin!=='undefined') window.tryComprasLogin=tryComprasLogin;
 if(typeof uploadItemPhoto!=='undefined') window.uploadItemPhoto=uploadItemPhoto;
 if(typeof uploadProductPhoto!=='undefined') window.uploadProductPhoto=uploadProductPhoto;
 if(typeof useSavedConfig!=='undefined') window.useSavedConfig=useSavedConfig;
