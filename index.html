@@ -5489,7 +5489,7 @@ async function showSolicitarMP(otId, bomId){
   const b=estado.find(x=>String(x.bomId)===String(bomId));
   if(!b){ alert('Material no encontrado en el BOM'); return; }
 
-  const {m, matCat, esBarra, totalReq, reqLote} = b;
+  const {m, matCat, esBarra, totalReq, reqLote, dispReal} = b;
 
   // Obtener stocks disponibles en Almacén General — match robusto por material_id O por nombre
   const matTipo=m.tipo;
