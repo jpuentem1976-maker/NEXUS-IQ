@@ -4465,6 +4465,7 @@ function getOTBomMaterialStatus(o,p){
 
     const otLiberada=o.status==='released'||o.status==='closed';
     const yaEnTransitConsumed=mpTransit.some(t=>t.ot_id===o.id&&t.status==='consumido'&&(
+      (t.material_id&&t.material_id===m.tipo)||
       (t.mp_stock_id&&mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===m.tipo))||
       (t.material||'').toLowerCase()===(matCat?.label||'').toLowerCase()
     ));
@@ -5109,6 +5110,7 @@ async function releaseOT(id){
             id:uid(),ot_id:id,ot_number:o.number,
             product_id:o.product_id,product_name:prod.name||'',product_code:prod.code||'',
             material:s.material,forma:s.forma,diametro:s.diametro,
+            mp_stock_id:s.id,material_id:b.m.tipo,
             longitud_in:0,cantidad_barras:consumo,
             kg_real:consumo,precio_kg:precioUnit,valor:parseFloat((consumo*precioUnit).toFixed(2)),
             notas_habilitado:'Material Pre-habilitado consumido al liberar OT',
@@ -5365,10 +5367,10 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
   function yaConsumidoEnLiberar(matTipo, matLabel, esBarra){
     return transitOT.some(t=>{
       if(t.status!=='consumido') return false;
-      if(esBarra && !(parseFloat(t.longitud_in)>0)) return false; // excluir registros Por Producto (longitud_in=0)
-      const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===matTipo);
-      const byName = !byStockId && (t.material||'').toLowerCase()===(matLabel||'').toLowerCase(); // match exacto
-      return byStockId||byName;
+      const byMatId = t.material_id && t.material_id===matTipo;
+      const byStockId = !byMatId && t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===matTipo);
+      const byName = !byMatId && !byStockId && (t.material||'').toLowerCase()===(matLabel||'').toLowerCase();
+      return byMatId||byStockId||byName;
     });
   }
 
@@ -5413,6 +5415,8 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
       itemsConProblema.push(b);
     } else {
       estadoTag=`<span style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">🔴 Sin stock</span>`;
+      // Piezas no-críticas sin stock también pueden solicitarse (el almacén las conseguirá)
+      if(!esBarra) puedeSolicitar=true;
       itemsConProblema.push(b);
     }
 
