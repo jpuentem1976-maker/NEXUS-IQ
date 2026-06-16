@@ -1731,10 +1731,9 @@ async function reconectar(){
 
 /* TABS */
 function setPTab(id,btn){
-  const parent=btn.closest('.page')||btn.closest('[class*="page"]');
-  document.querySelectorAll('#page-reports .subpage').forEach(el=>{el.classList.add('hidden');el.classList.remove('fade');el.classList.remove('active');});
+  document.querySelectorAll('#page-reports .subpage').forEach(el=>{el.classList.remove('active');el.classList.remove('hidden');el.classList.remove('fade');el.style.display='none';});
   document.querySelectorAll('#page-reports .ptab').forEach(b=>b.classList.remove('active'));
-  const el=document.getElementById(id); el.classList.remove('hidden'); void el.offsetWidth; el.classList.add('fade'); btn.classList.add('active');
+  const el=document.getElementById(id); el.style.display=''; void el.offsetWidth; el.classList.add('active'); el.classList.add('fade'); btn.classList.add('active');
   // Repoblar selects y luego renderizar
   if(typeof refreshReportSelects==='function') refreshReportSelects();
   if(id==='r-operator') renderOpReport();
