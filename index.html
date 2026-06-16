@@ -5499,7 +5499,9 @@ async function showSolicitarMP(otId, bomId){
   if(esBarra){
     stocksDisp=mpStock.filter(s=>matchMat(s)&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&stockLongTotal(s)>0);
   } else {
-    stocksDisp=mpStock.filter(s=>matchMat(s)&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
+    const porProducto=mpStock.filter(s=>s.producto_id===p.id&&String(s.bom_item_id)===String(bomId)&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
+    const general=mpStock.filter(s=>matchMat(s)&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
+    stocksDisp=[...porProducto,...general];
   }
 
   if(!stocksDisp.length){ alert('Sin stock disponible de '+(matCat?.label||m.tipo)+' en Almacén MP.\n\nVerifica que haya existencia en Almacén MP → General.'); return; }
@@ -5581,7 +5583,7 @@ async function confirmarSolicitarMP(){
           diametro:s.diametro||matCat?.diametro||null,
           longitud_in:consumo, cantidad_barras:newCant<(parseInt(s.cantidad)||0)?(parseInt(s.cantidad)||0)-newCant:1,
           kg_real:kgConsumido, precio_kg:precio, valor:valorConsumido,
-          mp_stock_id:s.id,
+          mp_stock_id:s.id, material_id:m.tipo,
           notas_habilitado:'Solicitado desde OT Liberada',
           status:'consumido', moved_by:'OT Liberada', moved_at:now, released_at:now
         });
@@ -5616,7 +5618,7 @@ async function confirmarSolicitarMP(){
           material:s.material||matCat?.label||'', forma:s.forma||'', diametro:s.diametro||null,
           longitud_in:null, cantidad_barras:consumo,
           kg_real:kgCons, precio_kg:precio, valor:valorCons,
-          mp_stock_id:s.id,
+          mp_stock_id:s.id, material_id:m.tipo,
           notas_habilitado:'Solicitado desde OT Liberada',
           status:'consumido', moved_by:'OT Liberada', moved_at:now, released_at:now
         });
