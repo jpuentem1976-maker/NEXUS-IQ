@@ -1144,6 +1144,37 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;ali
 </div>
 
 <!-- MODAL SERVICIOS EXTERNOS -->
+<!-- MODAL SOLICITAR MP FALTANTE EN OT LIBERADA -->
+<div id="mp-faltante-modal" class="overlay hidden">
+  <div class="card modal" style="max-width:520px">
+    <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:6px">📦 Solicitar Material — <span id="mpf-ot-label" style="color:var(--accent2)"></span></div>
+    <div id="mpf-mat-info" style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Requerido por BOM</div>
+        <div id="mpf-requerido" style="font-weight:700;color:var(--warn);font-size:15px"></div>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Disponible en Almacén</div>
+        <div id="mpf-disponible" style="font-weight:700;color:var(--green);font-size:15px"></div>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Ya asignado a OT</div>
+        <div id="mpf-asignado" style="font-weight:700;color:var(--accent);font-size:15px"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label id="mpf-cant-label">Cantidad a solicitar <span style="color:var(--danger)">*</span></label>
+      <input type="number" id="mpf-cant" min="1" step="0.001" style="font-size:18px;text-align:center" placeholder="0">
+    </div>
+    <div id="mpf-lotes-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)"></div>
+    <div class="g2" style="margin-top:14px;gap:10px">
+      <button class="btn btn-ghost" onclick="closeModal('mp-faltante-modal')">Cancelar</button>
+      <button class="btn btn-accent" id="mpf-confirm-btn" onclick="confirmarSolicitarMP()">📦 Solicitar y Cargar a OT</button>
+    </div>
+  </div>
+</div>
+
 <div id="ext-service-modal" class="overlay hidden">
   <div class="card modal" style="max-width:480px">
     <div style="font-family:var(--font-display,sans-serif);font-size:18px;color:var(--accent);margin-bottom:14px">🔥 Servicios Externos — <span id="ext-svc-ot-label"></span></div>
@@ -5249,10 +5280,11 @@ function renderReleasedOTs(){
         <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
           <button class="btn btn-green btn-sm" onclick="addDelivery('${o.id}',${o.qty},${dels},${scraps})">+ Entrega</button>
           <button class="btn btn-sm" onclick="addScrap('${o.id}')" style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)">+ Scrap</button>
-          <button class="btn btn-sm" onclick="addExternalService('${o.id}')" style="background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.3)">🔥 Servicio Externo</button>
+          ${(p?.operations||[]).some(op=>op.op_type==='external')?`<button class="btn btn-sm" onclick="addExternalService('${o.id}')" style="background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.3)">🔥 Servicio Externo</button>`:''}
           <button class="btn btn-warn btn-sm" onclick="closeOT('${o.id}',${o.qty},${dels},${scraps})">🔒 Cerrar O.T.</button>
           <button class="btn btn-sm btn-danger" onclick="deleteReleasedOT('${o.id}','${o.number}')">🗑 Eliminar</button>
         </div>
+        <div id="bom-status-${o.id}" style="margin-top:10px"></div>
       </div>`);
     }catch(err){ console.error('Error rendering OT '+o.number+':', err); }
   }
@@ -5277,7 +5309,261 @@ function renderReleasedOTs(){
       </div>`;
     }catch(e){ /* silencioso, no bloquea la vista */ }
   });
+
+  // Renderizar estado BOM por OT (materiales faltantes con opción de solicitar)
+  released.forEach(o=>{
+    const cell=document.getElementById('bom-status-'+o.id);
+    if(!cell) return;
+    const p=getProduct(o.product_id);
+    if(!p||(p.materials||[]).length===0) return;
+    renderBomStatusOTLiberada(o, p, cell);
+  });
 }
+
+// ── Estado BOM en OT Liberada: muestra materiales y permite solicitar faltantes ──
+function renderBomStatusOTLiberada(o, p, cell){
+  const estado=getOTBomMaterialStatus(o,p);
+  if(!estado.length) return;
+
+  // Verificar qué materiales ya tienen mp_transit (listo o consumido) para esta OT
+  const transitOT=mpTransit.filter(t=>t.ot_id===o.id);
+
+  const rows=estado.map(b=>{
+    const {m, matCat, esBarra, cubiertoTotal, totalReq, dispReal, enTransito, bomId} = b;
+    const nombre=matCat?.label||m.tipo||'—';
+
+    // Calcular ya asignado a esta OT en mp_transit
+    const yaEnTransit=transitOT.filter(t=>{
+      const matLabel=(matCat?.label||'').toUpperCase();
+      return (t.material||'').toUpperCase().startsWith(matLabel.substring(0,6));
+    });
+    const cantTransit=yaEnTransit.reduce((a,t)=>a+(esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
+
+    // Estado visual
+    let estadoTag, puedeSolicitar=false;
+    if(cubiertoTotal||cantTransit>0){
+      estadoTag=`<span style="background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✅ Cubierto</span>`;
+    } else if(dispReal>0){
+      estadoTag=`<span style="background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">⚠ Pendiente</span>`;
+      puedeSolicitar=true;
+    } else {
+      estadoTag=`<span style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">🔴 Sin stock</span>`;
+    }
+
+    const reqLabel=esBarra?`${totalReq.toFixed(3)}" total`:`${b.reqLote} pzas`;
+    const dispLabel=esBarra?`${dispReal.toFixed(3)}" disp.`:`${dispReal} pzas disp.`;
+    const transitLabel=cantTransit>0?(esBarra?`${cantTransit.toFixed(3)}" en OT`:`${cantTransit} pzas en OT`):'—';
+
+    const btnSolicitar=puedeSolicitar
+      ? `<button class="btn btn-sm" style="background:rgba(0,212,255,.15);color:var(--accent);border:1px solid rgba(0,212,255,.3);font-size:11px;padding:3px 10px;white-space:nowrap"
+           onclick="showSolicitarMP('${o.id}','${String(bomId).replace(/'/g,"\\'")}')">📦 Solicitar</button>`
+      : '';
+
+    return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:6px 10px;font-size:12px;font-weight:600;color:var(--text)">${nombre}</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${reqLabel}</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--green);font-family:'DM Mono',monospace">${dispLabel}</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--accent);font-family:'DM Mono',monospace">${transitLabel}</td>
+      <td style="padding:6px 10px">${estadoTag}</td>
+      <td style="padding:6px 6px">${btnSolicitar}</td>
+    </tr>`;
+  }).join('');
+
+  const allCovered=estado.every(b=>b.cubiertoTotal||transitOT.length>0);
+  const pendCount=estado.filter(b=>!b.cubiertoTotal&&dispReal>0).length;
+
+  cell.innerHTML=`
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px">
+      <div style="background:var(--bg3);padding:6px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none"
+           onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.bom-arrow').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'">
+        <span class="bom-arrow" style="color:var(--muted);font-size:10px">▼</span>
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Material BOM</span>
+        <span style="font-size:11px;color:var(--muted)">${estado.length} ítem${estado.length!==1?'s':''}</span>
+        ${pendCount>0?`<span style="background:rgba(245,158,11,.2);color:var(--warn);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700">${pendCount} pendiente${pendCount!==1?'s':''}</span>`:'<span style="color:var(--green);font-size:11px">✅ Todo cubierto</span>'}
+      </div>
+      <div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;background:var(--bg2)">
+            <th style="padding:5px 10px;text-align:left">Material</th>
+            <th style="padding:5px 10px;text-align:left">Requerido</th>
+            <th style="padding:5px 10px;text-align:left">Almacén</th>
+            <th style="padding:5px 10px;text-align:left">En OT</th>
+            <th style="padding:5px 10px;text-align:left">Estado</th>
+            <th style="padding:5px 10px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+window.renderBomStatusOTLiberada=renderBomStatusOTLiberada;
+
+// ── Contexto para solicitar MP ──
+let _mpfCtx={otId:null, bomId:null, bomItem:null, matCat:null, esBarra:false, stocksDisp:[]};
+
+function showSolicitarMP(otId, bomId){
+  const o=workOrders.find(w=>w.id===otId);
+  const p=o?getProduct(o.product_id):null;
+  if(!o||!p){ alert('OT o producto no encontrado'); return; }
+
+  const estado=getOTBomMaterialStatus(o,p);
+  const b=estado.find(x=>String(x.bomId)===String(bomId));
+  if(!b){ alert('Material no encontrado en el BOM'); return; }
+
+  const {m, matCat, esBarra, totalReq, dispReal, reqLote} = b;
+
+  // Obtener stocks disponibles en Almacén General (no asignados a producto)
+  let stocksDisp=[];
+  if(esBarra){
+    stocksDisp=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&stockLongTotal(s)>0);
+  } else {
+    stocksDisp=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
+  }
+
+  if(!stocksDisp.length){ alert(`Sin stock disponible de ${matCat?.label||m.tipo} en Almacén MP.`); return; }
+
+  _mpfCtx={otId, bomId, bomItem:m, matCat, esBarra, stocksDisp, o, p};
+
+  // Poblar modal
+  document.getElementById('mpf-ot-label').textContent=o.number;
+  document.getElementById('mpf-mat-info').innerHTML=
+    `<b style="color:var(--accent)">${matCat?.label||m.tipo}</b> — ${matCat?.forma||''} ${matCat?.diametro?'Ø'+matCat.diametro+'"':''}`;
+
+  const unidad=esBarra?'"':' pzas';
+  document.getElementById('mpf-requerido').textContent=(esBarra?totalReq.toFixed(3):reqLote)+unidad;
+  document.getElementById('mpf-disponible').textContent=dispReal.toFixed(esBarra?3:0)+unidad;
+  document.getElementById('mpf-asignado').textContent='—';
+  document.getElementById('mpf-cant-label').textContent=esBarra?`Longitud total a solicitar ("):*`:`Cantidad a solicitar (pzas): *`;
+  document.getElementById('mpf-cant').value='';
+  document.getElementById('mpf-cant').step=esBarra?'0.001':'1';
+  document.getElementById('mpf-cant').placeholder=esBarra?totalReq.toFixed(3):reqLote;
+
+  // Mostrar lotes disponibles
+  const lotesHTML=stocksDisp.map(s=>{
+    const disp=esBarra?`${stockLongTotal(s).toFixed(3)}" (${parseInt(s.cantidad)||0} barras)`:` ${parseInt(s.cantidad)||0} pzas`;
+    const precio=parseFloat(s.precio_kg)||0;
+    return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text)">${s.material||matCat?.label||'—'} ${s.diametro?'Ø'+s.diametro:''}</span>
+      <span style="color:var(--accent);font-family:'DM Mono',monospace">${disp}</span>
+      <span style="color:var(--muted)">$${precio.toFixed(2)}/${esBarra?'kg':'pza'}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('mpf-lotes-list').innerHTML=
+    `<div style="margin-bottom:4px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Lotes disponibles en almacén:</div>${lotesHTML}`;
+
+  document.getElementById('mp-faltante-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('mpf-cant').focus(),80);
+}
+window.showSolicitarMP=showSolicitarMP;
+
+async function confirmarSolicitarMP(){
+  const {otId, bomId, bomItem:m, matCat, esBarra, stocksDisp, o, p}=_mpfCtx;
+  const cantSol=parseFloat(document.getElementById('mpf-cant').value)||0;
+  if(!cantSol||cantSol<=0){ alert('Ingresa una cantidad válida.'); return; }
+
+  const btn=document.getElementById('mpf-confirm-btn');
+  btn.disabled=true; btn.textContent='Procesando...';
+  const now=new Date().toISOString();
+
+  try{
+    let porCubrir=cantSol;
+    // Consumir de lotes FIFO
+    for(const s of stocksDisp){
+      if(porCubrir<=0.0001) break;
+      const longOrig=parseFloat(s.longitud_original||s.longitud_in)||0;
+      const precio=parseFloat(s.precio_kg)||0;
+
+      if(esBarra){
+        const longTotalAct=stockLongTotal(s);
+        if(longTotalAct<=0) continue;
+        const consumo=Math.min(porCubrir, longTotalAct);
+        const longRestante=Math.max(0,parseFloat((longTotalAct-consumo).toFixed(3)));
+        const newCant=longOrig>0?Math.floor(longRestante/longOrig):parseInt(s.cantidad)||0;
+        const newResiduo=longOrig>0?parseFloat((longRestante-newCant*longOrig).toFixed(3)):0;
+        const kgBarra=parseFloat(s.kg_barra)||0;
+        const newKgTotal=longOrig>0?parseFloat(((longRestante/longOrig)*kgBarra).toFixed(3)):parseFloat(s.kg_total||0)-parseFloat(s.kg_total||0)*(consumo/longTotalAct);
+        const newValor=parseFloat((newKgTotal*precio).toFixed(2));
+        const newStatus=longRestante<=0?'sin_stock':'disponible';
+
+        await sbUpdate('mp_stock',{id:s.id},{cantidad:newCant,longitud_original:longOrig,longitud_residuo:newResiduo,kg_total:parseFloat(newKgTotal.toFixed(3)),valor_total:newValor,status:newStatus,updated_at:now});
+
+        // Calcular kg consumidos
+        const kgConsumido=longOrig>0?parseFloat(((consumo/longOrig)*kgBarra).toFixed(3)):0;
+        const valorConsumido=parseFloat((kgConsumido*precio).toFixed(2));
+
+        // mp_transit status='consumido' (carga directa a costeo de OT, igual que al liberar)
+        await sbInsert('mp_transit',{
+          id:uid(), ot_id:otId, ot_number:o.number,
+          product_id:o.product_id, product_name:p.name||'', product_code:p.code||'',
+          material:s.material||matCat?.label||'', forma:s.forma||matCat?.forma||'',
+          diametro:s.diametro||matCat?.diametro||null,
+          longitud_in:consumo, cantidad_barras:newCant<(parseInt(s.cantidad)||0)?(parseInt(s.cantidad)||0)-newCant:1,
+          kg_real:kgConsumido, precio_kg:precio, valor:valorConsumido,
+          mp_stock_id:s.id,
+          notas_habilitado:'Solicitado desde OT Liberada',
+          status:'consumido', moved_by:'OT Liberada', moved_at:now, released_at:now
+        });
+
+        await sbInsert('mp_movements',{
+          id:uid(), mp_stock_id:s.id, tipo:'salida',
+          material:s.material||matCat?.label||'', forma:s.forma||'', diametro:s.diametro||null,
+          cantidad:1, longitud_in:consumo, kg:kgConsumido, valor:valorConsumido,
+          origen:'Almacén MP', destino:'OT '+o.number+' (Liberada)',
+          ot_id:otId, ot_number:o.number, recorded_at:now
+        });
+
+        porCubrir=parseFloat((porCubrir-consumo).toFixed(3));
+
+      } else {
+        // Pieza / material directo
+        const cantAct=parseInt(s.cantidad)||0;
+        if(cantAct<=0) continue;
+        const consumo=Math.min(Math.round(porCubrir), cantAct);
+        const newCant=cantAct-consumo;
+        const kgCons=consumo; // convención 1 pza = 1 kg-equiv
+        const valorCons=parseFloat((consumo*precio).toFixed(2));
+        const newKgTotal=newCant;
+        const newValor=parseFloat((newCant*precio).toFixed(2));
+        const newStatus=newCant<=0?'sin_stock':'disponible';
+
+        await sbUpdate('mp_stock',{id:s.id},{cantidad:newCant,kg_total:newKgTotal,valor_total:newValor,status:newStatus,updated_at:now});
+
+        await sbInsert('mp_transit',{
+          id:uid(), ot_id:otId, ot_number:o.number,
+          product_id:o.product_id, product_name:p.name||'', product_code:p.code||'',
+          material:s.material||matCat?.label||'', forma:s.forma||'', diametro:s.diametro||null,
+          longitud_in:null, cantidad_barras:consumo,
+          kg_real:kgCons, precio_kg:precio, valor:valorCons,
+          mp_stock_id:s.id,
+          notas_habilitado:'Solicitado desde OT Liberada',
+          status:'consumido', moved_by:'OT Liberada', moved_at:now, released_at:now
+        });
+
+        await sbInsert('mp_movements',{
+          id:uid(), mp_stock_id:s.id, tipo:'salida',
+          material:s.material||matCat?.label||'', forma:s.forma||'', diametro:s.diametro||null,
+          cantidad:consumo, kg:kgCons, valor:valorCons,
+          origen:'Almacén MP', destino:'OT '+o.number+' (Liberada)',
+          ot_id:otId, ot_number:o.number, recorded_at:now
+        });
+
+        porCubrir-=consumo;
+      }
+    }
+
+    closeModal('mp-faltante-modal');
+    await loadAllData();
+    renderReleasedOTs();
+    alert(`✅ Material cargado a ${o.number}. El costo MP ya se refleja en el costeo en vivo de la OT.`);
+  }catch(e){
+    console.error('confirmarSolicitarMP:',e);
+    alert('Error al procesar: '+e.message);
+  } finally {
+    btn.disabled=false;
+    btn.textContent='📦 Solicitar y Cargar a OT';
+  }
+}
+window.confirmarSolicitarMP=confirmarSolicitarMP;
 
 function addDelivery(otId,qty,delivered,scrap){
   const remaining=Math.max(0,qty-delivered-scrap);
