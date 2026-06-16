@@ -5331,41 +5331,64 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
   const estado=getOTBomMaterialStatus(o,p);
   if(!estado.length) return;
 
-  // transitOT se pasa como parámetro (incluye consumidos, no solo 'listo')
   transitOT=transitOT||mpTransit.filter(t=>t.ot_id===o.id);
 
-  const rows=estado.map(b=>{
-    const {m, matCat, esBarra, cubiertoTotal, totalReq, enTransito, bomId, reqLote} = b;
+  // Helper: busca stock en almacén general por material_id O por nombre de material (match robusto)
+  function stockGeneral(matTipo, matLabel){
+    return mpStock.filter(s=>{
+      if(s.producto_id) return false; // excluir stock Por Producto
+      if(s.status!=='disponible'&&s.status!=='parcial') return false;
+      const byId = s.material_id && s.material_id===matTipo;
+      const byName = !byId && (s.material||'').toLowerCase()===(matLabel||'').toLowerCase();
+      return byId||byName;
+    });
+  }
+
+  // Helper: ya en transit para esta OT para este material
+  function cantEnTransit(matTipo, matLabel, esBarra){
+    return transitOT
+      .filter(t=>{
+        const byStockId = t.mp_stock_id && mpStock.some(s=>s.id===t.mp_stock_id&&(s.material_id===matTipo||(s.material||'').toLowerCase()===(matLabel||'').toLowerCase()));
+        const byName = !t.mp_stock_id && (t.material||'').toLowerCase().includes((matLabel||'').substring(0,5).toLowerCase());
+        return byStockId||byName;
+      })
+      .reduce((a,t)=>a+(esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
+  }
+
+  // Filtrar solo ítems que NO están completamente cubiertos con material asignado a la OT
+  const itemsConProblema=[];
+  const allRows=estado.map(b=>{
+    const {m, matCat, esBarra, cubiertoTotal, totalReq, bomId, reqLote} = b;
     const nombre=matCat?.label||m.tipo||'—';
+    const matTipo=m.tipo;
+    const matLabel=matCat?.label||'';
 
-    // ── Stock general en Almacén MP (fuente real para solicitar) ──
-    let dispGeneral=0;
-    if(esBarra){
-      const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial'));
-      dispGeneral=stockGen.reduce((a,s)=>a+stockLongTotal(s),0);
-    } else {
-      const stockGen=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial'));
-      dispGeneral=stockGen.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
-    }
+    // Stock disponible en Almacén General (match robusto)
+    const stockGen=stockGeneral(matTipo, matLabel);
+    const dispGeneral=esBarra
+      ? stockGen.reduce((a,s)=>a+stockLongTotal(s),0)
+      : stockGen.reduce((a,s)=>a+(parseInt(s.cantidad)||0),0);
 
-    // ── Ya en tránsito para esta OT (por material_id coincidencia) ──
-    const yaEnTransit=transitOT.filter(t=>
-      t.mp_stock_id
-        ? mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===m.tipo)
-        : (t.material||'').toLowerCase().includes((matCat?.label||'').substring(0,5).toLowerCase())
-    );
-    const cantTransit=yaEnTransit.reduce((a,t)=>a+(esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
+    // Cuánto ya tiene asignado esta OT en mp_transit
+    const cantTransit=cantEnTransit(matTipo, matLabel, esBarra);
 
-    // ── Lógica de estado ──
-    const yaCubierto=cubiertoTotal||cantTransit>0;
+    // ── Determinar estado real ──
+    // Para barras: cubierto si ya hay transit consumido (se descuentó al liberar o se solicitó)
+    // Para piezas: cubierto si ya hay transit consumido para este material en esta OT
+    const yaCubierto = esBarra
+      ? (cantTransit >= totalReq*0.99 || cubiertoTotal)  // 99% para tolerancia de decimales
+      : (cantTransit >= reqLote || cubiertoTotal);
+
     let estadoTag, puedeSolicitar=false;
     if(yaCubierto){
       estadoTag=`<span style="background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">✅ Cubierto</span>`;
     } else if(dispGeneral>0){
       estadoTag=`<span style="background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">⚠ Pendiente</span>`;
       puedeSolicitar=true;
+      itemsConProblema.push(b);
     } else {
       estadoTag=`<span style="background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700">🔴 Sin stock</span>`;
+      itemsConProblema.push(b);
     }
 
     const reqLabel=esBarra?`${totalReq.toFixed(3)}" total`:`${reqLote} pzas`;
@@ -5377,48 +5400,42 @@ function renderBomStatusOTLiberada(o, p, cell, transitOT){
            onclick="showSolicitarMP('${o.id}','${String(bomId).replace(/'/g,"\\'")}')">📦 Solicitar</button>`
       : '';
 
-    return `<tr style="border-top:1px solid var(--border)">
+    return {html:`<tr style="border-top:1px solid var(--border)">
       <td style="padding:6px 10px;font-size:12px;font-weight:600;color:var(--text)">${nombre}</td>
       <td style="padding:6px 10px;font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${reqLabel}</td>
       <td style="padding:6px 10px;font-size:11px;color:var(--green);font-family:'DM Mono',monospace">${dispLabel}</td>
       <td style="padding:6px 10px;font-size:11px;color:var(--accent);font-family:'DM Mono',monospace">${transitLabel}</td>
       <td style="padding:6px 10px">${estadoTag}</td>
       <td style="padding:6px 6px">${btnSolicitar}</td>
-    </tr>`;
-  }).join('');
+    </tr>`, pendiente:!yaCubierto};
+  });
 
-  // Bug fix: calcular pendCount correctamente dentro del scope del map
-  const pendCount=estado.filter(b=>{
-    if(b.cubiertoTotal) return false;
-    const transitMatch=transitOT.filter(t=>
-      t.mp_stock_id
-        ? mpStock.some(s=>s.id===t.mp_stock_id&&s.material_id===b.m.tipo)
-        : (t.material||'').toLowerCase().includes((b.matCat?.label||'').substring(0,5).toLowerCase())
-    );
-    const cantT=transitMatch.reduce((a,t)=>a+(b.esBarra?(parseFloat(t.longitud_in)||0):(parseInt(t.cantidad_barras)||0)),0);
-    return cantT<=0;
-  }).length;
+  // Solo mostrar ítems pendientes (con problema)
+  const rowsHTML=allRows.filter(r=>r.pendiente).map(r=>r.html).join('');
+  const pendCount=itemsConProblema.length;
+
+  // Si todo cubierto, no mostrar el panel
+  if(pendCount===0) return;
 
   cell.innerHTML=`
     <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:4px">
       <div style="background:var(--bg3);padding:6px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none"
            onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.bom-arrow').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'">
         <span class="bom-arrow" style="color:var(--muted);font-size:10px">▼</span>
-        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Material BOM</span>
-        <span style="font-size:11px;color:var(--muted)">${estado.length} ítem${estado.length!==1?'s':''}</span>
-        ${pendCount>0?`<span style="background:rgba(245,158,11,.2);color:var(--warn);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700">${pendCount} pendiente${pendCount!==1?'s':''}</span>`:'<span style="color:var(--green);font-size:11px">✅ Todo cubierto</span>'}
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">📦 Material Pendiente</span>
+        <span style="background:rgba(245,158,11,.2);color:var(--warn);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700">${pendCount} ítem${pendCount!==1?'s':''} sin asignar</span>
       </div>
       <div>
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase;background:var(--bg2)">
             <th style="padding:5px 10px;text-align:left">Material</th>
             <th style="padding:5px 10px;text-align:left">Requerido</th>
-            <th style="padding:5px 10px;text-align:left">Almacén</th>
+            <th style="padding:5px 10px;text-align:left">En Almacén</th>
             <th style="padding:5px 10px;text-align:left">En OT</th>
             <th style="padding:5px 10px;text-align:left">Estado</th>
             <th style="padding:5px 10px"></th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rowsHTML}</tbody>
         </table>
       </div>
     </div>`;
@@ -5445,15 +5462,18 @@ async function showSolicitarMP(otId, bomId){
 
   const {m, matCat, esBarra, totalReq, reqLote} = b;
 
-  // Obtener stocks disponibles en Almacén General (no asignados a producto)
+  // Obtener stocks disponibles en Almacén General — match robusto por material_id O por nombre
+  const matTipo=m.tipo;
+  const matLabel=matCat?.label||'';
+  function matchMat(s){ return (s.material_id&&s.material_id===matTipo)||(!s.material_id&&(s.material||'').toLowerCase()===matLabel.toLowerCase()); }
   let stocksDisp=[];
   if(esBarra){
-    stocksDisp=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&stockLongTotal(s)>0);
+    stocksDisp=mpStock.filter(s=>matchMat(s)&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&stockLongTotal(s)>0);
   } else {
-    stocksDisp=mpStock.filter(s=>s.material_id===m.tipo&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
+    stocksDisp=mpStock.filter(s=>matchMat(s)&&!s.producto_id&&(s.status==='disponible'||s.status==='parcial')&&parseInt(s.cantidad||0)>0);
   }
 
-  if(!stocksDisp.length){ alert(`Sin stock disponible de ${matCat?.label||m.tipo} en Almacén MP.\n\nVerifica que haya existencia en Almacén MP → General.`); return; }
+  if(!stocksDisp.length){ alert('Sin stock disponible de '+(matCat?.label||m.tipo)+' en Almacén MP.\n\nVerifica que haya existencia en Almacén MP → General.'); return; }
 
   _mpfCtx={otId, bomId, bomItem:m, matCat, esBarra, stocksDisp, o, p};
 
